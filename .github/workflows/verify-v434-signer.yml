@@ -1,12 +1,8 @@
 name: Verify configured v4.34 Ed25519 signer (no live capture)
 
+# This gate requires a separately provisioned private signer Secret.
+# Do not run automatically on public source-import commits.
 on:
-  push:
-    branches: [main]
-    paths:
-      - '.github/workflows/verify-v434-signer.yml'
-      - 'scripts/verify_github_signer.py'
-      - 'keys/v434/ed25519_trusted_public.bin'
   workflow_dispatch:
 
 permissions:
