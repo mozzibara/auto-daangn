@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import argparse
 from contextlib import closing
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import hashlib
 import hmac
 from io import BytesIO
@@ -124,9 +124,17 @@ class GitHubREST:
         return data
 
     def list_runs(self) -> dict:
+        # GitHub retains success runs for far longer than the one-day capture
+        # artifacts. Searching all history eventually exceeds per_page=100
+        # and permanently blocks intake. Bound the query to recent UTC dates
+        # (at least 48 hours, up to 72 hours due to date granularity).
+        # Never silently truncate: poll_once rejects an incomplete result.
+        from_utc_date = (datetime.now(timezone.utc) -
+                         timedelta(hours=48)).date().isoformat()
         return self._json(
             "/actions/workflows/secure-links-v434.yml/runs"
-            "?status=success&per_page=100&page=1"
+            "?status=success&per_page=100&page=1&created=" +
+            parse.quote(">=" + from_utc_date, safe="")
         )
 
     def list_artifacts(self, run_id: int, name: str) -> dict:
@@ -266,7 +274,8 @@ def poll_once(state_dir: Path, client: GitHubSource,
     document = client.list_runs()
     if (type(document) is not dict or type(document.get("workflow_runs")) is not list
             or type(document.get("total_count")) is not int
-            or document["total_count"] > 100):
+            or not 0 <= document["total_count"] <= 100
+            or len(document["workflow_runs"]) != document["total_count"]):
         raise ValueError("INCOMPLETE_GITHUB_RUN_CATALOG")
     eligible = []
     for run in document["workflow_runs"]:

@@ -4,6 +4,14 @@ Public source snapshot of the owner-approved, read-only Daangn listing research 
 
 This repository contains source code, synthetic tests, and opt-in GitHub Actions. It does **not** contain an operational database, live listing data, private keys, GitHub tokens, OCI credentials, or Telegram credentials.
 
+## Architecture
+
+- [ARCHITECTURE.md](ARCHITECTURE.md): GitHub Actions / OCI SECOND-INSTANCE / ChatGPT / Telegram responsibility boundaries, reliability gates and rollout priorities.
+- [MIGRATION.md](MIGRATION.md): controlled OCI cutover with the original private database and keys preserved.
+- [SECURITY.md](SECURITY.md): threat model, secrets handling and public-repository safeguards.
+
+Current status: **public source and synthetic CI only**. Live signing, OCI cloud-readback restoration, real Telegram messages and ChatGPT–OCI direct access are **not activated**.
+
 ## Safety and scope
 
 - Public pages only; respect robots.txt and access restrictions; do not bypass authentication or anti-bot controls.

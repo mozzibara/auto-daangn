@@ -358,6 +358,29 @@ class OciActionsIntakeTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "INCOMPLETE_GITHUB_RUN_CATALOG"):
             intake.poll_once(self.state, too_many, now=CLOCK)
 
+    def test_run_catalog_has_bounded_time_window(self):
+        # Repository history grows indefinitely, while sealed captures
+        # expire after one day. Query only recent runs; no real API call.
+        client = object.__new__(intake.GitHubREST)
+        doc = {"total_count": 0, "workflow_runs": []}
+        with patch.object(client, "_json", return_value=doc) as fake:
+            self.assertEqual(client.list_runs(), doc)
+        suffix = fake.call_args.args[0]
+        self.assertIn("status=success&per_page=100&page=1", suffix)
+        self.assertRegex(suffix, r"&created=%3E%3D[0-9]{4}-[0-9]{2}-[0-9]{2}$")
+        self.assertIn("secure-links-v434.yml/runs", suffix)
+
+    def test_missing_catalog_page_is_rejected_even_below_100(self):
+        self.confirm()
+        class Truncated(FakeGitHub):
+            def list_runs(self):
+                return {"total_count": 2, "workflow_runs": self.runs}
+        truncated = Truncated({}, [run_doc(9702)])
+        with self.assertRaisesRegex(ValueError, "INCOMPLETE_GITHUB_RUN_CATALOG"):
+            intake.poll_once(self.state, truncated, now=CLOCK)
+        self.assertEqual(truncated.downloads, [])
+        self.assertEqual(truncated.artifact_checks, [])
+
     def test_secret_file_must_be_private_not_deploy_key(self):
         token_file = self.work / "actions-token"
         token_file.write_text("github_pat_" + "A" * 60, encoding="utf-8")
