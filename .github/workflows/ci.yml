@@ -9,6 +9,11 @@ on:
 permissions:
   contents: read
 
+# Superseded commits should not run browsers/tests in parallel.
+concurrency:
+  group: offline-ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   unit-tests:
     name: Python 3.13 / ${{ matrix.os }}
@@ -37,14 +42,8 @@ jobs:
       - name: Install project dependencies
         run: python -m pip install -r requirements.txt
 
-      - name: Install Playwright Chromium on Ubuntu
-        if: runner.os == 'Linux'
-        run: python -m playwright install --with-deps chromium
-
-      - name: Install Playwright Chromium on Windows
-        if: runner.os == 'Windows'
-        run: python -m playwright install chromium
-
+      # Offline unit tests use fixtures and mocks; browser binaries are only
+      # required by the separate, explicitly approved live capture workflow.
       - name: Compile Python source
         run: python -m compileall -q .
 
@@ -57,13 +56,8 @@ jobs:
           set -o pipefail
           python -m unittest discover -s tests -p 'test_*.py' -q 2>&1 | tee unittest.log
 
-      - name: Upload unit-test log
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: unittest-${{ matrix.os }}
-          path: |
-            unittest.log
-            v425_state_conversion_audit.json
-          if-no-files-found: ignore
-          retention-days: 7
+      - name: Publish offline CI summary (no artifact)
+        if: success()
+        shell: bash
+        run: |
+          echo "Offline tests passed on ${{ matrix.os }}; no browser launch, live data or network collection." >> "$GITHUB_STEP_SUMMARY"
