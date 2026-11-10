@@ -1,0 +1,73 @@
+name: OCI Object Storage instance-principal encrypted backup (synthetic)
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'ops/oci/**'
+      - 'tests/test_v5_oci_object_storage.py'
+      - '.github/workflows/oci-object-storage-backup.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'ops/oci/**'
+      - 'tests/test_v5_oci_object_storage.py'
+      - '.github/workflows/oci-object-storage-backup.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  sdk-contract:
+    name: Backup and OCI SDK contract / ${{ matrix.os }} / Python ${{ matrix.python }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 12
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            python: '3.12'
+          - os: ubuntu-latest
+            python: '3.13'
+          - os: windows-latest
+            python: '3.13'
+    env:
+      PYTHONUTF8: '1'
+      PYTHONDONTWRITEBYTECODE: '1'
+    steps:
+      - name: Checkout with no persistent credentials
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Install crypto runtime and official OCI SDK
+        run: python -m pip install --no-cache-dir -r ops/oci/requirements-runtime.txt -r ops/oci/requirements-object-storage.txt
+      - name: Dependency compatibility
+        run: python -m pip check
+      - name: Compile application
+        run: python -m compileall -q ops/oci
+      - name: Validate systemd installer Bash syntax
+        if: runner.os == 'Linux'
+        run: bash -n ops/oci/install_object_storage.sh
+      - name: Offline cloud adapter and restore gate tests
+        shell: bash
+        run: |
+          set -o pipefail
+          python -m unittest discover -s tests -p 'test_v5_oci_object_storage.py' -v 2>&1 | tee synthetic-object-storage-test.log
+      - name: Security summary (no cloud credentials)
+        if: success()
+        shell: bash
+        run: |
+          {
+            echo '## OCI Object Storage backup: synthetic PASS'
+            echo '- Instance Principal code path only; no OCI API credentials or service metadata requested in CI'
+            echo '- Encrypted immutable upload and exact SHA256 remote readback'
+            echo '- Recovery private key never stored on OCI; offline restore establishes 30-day baseline'
+            echo '- Automatic receipts explicitly differ from actual offline restore'
+            echo '- Tampered readback, changed recovery key, expired baseline fail closed'
+            echo '- Timer stays disabled until explicit operator approval'
+          } >> "$GITHUB_STEP_SUMMARY"

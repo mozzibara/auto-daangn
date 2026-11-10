@@ -1,0 +1,23 @@
+[Unit]
+Description=Auto Daangn OCI v5 signed ingestion database health (metadata only)
+After=local-fs.target
+
+[Service]
+Type=oneshot
+User=daangn
+Group=daangn
+WorkingDirectory=/opt/auto-daangn
+ExecStart=/opt/auto-daangn/.venv/bin/python -m ops.oci.runtime status --state-dir /var/lib/auto-daangn
+Environment=PYTHONUTF8=1
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/auto-daangn
+RestrictAddressFamilies=AF_UNIX
+MemoryMax=256M
+TasksMax=20
+
+[Install]
+WantedBy=multi-user.target

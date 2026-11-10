@@ -1,0 +1,65 @@
+name: Pre-OCI AI keyword expansion, cross-query dedup and feedback (offline)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'app_v5/query_expansion.py'
+      - 'app_v5/multi_query_dedup.py'
+      - 'app_v5/query_feedback.py'
+      - 'tests/test_v5_query_expansion_feedback.py'
+      - '.github/workflows/pre-oci-query-expansion.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  synthetic:
+    name: Bounded query planning / ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    env:
+      PYTHONUTF8: '1'
+      PYTHONDONTWRITEBYTECODE: '1'
+    steps:
+      - name: Checkout without retained GitHub credentials
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: pip
+      - name: Install project dependencies (no browser installation)
+        run: python -m pip install -r requirements.txt
+      - name: Verify synthetic query expansion, dedup, and feedback
+        shell: bash
+        run: |
+          set -o pipefail
+          python -m unittest discover -s tests -p 'test_v5_query_expansion_feedback.py' -v 2>&1 | tee synthetic-query-validation.log
+      - name: Aggregate-only summary (no raw listing data)
+        if: success()
+        shell: bash
+        run: |
+          {
+            echo '## Pre-OCI AI query expansion and feedback: synthetic PASS'
+            echo
+            echo '| Safety contract | Tested behavior |'
+            echo '|---|---|'
+            echo '| AI proposal | Cannot approve its own synonyms or change filters |'
+            echo '| Owner allowlist | Only approved terms entered active plan |'
+            echo '| Site visit budget | Max 9 target source visits; excess fails closed |'
+            echo '| Cross-keyword identity | Same-run keyed HMAC only, not title/price |'
+            echo '| Conflicting observations | Quarantined, never silently overwritten |'
+            echo '| Incomplete evidence | Partial/inconclusive, no coverage guarantee |'
+            echo '| Feedback | Three completed runs to propose review, never auto-prune |'
+            echo '| Future AI proposals | Returned to approval queue |'
+            echo
+            echo 'No AI model API calls, no marketplace requests, no secrets, no database, no artifacts uploaded.'
+          } >> "$GITHUB_STEP_SUMMARY"

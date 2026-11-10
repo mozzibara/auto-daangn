@@ -1,0 +1,32 @@
+[Unit]
+Description=Auto Daangn pull authorized signed GitHub Actions artifacts (backup-gated)
+After=network-online.target
+Wants=network-online.target
+ConditionPathExists=/var/lib/auto-daangn/backup/offsite-verified.json
+ConditionPathExists=/var/lib/auto-daangn/keys/github-actions-read-token
+
+[Service]
+Type=oneshot
+User=daangn
+Group=daangn
+WorkingDirectory=/opt/auto-daangn
+ExecStart=/opt/auto-daangn/.venv/bin/python -m ops.oci.actions_intake poll --state-dir /var/lib/auto-daangn
+Environment=PYTHONUTF8=1
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/auto-daangn
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RestrictSUIDSGID=true
+ProtectControlGroups=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+MemoryMax=256M
+TasksMax=20
+TimeoutStartSec=110
+
+[Install]
+WantedBy=multi-user.target

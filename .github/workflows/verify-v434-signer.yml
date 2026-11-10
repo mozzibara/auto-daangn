@@ -1,0 +1,35 @@
+name: Verify configured v4.34 Ed25519 signer (no live capture)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/verify-v434-signer.yml'
+      - 'scripts/verify_github_signer.py'
+      - 'keys/v434/ed25519_trusted_public.bin'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  key-match:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout trusted main without credentials
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Install pinned crypto dependency
+        run: python -m pip install cryptography==46.0.4
+      - name: Compare secret-derived Ed25519 public key to pinned 32-byte key
+        shell: bash
+        env:
+          V434_ATTEST_ED25519_KEY_B64: ${{ secrets.V434_ATTEST_ED25519_KEY_B64 }}
+        run: python -m scripts.verify_github_signer

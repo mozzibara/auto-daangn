@@ -1,0 +1,66 @@
+name: Pre-OCI signed price history and event matrix (synthetic only)
+
+# No live capture, no GitHub signing secret, no long-lived database.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'tests/test_v5_price_event_matrix.py'
+      - '.github/workflows/price-events-v5-offline.yml'
+      - 'app_v5/history.py'
+      - 'app_v5/sealed_import.py'
+      - 'app_v5/attestation.py'
+
+permissions:
+  contents: read
+
+jobs:
+  price-history:
+    name: Signed multi-run price history / ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    env:
+      PYTHONUTF8: '1'
+      PYTHONDONTWRITEBYTECODE: '1'
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: pip
+      - name: Install pinned Python packages (no browser install)
+        run: python -m pip install -r requirements.txt
+      - name: Verify signed, multi-snapshot event classification (offline)
+        shell: bash
+        run: |
+          set -o pipefail
+          python -m unittest discover -s tests -p 'test_v5_price_event_matrix.py' -v 2>&1 | tee price-event-matrix.log
+      - name: Publish aggregate-only expected behavior
+        if: success()
+        shell: bash
+        run: |
+          {
+            echo '## Synthetic signed price-event matrix: PASS'
+            echo
+            echo '| Scenario | Expected |'
+            echo '|---|---|'
+            echo '| 45,000 → 35,000 → 35,000 → 38,000 → 30,000 KRW | 2 drops, 1 rise, no duplicate flat-price event |'
+            echo '| Other listing stays at 25,000 KRW | 0 cross-item events |'
+            echo '| Historical capture imported late | 0 stale events; next drop compares to latest valid price |'
+            echo '| Unsigned ADVISORY then authenticated runs | No drop from unsigned baseline |'
+            echo '| Tampered ciphertext | Rejected without event or ledger write |'
+            echo '| Same timestamp with conflicting prices | Atomic rejection |'
+            echo '| Price exceeds profile upper bound | Rejected |'
+            echo '| Replay of identical signed run | Idempotent; 0 extra events |'
+            echo
+            echo 'No real marketplace visits, no secrets and no retained SQLite.'
+          } >> "$GITHUB_STEP_SUMMARY"

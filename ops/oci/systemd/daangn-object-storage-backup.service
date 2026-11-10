@@ -1,0 +1,33 @@
+[Unit]
+Description=Auto Daangn immutable encrypted OCI Object Storage backup (Instance Principal)
+After=network-online.target
+Wants=network-online.target
+ConditionPathExists=/var/lib/auto-daangn/keys/offsite-recovery-public.b64
+ConditionPathExists=/var/lib/auto-daangn/keys/object-storage.json
+ConditionPathExists=/var/lib/auto-daangn/backup/offline-restore-baseline.json
+
+[Service]
+Type=oneshot
+User=daangn
+Group=daangn
+WorkingDirectory=/opt/auto-daangn
+ExecStart=/opt/auto-daangn/.venv/bin/python -m ops.oci.object_storage automatic --state-dir /var/lib/auto-daangn
+Environment=PYTHONUTF8=1
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/auto-daangn
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RestrictSUIDSGID=true
+ProtectControlGroups=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+MemoryMax=384M
+TasksMax=20
+TimeoutStartSec=120
+
+[Install]
+WantedBy=multi-user.target

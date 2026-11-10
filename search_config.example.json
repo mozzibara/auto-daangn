@@ -1,0 +1,10 @@
+{
+  "region": "cheonan",
+  "control_region": "asan",
+  "keyword": "HDD",
+  "category_id": 1,
+  "min_price": 0,
+  "max_price": 50000,
+  "available_only": true,
+  "output_dir": "v46_output"
+}

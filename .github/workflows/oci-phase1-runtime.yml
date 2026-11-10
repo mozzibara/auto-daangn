@@ -1,0 +1,72 @@
+name: OCI Phase 1 secure runtime (offline, no cloud access)
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'ops/oci/**'
+      - 'tests/test_v5_oci_runtime.py'
+      - '.github/workflows/oci-phase1-runtime.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'ops/oci/**'
+      - 'tests/test_v5_oci_runtime.py'
+      - '.github/workflows/oci-phase1-runtime.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  server-runtime:
+    name: Persistent signed import / ${{ matrix.os }} / py${{ matrix.python }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            python: '3.12'
+          - os: ubuntu-latest
+            python: '3.13'
+          - os: windows-latest
+            python: '3.13'
+    env:
+      PYTHONUTF8: '1'
+      PYTHONDONTWRITEBYTECODE: '1'
+    steps:
+      - name: Checkout reviewed code without retained credentials
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Set up Python runtime
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Install small OCI runtime only
+        run: python -m pip install --no-cache-dir -r ops/oci/requirements-runtime.txt
+      - name: Verify all OCI files compile
+        run: python -m compileall -q ops/oci
+      - name: Validate Ubuntu bootstrap shell syntax
+        if: runner.os == 'Linux'
+        run: bash -n ops/oci/install_host.sh
+      - name: Synthetic signed OCI ingestion, continuity and safety tests
+        shell: bash
+        run: |
+          set -o pipefail
+          python -m unittest discover -s tests -p 'test_v5_oci_runtime.py' -v 2>&1 | tee oci-phase1-test.log
+      - name: Publish safe aggregate status
+        if: success()
+        shell: bash
+        run: |
+          {
+            echo '## OCI Phase 1 runtime: offline PASS'
+            echo
+            echo '- Host architecture: no browser, Docker, listener or daemon needed to process files'
+            echo '- Keyring: server-only X25519 + persistent HMAC keys, private modes'
+            echo '- Producer: pinned Ed25519 key and exact run/commit binding'
+            echo '- Import: two signed captures, REVIEWABLE price drop, replay idempotence'
+            echo '- Error gates: tamper, wrong commit/run, missing evidence, key mismatch'
+            echo '- CI scope: synthetic files only; no OCI credentials or actual deployment'
+          } >> "$GITHUB_STEP_SUMMARY"

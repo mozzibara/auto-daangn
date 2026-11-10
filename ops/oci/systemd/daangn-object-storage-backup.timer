@@ -1,0 +1,12 @@
+[Unit]
+Description=Reconcile OCI Object Storage encrypted backup every 10 minutes
+
+[Timer]
+OnCalendar=*:0/10
+RandomizedDelaySec=60
+AccuracySec=30s
+Persistent=true
+Unit=daangn-object-storage-backup.service
+
+[Install]
+WantedBy=timers.target

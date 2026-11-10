@@ -1,0 +1,73 @@
+name: OCI Phase 2 sealed backup + Actions pull intake (offline)
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'ops/oci/**'
+      - 'tests/test_v5_oci_actions_intake.py'
+      - '.github/workflows/oci-actions-intake.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'ops/oci/**'
+      - 'tests/test_v5_oci_actions_intake.py'
+      - '.github/workflows/oci-actions-intake.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  synthetic:
+    name: Signed archive and backup gate / ${{ matrix.os }} / Python ${{ matrix.python }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            python: '3.12'
+          - os: ubuntu-latest
+            python: '3.13'
+          - os: windows-latest
+            python: '3.13'
+    env:
+      PYTHONUTF8: '1'
+      PYTHONDONTWRITEBYTECODE: '1'
+    steps:
+      - name: Checkout code without retained credentials
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Install Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Install cryptography only
+        run: python -m pip install --no-cache-dir -r ops/oci/requirements-runtime.txt
+      - name: Compile OCI scripts
+        run: python -m compileall -q ops/oci
+      - name: Bash syntax check
+        if: runner.os == 'Linux'
+        run: bash -n ops/oci/install_host.sh ops/oci/install_intake.sh
+      - name: Offline backup/restore, malicious ZIP, signed source and retry tests
+        shell: bash
+        run: |
+          set -o pipefail
+          python -m unittest discover -s tests -p 'test_v5_oci_actions_intake.py' -v 2>&1 | tee oci-intake-test.log
+      - name: Publish aggregate-only summary
+        if: success()
+        shell: bash
+        run: |
+          {
+            echo '## OCI Actions pull + sealed backup: synthetic PASS'
+            echo
+            echo '- Offline X25519 recipient distinct from OCI private key'
+            echo '- AES-256-GCM sealed consistent SQLite WAL snapshot + HMAC/recipient keyring'
+            echo '- Offline restore integrity and key continuity verified'
+            echo '- Intake blocked until independently restored offsite ciphertext is operator confirmed'
+            echo '- GitHub workflow run identity/actor/repository/commit and signed ZIP validated'
+            echo '- Exactly one candidate per poll; idempotent replay; backup refreshed before next signed import'
+            echo '- No real GitHub API, OCI/R2, marketplace, Telegram, bot token or offsite uploads in CI'
+          } >> "$GITHUB_STEP_SUMMARY"

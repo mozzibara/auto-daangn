@@ -1,0 +1,10 @@
+[Unit]
+Description=Hourly redacted OCI v5 data/key health check
+
+[Timer]
+OnCalendar=hourly
+Persistent=true
+Unit=daangn-status.service
+
+[Install]
+WantedBy=timers.target

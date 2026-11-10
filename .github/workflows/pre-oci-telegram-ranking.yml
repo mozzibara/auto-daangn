@@ -1,0 +1,62 @@
+name: Pre-OCI Telegram fault injection and keyword ranking (offline)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'app_v5/analysis_profiles.py'
+      - 'app_v5/telegram_outbox.py'
+      - 'tests/test_v5_alerting_and_profiles.py'
+      - '.github/workflows/pre-oci-telegram-ranking.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  simulate:
+    name: Mock Telegram + profile analyzers / ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    env:
+      PYTHONUTF8: '1'
+      PYTHONDONTWRITEBYTECODE: '1'
+    steps:
+      - name: Checkout repo (no write credentials)
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: pip
+      - name: Install pinned requirements (no browser or public site access)
+        run: python -m pip install -r requirements.txt
+      - name: Mock Telegram and synthetic HDD/other profile tests
+        shell: bash
+        run: |
+          set -o pipefail
+          python -m unittest discover -s tests -p 'test_v5_alerting_and_profiles.py' -v 2>&1 | tee mock-alerting.log
+      - name: Synthetic-only summary
+        if: success()
+        shell: bash
+        run: |
+          {
+            echo '## Pre-OCI mocked Telegram and generic product ranking: PASS'
+            echo
+            echo '- Input: synthetic Ed25519-signed v4.34 price drops only'
+            echo '- Enqueue: source-attested latest and previous prices required'
+            echo '- Dedup: same recipient/event enqueue and ack-once behavior'
+            echo '- Transient: timeout + 429 retry-after; maximum attempts/dead letter'
+            echo '- Recovery: expired lease, restart, stale worker denial'
+            echo '- Limitation: remote acceptance before local ack may duplicate'
+            echo '- HDD: measured vs seller-reported vs missing SMART/capacity'
+            echo '- Generic: unsupported keyword analyzer defaults to review'
+            echo '- Network and credential use: zero Telegram sends and no Bot API token'
+            echo '- No real listing, no persistent SQLite, no uploaded preview/artifact'
+          } >> "$GITHUB_STEP_SUMMARY"

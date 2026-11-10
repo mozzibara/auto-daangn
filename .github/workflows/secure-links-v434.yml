@@ -1,0 +1,202 @@
+name: Daangn v4.34 encrypted exact listing links and titles (owner approval only)
+
+# Explicit one-time permission only. No cron/push/PR traffic.
+on:
+  workflow_dispatch:
+    inputs:
+      approval:
+        description: 'One owner-approved 9 source + up to 6 control public detail visits'
+        type: choice
+        required: true
+        default: NOT_APPROVED
+        options:
+          - NOT_APPROVED
+          - I_APPROVE_V434_ENCRYPTED_PUBLIC_LINKS
+      execution_mode:
+        description: 'Existing encrypted artifact or pre-OCI no-retention REVIEWABLE end-to-end test'
+        type: choice
+        required: true
+        default: CAPTURE_ENCRYPTED_ONLY
+        options:
+          - CAPTURE_ENCRYPTED_ONLY
+          - EPHEMERAL_REVIEWABLE_TEST
+      recipient_public_key:
+        description: 'X25519 PUBLIC key for CAPTURE_ENCRYPTED_ONLY; leave blank in EPHEMERAL_REVIEWABLE_TEST'
+        type: string
+        required: false
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+
+jobs:
+  owner-approved-encrypted-links:
+    if: >-
+      (github.event_name == 'workflow_dispatch' && github.actor == github.repository_owner && inputs.approval == 'I_APPROVE_V434_ENCRYPTED_PUBLIC_LINKS') ||
+      (github.event_name == 'issue_comment' && github.actor == github.repository_owner && github.event.issue.number == 1 && github.event.issue.pull_request == null && (startsWith(github.event.comment.body, '/run-daangn-secure-v434 ') || github.event.comment.body == '/run-daangn-pre-oci-e2e-v434'))
+    concurrency:
+      group: auto-daangn-live-diagnostic
+      cancel-in-progress: false
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      PYTHONUTF8: '1'
+      PYTHONDONTWRITEBYTECODE: '1'
+      CAPTURE_TEST_MODE: ${{ (github.event_name == 'issue_comment' && github.event.comment.body == '/run-daangn-pre-oci-e2e-v434') && 'EPHEMERAL_REVIEWABLE_TEST' || inputs.execution_mode }}
+      CAPTURE_APPROVAL: ${{ (github.event_name == 'issue_comment' && github.event.comment.body == '/run-daangn-pre-oci-e2e-v434') && 'I_APPROVE_V434_ENCRYPTED_PUBLIC_LINKS' || inputs.approval }}
+    steps:
+      - name: Checkout trusted main only (no persisted credentials)
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: false
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: pip
+      - name: Install public browser and sealed-manifest cryptography
+        run: |
+          python -m pip install -r requirements.txt
+          python -m playwright install --with-deps chromium
+      - name: Fail closed on mismatched configured signer before public capture
+        shell: bash
+        env:
+          V434_ATTEST_ED25519_KEY_B64: ${{ secrets.V434_ATTEST_ED25519_KEY_B64 }}
+          CAPTURE_TEST_MODE: ${{ env.CAPTURE_TEST_MODE }}
+        run: |
+          if [ -z "$V434_ATTEST_ED25519_KEY_B64" ]; then
+            if [ "$CAPTURE_TEST_MODE" = "EPHEMERAL_REVIEWABLE_TEST" ]; then
+              echo 'Pre-OCI REVIEWABLE test requires configured Ed25519 signer.'
+              exit 1
+            fi
+            echo 'Signer secret not configured; capture stays ADVISORY.'
+          else
+            python -m scripts.verify_github_signer
+          fi
+      - name: Validate exact owner approval and one-time recipient public key
+        if: env.CAPTURE_TEST_MODE != 'EPHEMERAL_REVIEWABLE_TEST'
+        shell: bash
+        env:
+          COMMENT_BODY: ${{ github.event.comment.body }}
+          DISPATCH_PUBLIC_KEY: ${{ inputs.recipient_public_key }}
+          EVENT_KIND: ${{ github.event_name }}
+        run: |
+          python - <<'PY'
+          import os,re,base64
+          from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PublicKey
+          if os.environ['EVENT_KIND']=='issue_comment':
+              m=re.fullmatch(r'/run-daangn-secure-v434 ([A-Za-z0-9+/]{43}=)',
+                             os.environ['COMMENT_BODY'].strip())
+              if not m:
+                  raise SystemExit('INVALID_OWNER_APPROVAL_FORMAT')
+              key=m.group(1)
+          else:
+              key=os.environ['DISPATCH_PUBLIC_KEY']
+          try:
+              data=base64.b64decode(key,validate=True)
+              if len(data)!=32:raise ValueError('PUBLIC_KEY_WRONG_LENGTH')
+              X25519PublicKey.from_public_bytes(data)
+          except (ValueError,TypeError):
+              raise SystemExit('INVALID_ONE_TIME_PUBLIC_KEY')
+          # ONLY the public key goes into the job environment, never logs.
+          with open(os.environ['GITHUB_ENV'],'a',encoding='utf-8') as fh:
+              fh.write('RECIPIENT_PUBLIC_KEY='+key+'\n')
+          print('VALIDATED_OWNER_APPROVAL_AND_PUBLIC_KEY')
+          PY
+      - name: Generate disposable recipient and HMAC keys for pre-OCI test
+        if: env.CAPTURE_TEST_MODE == 'EPHEMERAL_REVIEWABLE_TEST'
+        shell: bash
+        env:
+          CAPTURE_APPROVAL: ${{ env.CAPTURE_APPROVAL }}
+          CAPTURE_TEST_MODE: ${{ env.CAPTURE_TEST_MODE }}
+        run: |
+          python -m scripts.pre_oci_v434_ephemeral prepare \
+            --temp-dir "$RUNNER_TEMP/v434_ephemeral"
+      - name: Run one robots-first read-only capture and seal links in memory
+        id: secure
+        shell: bash
+        run: |
+          mkdir -p v434_live_output
+          set +e
+          python scripts/run_secure_links_v434_checked.py \
+            --output-dir v434_live_output \
+            --public-key "$RECIPIENT_PUBLIC_KEY" > v434_private_runner.log 2>&1
+          code=$?
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+          echo "Sealed public capture completed with code $code"
+          exit 0
+      - name: Sign verified capture provenance when signer is configured
+        if: steps.secure.outputs.exit_code == '0'
+        shell: bash
+        env:
+          V434_ATTEST_ED25519_KEY_B64: ${{ secrets.V434_ATTEST_ED25519_KEY_B64 }}
+        run: |
+          if [ -z "$V434_ATTEST_ED25519_KEY_B64" ]; then
+            echo 'Producer attestation not configured; capture remains ADVISORY.'
+            exit 0
+          fi
+          python -m scripts.sign_v434_capture --output-dir v434_live_output
+      - name: Verify signed capture and temporary SQLite REVIEWABLE import
+        if: env.CAPTURE_TEST_MODE == 'EPHEMERAL_REVIEWABLE_TEST' && steps.secure.outputs.exit_code == '0'
+        shell: bash
+        env:
+          CAPTURE_APPROVAL: ${{ env.CAPTURE_APPROVAL }}
+          CAPTURE_TEST_MODE: ${{ env.CAPTURE_TEST_MODE }}
+        run: |
+          python -m scripts.pre_oci_v434_ephemeral audit \
+            --temp-dir "$RUNNER_TEMP/v434_ephemeral" \
+            --output-dir v434_live_output
+      - name: Publish only redacted counts
+        if: always()
+        shell: bash
+        run: |
+          if [ -f v434_live_output/v434_secure_links_summary.json ]; then
+            python - <<'PY'
+          import json
+          from pathlib import Path
+          s=json.loads(Path('v434_live_output/v434_secure_links_summary.json').read_text())
+          with open(__import__('os').environ['GITHUB_STEP_SUMMARY'],'a',encoding='utf-8') as f:
+              f.write('# v4.34 encrypted listing links\n\n')
+              f.write(f"- Unique research candidates: {s.get('unique_candidates',0)}\n")
+              f.write(f"- Verified title+URL linked: {s.get('linked_unique_candidates',0)}\n")
+              f.write(f"- Title-conflicted/absent groups: {s.get('quarantined_title_groups',0)}\n")
+              f.write('- Sensitive listing URLs/titles: encrypted in artifact, never printed or archived as plaintext\n')
+              f.write('- Full listing recommendations approved: 0\n')
+          PY
+          else
+            echo "Secure title/link capture did not complete." >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Upload ONLY authenticated ciphertext and privacy-bounded metadata
+        if: always() && env.CAPTURE_TEST_MODE != 'EPHEMERAL_REVIEWABLE_TEST'
+        uses: actions/upload-artifact@v4
+        with:
+          name: daangn-v434-sealed-links-${{ github.run_id }}
+          path: |
+            v434_live_output/v434_private_candidate_links.encrypted.json
+            v434_live_output/v434_secure_links_summary.json
+            v434_live_output/v434_run_status.json
+            v434_live_output/v433_unique_candidates.json
+            v434_live_output/v434_capture_attestation.json
+          retention-days: 1
+          if-no-files-found: error
+      - name: Purge ephemeral private keys, SQLite and capture work files
+        if: always() && env.CAPTURE_TEST_MODE == 'EPHEMERAL_REVIEWABLE_TEST'
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import os
+          import shutil
+          shutil.rmtree(Path(os.environ['RUNNER_TEMP']) / 'v434_ephemeral',
+                        ignore_errors=True)
+          shutil.rmtree(Path('v434_live_output'), ignore_errors=True)
+          Path('v434_private_runner.log').unlink(missing_ok=True)
+          print('PRE_OCI_EPHEMERAL_FILES_PURGED')
+          PY
+      - name: Fail closed on incomplete capture
+        if: always() && steps.secure.outputs.exit_code != '0'
+        run: |
+          echo 'Secure listing link/title capture did not reach complete evidence.'
+          exit 1

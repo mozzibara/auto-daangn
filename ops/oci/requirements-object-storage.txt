@@ -1,0 +1,2 @@
+# OCI SDK used ONLY by outbound Object Storage worker; no OCI API private key.
+oci==2.190.0

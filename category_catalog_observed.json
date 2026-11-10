@@ -1,0 +1,90 @@
+{
+  "snapshot_origin": "user-provided v3 HTML, 2026-11-07, original public loader metadata",
+  "catalog_role": "historical category names/IDs; not verified as filter UI or query parameters",
+  "items": [
+    {
+      "id": 1,
+      "name": "디지털기기"
+    },
+    {
+      "id": 172,
+      "name": "생활가전"
+    },
+    {
+      "id": 8,
+      "name": "가구/인테리어"
+    },
+    {
+      "id": 7,
+      "name": "생활/주방"
+    },
+    {
+      "id": 4,
+      "name": "유아동"
+    },
+    {
+      "id": 173,
+      "name": "유아도서"
+    },
+    {
+      "id": 5,
+      "name": "여성의류"
+    },
+    {
+      "id": 31,
+      "name": "여성잡화"
+    },
+    {
+      "id": 14,
+      "name": "남성패션/잡화"
+    },
+    {
+      "id": 6,
+      "name": "뷰티/미용"
+    },
+    {
+      "id": 3,
+      "name": "스포츠/레저"
+    },
+    {
+      "id": 2,
+      "name": "취미/게임/음반"
+    },
+    {
+      "id": 9,
+      "name": "도서"
+    },
+    {
+      "id": 304,
+      "name": "티켓/교환권"
+    },
+    {
+      "id": 517,
+      "name": "e쿠폰"
+    },
+    {
+      "id": 305,
+      "name": "가공식품"
+    },
+    {
+      "id": 483,
+      "name": "건강기능식품"
+    },
+    {
+      "id": 16,
+      "name": "반려동물용품"
+    },
+    {
+      "id": 139,
+      "name": "식물"
+    },
+    {
+      "id": 13,
+      "name": "기타 중고물품"
+    },
+    {
+      "id": 32,
+      "name": "삽니다"
+    }
+  ]
+}
