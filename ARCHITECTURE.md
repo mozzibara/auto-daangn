@@ -83,8 +83,11 @@ per polling operation. All of these checks must stay fail-closed.
   offsite readback/verified snapshot after every signed import. If the gate fails,
   stop importing; never bypass it to keep the pipeline green.
 - Exactly one new signed bundle per invocation caps SQLite/CPU peak usage on a
-  one-gigabyte OCI instance. Schedule object-storage backup and artifact
-  intake separately. Do not overlap timers or add browser processes.
+  one-gigabyte OCI instance. Intake, offsite backup and health systemd services
+  now take the same bounded `flock` on a private local path, so they never
+  run simultaneously even if their calendar timers coincide. If lock
+  contention exceeds 20 seconds, the failed oneshot is visible in journal
+  and the next timer invocation can retry; do not hide it as success.
 - A catalog with more than 100 eligible recent runs is an **operational alarm**,
   not a reason to silently drop older runs. To scale beyond that, build an
   explicitly tested page-and-checkpoint algorithm with separate freshness,

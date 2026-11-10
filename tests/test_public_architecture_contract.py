@@ -61,6 +61,21 @@ class PublicArchitectureContractTests(unittest.TestCase):
         capture = (ROOT / WORKFLOW).read_text(encoding="utf-8")
         self.assertIn("python -m playwright install --with-deps chromium", capture)
 
+    def test_oci_timers_share_bounded_host_lock(self):
+        services = (
+            "daangn-actions-intake.service",
+            "daangn-object-storage-backup.service",
+            "daangn-status.service",
+        )
+        lock = ("ExecStart=/usr/bin/flock -w 20 "
+                "/var/lib/auto-daangn/db/oci-ops.lock ")
+        for name in services:
+            with self.subTest(service=name):
+                text = (ROOT / "ops/oci/systemd" / name).read_text(
+                    encoding="utf-8")
+                self.assertIn(lock, text)
+                self.assertIn("ReadWritePaths=/var/lib/auto-daangn", text)
+
     def test_public_repo_has_no_private_runtime_artifacts(self):
         forbidden = (
             ROOT / ".env",

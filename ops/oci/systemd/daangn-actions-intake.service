@@ -10,7 +10,9 @@ Type=oneshot
 User=daangn
 Group=daangn
 WorkingDirectory=/opt/auto-daangn
-ExecStart=/opt/auto-daangn/.venv/bin/python -m ops.oci.actions_intake poll --state-dir /var/lib/auto-daangn
+# Global private-state lock keeps the 1 GB OCI host from running backup, intake
+# and health jobs together; contention is bounded and recorded by systemd.
+ExecStart=/usr/bin/flock -w 20 /var/lib/auto-daangn/db/oci-ops.lock /opt/auto-daangn/.venv/bin/python -m ops.oci.actions_intake poll --state-dir /var/lib/auto-daangn
 Environment=PYTHONUTF8=1
 UMask=0077
 NoNewPrivileges=true
