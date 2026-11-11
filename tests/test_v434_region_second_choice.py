@@ -17,8 +17,9 @@ class FakeInventory:
 
 
 class FakeHandle:
-    def __init__(self,guard="READY",*,press_raises=False):
+    def __init__(self,guard="READY",*,press_raises=False,guards=None):
         self.guard=guard
+        self.guards=list(guards or [])
         self.press_raises=press_raises
         self.presses=0
         self.disposed=False
@@ -28,7 +29,7 @@ class FakeHandle:
     async def evaluate(self,script,arg=None):
         if "checkFollowup" in script:
             self.args=arg
-            return self.guard
+            return self.guards.pop(0) if self.guards else self.guard
         if "addEventListener" in script:
             self.native_armed=True
             return True
@@ -66,16 +67,24 @@ class FakeLocator:
 
 
 class FakePage:
-    def __init__(self,count=1,handle=None):
+    def __init__(self,count=1,handle=None,snapshots=None):
         self.loc=FakeLocator(count=count,handle=handle)
         self.selector=None
         self.stopped=False
+        self.snapshots=list(snapshots or [])
 
     def locator(self,query):
         self.selector=query
         return self.loc
 
     async def evaluate(self,script):
+        if "auto_daangn_button_inventory_v1" in script:
+            if self.snapshots:
+                return self.snapshots.pop(0)
+            return {"scope":"ORIGINAL_ONLY","visible_buttons":47,
+                    "new_dom_buttons":45,"new_target_buttons":1,
+                    "new_region_like_buttons":45,
+                    "visible_target_buttons":1,"mutation_version":2}
         if "snapshot?.()" in script:
             h=self.loc.handle
             return {"received":h.presses>0 and not h.press_raises,
@@ -96,8 +105,10 @@ class SecondChoiceTests(unittest.IsolatedAsyncioTestCase):
             order.append(("AFTER",page.loc.handle.presses))
         value=await attempt_second_choice(page,REGION,FakeInventory(),
                                           on_before_click=before,
-                                          on_after_click=after)
+                                          on_after_click=after,stable_interval_seconds=0)
         self.assertEqual(value["state"],"KEYBOARD_ACTIVATED")
+        self.assertEqual(value["stability_state"],"STABLE")
+        self.assertEqual(value["stability_samples"],3)
         self.assertEqual(value["activation_mode"],"KEYBOARD_ENTER")
         self.assertEqual(value["native_click_received"],"YES")
         self.assertEqual(value["native_click_trusted"],"YES")
@@ -120,7 +131,8 @@ class SecondChoiceTests(unittest.IsolatedAsyncioTestCase):
             with self.subTest(guard=code):
                 target=FakeHandle(code)
                 value=await attempt_second_choice(
-                    FakePage(handle=target),REGION,FakeInventory())
+                    FakePage(handle=target),REGION,FakeInventory(),
+                    stable_interval_seconds=0)
                 self.assertEqual(value["state"],"GUARD_REJECTED")
                 self.assertEqual(value["guard"],code)
                 self.assertEqual(target.presses,0)
@@ -129,11 +141,13 @@ class SecondChoiceTests(unittest.IsolatedAsyncioTestCase):
     async def test_ambiguous_or_missing_initial_inventory_fails_closed(self):
         target=FakeHandle()
         row=await attempt_second_choice(
-            FakePage(count=2,handle=target),REGION,FakeInventory())
+            FakePage(count=2,handle=target),REGION,FakeInventory(),
+            stable_interval_seconds=0)
         self.assertEqual(row["state"],"CANDIDATE_NOT_UNIQUE")
         self.assertEqual(target.presses,0)
         row=await attempt_second_choice(
-            FakePage(handle=target),REGION,FakeInventory(armed=False))
+            FakePage(handle=target),REGION,FakeInventory(armed=False),
+            stable_interval_seconds=0)
         self.assertEqual(row["state"],"INVENTORY_NOT_ARMED")
         self.assertEqual(target.presses,0)
 
@@ -150,6 +164,42 @@ class SecondChoiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(target.disposed)
         self.assertTrue(page.stopped)
         self.assertNotIn("vendor",str(row))
+
+    async def test_followup_disappears_before_stable_never_press(self):
+        target=FakeHandle(guards=["READY","DETACHED"])
+        row=await attempt_second_choice(
+            FakePage(handle=target),REGION,FakeInventory(),
+            stable_interval_seconds=0)
+        self.assertEqual(row["state"],"FOLLOWUP_NOT_STABLE")
+        self.assertEqual(row["stability_state"],"GUARD_CHANGED")
+        self.assertEqual(row["guard"],"DETACHED")
+        self.assertEqual(target.presses,0)
+        self.assertTrue(target.disposed)
+
+    async def test_mutating_dialog_cannot_trigger_second_click(self):
+        snapshots=[{"scope":"ORIGINAL_ONLY","visible_buttons":47,
+                    "new_dom_buttons":45,"new_target_buttons":1,
+                    "new_region_like_buttons":45,
+                    "visible_target_buttons":1,"mutation_version":n}
+                   for n in (1,2,3,4,5,6)]
+        target=FakeHandle()
+        row=await attempt_second_choice(
+            FakePage(handle=target,snapshots=snapshots),
+            REGION,FakeInventory(),stable_interval_seconds=0)
+        self.assertEqual(row["state"],"FOLLOWUP_NOT_STABLE")
+        self.assertEqual(row["stability_state"],"DOM_UNSTABLE")
+        self.assertEqual(target.presses,0)
+
+    async def test_no_missing_mutation_revision_can_be_called_stable(self):
+        target=FakeHandle()
+        row=await attempt_second_choice(
+            FakePage(handle=target,snapshots=[{
+                "scope":"ORIGINAL_ONLY","visible_buttons":47,
+                "new_dom_buttons":45,"new_target_buttons":1,
+                "new_region_like_buttons":45,"visible_target_buttons":1}]),
+            REGION,FakeInventory(),stable_interval_seconds=0)
+        self.assertEqual(row["stability_state"],"SNAPSHOT_MISSING")
+        self.assertEqual(target.presses,0)
 
     def test_double_sanitization_strips_unknown_event_metadata_and_urls(self):
         raw={"second_choice":{
