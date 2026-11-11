@@ -63,6 +63,26 @@ class ProofTests(unittest.TestCase):
                              picker_selected=False)
         self.assertTrue(result["verified"])
 
+    def test_unique_selected_region_option_plus_fresh_route_is_verified(self):
+        proof = self.verify(ui={"verified": False, "unique_option_clicked": True})
+        self.assertTrue(proof["verified"])
+        self.assertEqual(proof["ui_source"], "UNIQUE_REGION_OPTION")
+        self.assertEqual(proof["status"], "UI_FRESH_ROUTE_REGION_VERIFIED")
+
+    def test_unverified_or_ambiguous_click_cannot_override_route_gate(self):
+        self.assertEqual(
+            self.verify(ui={"verified": False,
+                            "unique_option_clicked": False})["status"],
+            "REGION_UI_NOT_VERIFIED")
+        self.assertEqual(
+            self.verify(ui={"verified": False, "unique_option_clicked": True},
+                        route_event=event(filter_region_id="2333"))["status"],
+            "ROUTE_REGION_CONFLICT")
+        self.assertEqual(
+            self.verify(ui={"verified": False, "unique_option_clicked": True},
+                        route_event=None)["status"],
+            "FRESH_ROUTE_NOT_VERIFIED")
+
     def test_missing_ui_control_rejected_even_if_both_route_ids_match(self):
         self.assertEqual(self.verify(ui={"verified": False})["status"],
                          "REGION_UI_NOT_VERIFIED")
