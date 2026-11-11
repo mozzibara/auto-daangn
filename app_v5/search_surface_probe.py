@@ -153,15 +153,20 @@ def sanitize_surface_probe(value) -> dict:
     for surface in SURFACES:
         row = src.get(surface)
         row = row if type(row) is dict else {}
-        out = {"status": row.get("status") if row.get("status") in statuses else "NOT_RUN",
-               "shape": row.get("shape") if row.get("shape") in shapes else "UNRECOGNIZED"}
+        raw_status = row.get("status")
+        raw_shape = row.get("shape")
+        out = {"status": raw_status if type(raw_status) is str and raw_status in statuses else "NOT_RUN",
+               "shape": raw_shape if type(raw_shape) is str and raw_shape in shapes else "UNRECOGNIZED"}
         for key in ("server_region", "filter_region"):
-            out[key] = row.get(key) if row.get(key) in ("EXPECTED", "OTHER", "MISSING") else "MISSING"
+            val = row.get(key)
+            out[key] = val if type(val) is str and val in ("EXPECTED", "OTHER", "MISSING") else "MISSING"
         for key in ("host", "path"):
-            out[key] = row.get(key) if row.get(key) in ("EXPECTED", "OTHER") else "OTHER"
+            val = row.get(key)
+            out[key] = val if type(val) is str and val in ("EXPECTED", "OTHER") else "OTHER"
         for key in ("region", "keyword"):
             allowed = ("EXPECTED", "OTHER", "MISSING", "INVALID") if key == "region" else ("EXPECTED", "OTHER", "MISSING")
-            out[key] = row.get(key) if row.get(key) in allowed else "MISSING"
+            val = row.get(key)
+            out[key] = val if type(val) is str and val in allowed else "MISSING"
         for key in ("article_count", "api_emitted"):
             val = row.get(key)
             out[key] = val if type(val) is int and 0 <= val <= COUNT_LIMIT else 0
@@ -250,10 +255,10 @@ async def run_surface_probe(browser, region: dict, *, timeout_ms: int = 16000,
                                            timeout=9)
                 if blocked[0]:
                     outcome["blocked"] = True
-                api_count = sum(x.get("article_count", 0) for x in observed[:2])
+                api_count = len(observed[:2])
                 outcome["surfaces"][name] = {
                     **url_flags, **detail,
-                    "api_emitted": min(api_count, COUNT_LIMIT),
+                    "api_emitted": api_count,
                     "status": "ACCESS_BLOCKED" if outcome["blocked"] else "HTTP_OK",
                 }
             except Exception:
