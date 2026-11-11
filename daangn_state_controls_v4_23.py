@@ -528,8 +528,15 @@ def aggregate(rows):
     # Only finite, developer-authored failure reasons may leave the private
     # browser runner. Never emit raw exception messages or marketplace data.
     safe_failures={'BASELINE_HTTP_INVALID','REGION_MISMATCH',
-                   'ACCESS_RESTRICTION','CORRELATED_ROUTE_MISSING',
-                   'ROUTE_LENGTH_MISMATCH','LOCAL_EXTRACTION_TRUNCATED'}
+                   'FRESH_REGION_PROOF_MISSING','ACCESS_RESTRICTION',
+                   'CORRELATED_ROUTE_MISSING','ROUTE_LENGTH_MISMATCH',
+                   'LOCAL_EXTRACTION_TRUNCATED'}
+    safe_authority={'LEGACY_REGION_URL_WITNESS',
+                    'UI_FRESH_ROUTE_REGION_VERIFIED','REGION_URL_INVALID',
+                    'REGION_UI_NOT_VERIFIED','FRESH_ROUTE_NOT_VERIFIED',
+                    'ROUTE_REGION_CONFLICT','REGION_URL_RESPONSE_DISAGREEMENT',
+                    'REGION_OMISSION_WITHOUT_UI_SELECTION'}
+
     for row in rows:
         raw_failure=row.get('error_type')
         if type(raw_failure) is str and raw_failure in safe_failures:
@@ -548,8 +555,12 @@ def aggregate(rows):
             eligible=stats.get('eligible_by_state') or {}
             for st in TARGET_STATES:source_counts[st]+=eligible.get(st,0) or 0
         controls+=ctrl.get('controls') or []
+        raw_authority=row.get('fresh_region_authority_status')
+        authority=(raw_authority if type(raw_authority) is str
+                   and raw_authority in safe_authority else 'UNKNOWN')
         bycontext.append({'context':row.get('context'),
            'capture_failure_code':failure_code,
+           'fresh_region_authority_status':authority,
            'baseline_region_url_evidence':row.get('baseline_region_url_evidence')
                if type(row.get('baseline_region_url_evidence')) is dict else {},
            'region_picker':row.get('region_picker')
