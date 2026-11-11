@@ -524,6 +524,43 @@ def classify(folder: Path) -> dict[str, str]:
             and 0 <= second["stability_samples"] <= 6 else "UNKNOWN"),
         "SECOND_CHOICE_AUTHORIZES_LISTINGS": "NO",
     }
+    # Privacy-bounded UI lifecycle: no DOM text, URLs or unknown attributes.
+    lifecycle = navigation.get("region_lifecycle")
+    lifecycle = lifecycle if type(lifecycle) is dict else {}
+    lifecycle_steps = lifecycle.get("checkpoints")
+    lifecycle_steps = lifecycle_steps if type(lifecycle_steps) is dict else {}
+    lifecycle_fields = {}
+    allowed_states = {
+        "TARGET_DIALOG_CHOICE","OTHER_DIALOG_CHOICES","REGION_INPUT_ONLY",
+        "POSSIBLE_LOGIN_GATE","DIALOG_WITHOUT_CONTROLS","NO_DIALOG",
+        "UNOBSERVABLE",
+    }
+    allowed_controls = {"EXPECTED","OTHER","MISSING","UNOBSERVABLE"}
+    lifecycle_counts = (
+        "visible_dialogs","visible_dialog_buttons","target_dialog_buttons",
+        "target_city_dialog_buttons","target_outside_buttons",
+        "other_region_dialog_buttons","confirm_dialog_buttons",
+        "login_dialog_signals","region_dialog_inputs","busy_signals",
+    )
+    for stage in ("AFTER_FIRST","AFTER_FOLLOWUP_GATE",
+                  "AFTER_CORE_SETTLE","AFTER_SETTLE"):
+        row = lifecycle_steps.get(stage)
+        row = row if type(row) is dict else {}
+        pre = f"LIFECYCLE_{stage}"
+        state = row.get("state")
+        control = row.get("selected_control")
+        lifecycle_fields[f"{pre}_STATE"] = (
+            state if type(state) is str and state in allowed_states
+            else "UNKNOWN")
+        lifecycle_fields[f"{pre}_SELECTED_CONTROL"] = (
+            control if type(control) is str and control in allowed_controls
+            else "UNKNOWN")
+        for key in lifecycle_counts:
+            value = row.get(key)
+            lifecycle_fields[f"{pre}_{key.upper()}"] = (
+                str(value) if type(value) is int and 0 <= value <= 60
+                else "UNKNOWN")
+    lifecycle_fields["LIFECYCLE_AUTHORIZES_LISTINGS"] = "NO"
     raw_outer = outer.get("status")
     if type(raw_outer) is str and raw_outer in OUTER_STATUSES:
         outer_code = raw_outer
@@ -732,6 +769,7 @@ def classify(folder: Path) -> dict[str, str]:
         **inv_fields,
         **readiness_fields,
         **second_fields,
+        **lifecycle_fields,
         **surface_fields,
     }
 
