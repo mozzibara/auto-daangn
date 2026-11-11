@@ -168,8 +168,7 @@ Do **not** run `secure-links-v434.yml` or turn on OCI intake timers until:
 1. Ruleset is active and both required CI checks are green.
 2. `daangn-producer` has **only main** in deployment branches.
 3. The Environment Secret is configured and the manual verifier succeeds.
-4. Independent OCI Object Storage ciphertext cloud readback and offline restore
-   have succeeded, and the original OCI `/var/lib/auto-daangn` state is backed up.
+4. A signed dry-run succeeds and the existing OCI `/var/lib/auto-daangn` private state and key fingerprints are verified. **Backups are disabled by explicit owner choice**; no offsite receipt is required. This accepts the possibility of irreversible data loss.
 
 The signing key remains private; the public verifier in source is not itself
 a secret. Future key rotation is a multi-component migration, not merely
