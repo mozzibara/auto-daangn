@@ -61,6 +61,18 @@ class RegionSelectorUniquenessTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(result["selected_suggestion"])
         self.assertEqual(p.option.clicks, 1)
 
+    async def test_resolver_listener_arms_before_search_input_fill(self):
+        p = FakePage(1)
+        observed = []
+        result = await core.ui_select_region(
+            p, core.BY_KEY["cheonan"],
+            on_before_search=lambda: observed.append(p.input.fills),
+            on_before_select=lambda: observed.append(p.option.clicks))
+        self.assertTrue(result["selected_suggestion"])
+        self.assertEqual(observed, [0, 0])
+        self.assertEqual(p.input.fills, 1)
+        self.assertEqual(p.option.clicks, 1)
+
     async def test_listener_arms_only_at_unique_option_click(self):
         p = FakePage(1)
         armed = []
