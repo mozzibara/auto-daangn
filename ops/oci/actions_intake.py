@@ -27,7 +27,6 @@ from zipfile import ZipFile, BadZipFile
 
 from app_v5.history import HistoryStore
 from ops.oci import runtime
-from ops.oci.backup import require_recent_offsite_backup
 
 REPO = "mozzibara/auto-daangn"
 OWNER = "mozzibara"
@@ -262,12 +261,12 @@ def _stage_bundle(state_dir: Path, *, run_id: int, attempt: int,
 def poll_once(state_dir: Path, client: GitHubSource,
               *, dry_run: bool = False,
               now: datetime | None = None) -> dict:
-    """At most ONE previously unimported signed capture per timer invocation.
+    """At most ONE previously unimported, authenticated capture per invocation.
 
-    Preflight backup gate runs before ANY API work or download. After an
-    import, new signed DB contents block further imports until fresh backup.
+    Backups are intentionally disabled by owner policy. Producer signatures,
+    strict GitHub run provenance and encrypted artifact validation remain
+    mandatory before every write. No backup receipts are generated here.
     """
-    gate = require_recent_offsite_backup(state_dir, now=now)
     root = runtime._root(state_dir, create=False)
     _, hmac_secret, _ = runtime._keyring(root)
     history = HistoryStore(root / "db" / "history.sqlite3", hmac_secret)
@@ -296,7 +295,7 @@ def poll_once(state_dir: Path, client: GitHubSource,
             return {"state": "APPROVED_ARTIFACT_AVAILABLE",
                     "run_id": run_id, "run_attempt": attempt,
                     "database_written": False,
-                    "backup_gate": gate["state"]}
+                    "backup_policy": "DISABLED_BY_OWNER"}
         bundle = _stage_bundle(root, run_id=run_id, attempt=attempt,
                                zip_bytes=client.download_zip(artifact_id))
         try:
@@ -305,8 +304,6 @@ def poll_once(state_dir: Path, client: GitHubSource,
                 run_id=run_id, run_attempt=attempt, dry_run=True)
             if validated["state"] != "SIGNED_DRY_RUN_PASS":
                 raise ValueError("SIGNED_DRY_RUN_FAILED")
-            # Backup might have expired during the download/verification.
-            require_recent_offsite_backup(root, now=now)
             result = runtime.import_capture(
                 root, bundle, expected_commit_sha=source_sha,
                 run_id=run_id, run_attempt=attempt)
@@ -315,18 +312,18 @@ def poll_once(state_dir: Path, client: GitHubSource,
                     "imported": result["imported"],
                     "already_present": result["already_present"],
                     "events_generated": result["events_generated"],
-                    "backup_gate": "PASS_BEFORE_IMPORT",
+                    "backup_policy": "DISABLED_BY_OWNER",
                     "transaction_state_verified": False}
         finally:
             # Delete private staging even on rejection. DB is idempotent.
             import shutil
             shutil.rmtree(bundle, ignore_errors=True)
     return {"state": "NO_ELIGIBLE_NEW_SIGNED_ARTIFACT",
-            "backup_gate": gate["state"], "database_written": False}
+            "backup_policy": "DISABLED_BY_OWNER", "database_written": False}
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Backup-gated GitHub Actions pull importer")
+    parser = argparse.ArgumentParser(description="Signed GitHub Actions pull importer (backups disabled)")
     parser.add_argument("action", choices=("poll",))
     parser.add_argument("--state-dir", type=Path, required=True)
     parser.add_argument("--token-file", type=Path, default=None)
@@ -335,8 +332,6 @@ def main(argv: list[str] | None = None) -> int:
     os.umask(0o077)
     try:
         root = runtime._root(args.state_dir, create=False)
-        # Preflight *before* reading the token or touching GitHub.
-        require_recent_offsite_backup(root)
         token_file = args.token_file or (root / TOKEN_RELATIVE)
         client = GitHubREST(token_file)
         result = poll_once(root, client, dry_run=args.dry_run)
