@@ -16,7 +16,7 @@ from urllib.parse import parse_qs, urlsplit
 import daangn_v4_1_core as core
 from app_v5.region_lifecycle import _JS as LIFECYCLE_JS, _safe_checkpoint
 from app_v5.region_navigation import classify_browser_url
-from app_v5.region_suggestion import RegionSuggestionObserver, classify_suggestion_identity
+from app_v5.region_suggestion import RegionSuggestionObserver
 
 SEARCH_URL = "https://www.daangn.com/kr/search/buy-sell/?q=HDD"
 _MAX_ROUTE_BYTES = 2_000_000
@@ -43,8 +43,8 @@ _NAME_VALUES = frozenset(("EXACT", "CONTAINS", "OTHER", "MISSING"))
 _API_STATES = frozenset((
     "NO_RESOLVER_RESPONSE", "AMBIGUOUS_RESOLVER_RESPONSES",
     "RESOLVER_SCHEMA_UNKNOWN", "NO_EXACT_CITY_TERM_MATCH",
-    "AMBIGUOUS_CITY_TERM_MATCH", "POST_CLICK_SEARCH_NOT_UNIQUE",
-    "UNIQUE_API_CANDIDATE_CORRELATED",
+    "AMBIGUOUS_CITY_TERM_MATCH", "UNIQUE_EXPECTED_API_CANDIDATE",
+    "UNIQUE_OTHER_API_CANDIDATE",
 ))
 _CLICK_JS = r"""meta => {
   const key=Symbol.for('auto_daangn_manual_chrome_v1');
@@ -345,14 +345,23 @@ def make_manual_report(region, *, status, click, resolver, routes,
                     else "ROUTE_UNREADABLE")
     picked = after[0] if len(after) == 1 and route_status == "UNIQUE_POSTCLICK_ROUTE" else {}
     model = picked.get("model") if type(picked.get("model")) is dict else {}
-    api_matches = [x for item in resolver.events
+    resolver_events = resolver.events if type(resolver.events) is list else []
+    api_matches = [x for item in resolver_events
                    for x in (item.get("matches", []) if type(item) is dict else [])]
-    api_class = classify_suggestion_identity(
-        region, resolver.events,
-        [{"model": {"region_id": region["id"],
-                    "filter_region_id": region["id"],
-                    "search_region_name": region["term"]}}]
-        if len(resolver.events) == 1 else [])
+    if not resolver_events:
+        api_state = "NO_RESOLVER_RESPONSE"
+    elif len(resolver_events) != 1:
+        api_state = "AMBIGUOUS_RESOLVER_RESPONSES"
+    elif resolver_events[0].get("state") != "OBSERVED":
+        api_state = "RESOLVER_SCHEMA_UNKNOWN"
+    elif not api_matches:
+        api_state = "NO_EXACT_CITY_TERM_MATCH"
+    elif len(api_matches) > 1:
+        api_state = "AMBIGUOUS_CITY_TERM_MATCH"
+    elif str(api_matches[0]) == str(region["id"]):
+        api_state = "UNIQUE_EXPECTED_API_CANDIDATE"
+    else:
+        api_state = "UNIQUE_OTHER_API_CANDIDATE"
     safe_stages = {k: _safe_checkpoint(stages.get(k)) for k in _SAMPLES}
     final_ui = safe_stages["AFTER_4000MS"]["selected_control"]
     request_region = picked.get("request_region", "INVALID")
@@ -364,7 +373,10 @@ def make_manual_report(region, *, status, click, resolver, routes,
             and route_status == "UNIQUE_POSTCLICK_ROUTE"
             and model.get("search_region") == "EXPECTED"
             and model.get("filter_region") == "EXPECTED"
-            and final_ui == "EXPECTED"):
+            and final_ui == "EXPECTED"
+            and request_region in ("EXPECTED", "MISSING")
+            and click.get("city") is True
+            and api_state == "UNIQUE_EXPECTED_API_CANDIDATE"):
         comparison = "UI_AND_ROUTE_EXPECTED_DIAGNOSTIC"
     elif (actual_status == "MANUAL_CLICK_OBSERVED"
           and route_status == "UNIQUE_POSTCLICK_ROUTE"
@@ -390,7 +402,7 @@ def make_manual_report(region, *, status, click, resolver, routes,
         },
         "region_api": {
             "response_count": resolver.responses,
-            "state": api_class.get("state"),
+            "state": api_state,
             "preset_id_match": (len(api_matches) == 1 and
                                 str(api_matches[0]) == str(region["id"])),
             "exact_candidate_count": len(api_matches),
