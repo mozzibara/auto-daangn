@@ -370,3 +370,50 @@ dialog. No additional click is automated and no arbitrary page text,
 HTML, or values are exported. A new owner-approved run after offline
 CI can discriminate a still-open confirmation dialog from a lingering
 listbox or an uncommitted autocomplete suggestion.
+
+## Approved capture #21: clicked choice is dialog button, not committed option
+
+After PR #24 separated the dialog and listbox, [owner-approved capture #21](https://github.com/mozzibara/auto-daangn/actions/runs/43013233966)
+gave stronger, independent categorical evidence:
+
+| Evidence | Before exact click | Immediate after click | After settle |
+|---|---|---|---|
+| Main region-selection control | OTHER_VISIBLE | OTHER_VISIBLE | OTHER_VISIBLE |
+| Real `[role=dialog]` | OPEN | OPEN | OPEN |
+| `[role=listbox]` | CLOSED | CLOSED | CLOSED |
+| Exact-label confirmation control | NOT_VISIBLE | NOT_VISIBLE | NOT_VISIBLE |
+| Dialog's observed region input | EXPECTED | OTHER | MISSING |
+| Actual search URL region `in` | MISSING | MISSING | MISSING |
+
+The exact element clicked was a generic **BUTTON** inside a
+**DIALOG**; it had no explicit `role`, `aria-selected` or
+`data-region-id`. Its label still contained the desired administrative
+city hint. Immediately afterward the matching candidate was no longer
+visible, but the main region control never displayed the requested
+district. Exactly one new first-party search fetch was observed with
+correct keyword/path and no `in`, and its fresh server
+`searchRegion.id`, `currentFilters.regionId` and region name were all
+OTHER relative to the expected district. There was no main-frame
+navigation event during the bounded click window. The independent
+region keyword resolver continued to return the unique expected
+administrative-locality ID.
+
+**Strong conclusion:** a successful Playwright click on the currently
+chosen suggestion is **not** a region commit. The observable failure
+occurs between picking that dialog button and applying locality to
+the top-level UI/search request, *before* the later Filter Apply.
+Because no exact-label confirmation button was observed, one cannot
+presume that an additional confirmation step exists; hidden or
+differently labeled UI actions and SPA state mechanics remain
+unclassified. The exact underlying reason (noncommitting suggestion
+action vs unauthenticated session limitation vs app state bug)
+is **not yet proven**.
+
+The strict authority gate correctly stopped with
+`FRESH_REGION_PROOF_MISSING`; source detail visits, listing admission
+and OCI imports remained zero. Further repeated unchanged live
+captures are unhelpful. Investigation should compare this exact
+interaction to an owner-visible browser and only add a *new*
+robots-approved, privacy-safe observation or UI action justified by
+specific evidence. Never adopt an unrelated locality, derive
+authority from SSR ItemList, or weaken the filter/SHA/region gates.
