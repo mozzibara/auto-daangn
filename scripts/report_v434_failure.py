@@ -118,7 +118,7 @@ def classify(folder: Path) -> dict[str, str]:
         "NOT_NEEDED", "NOT_ELIGIBLE", "ACCESS_BLOCKED",
         "ROBOTS_DENIED", "VERIFIED", "UNVERIFIED",
         "PENDING_FRESH_ROUTE", "VERIFIED_FRESH_ROUTE",
-        "FRESH_REGION_PROOF_MISSING",
+        "FRESH_REGION_PROOF_MISSING", "EARLY_REGION_UNCOMMITTED",
     }
     region_authorities = {
         "LEGACY_REGION_URL_WITNESS", "UI_FRESH_ROUTE_REGION_VERIFIED",
@@ -673,6 +673,10 @@ def classify(folder: Path) -> dict[str, str]:
             else "NO" if region_ids_match is False else "UNKNOWN"
         ),
         "REGION_PICKER_OUTCOME": picker_label("outcome", picker_outcomes),
+        "REGION_PICKER_EARLY_GATE": picker_label(
+            "early_gate", {"OBSERVED_WRONG_REGION",
+                           "LOCALITY_CORROBORATED_DIAGNOSTIC",
+                           "MIXED_OR_UNKNOWN","NOT_OBSERVABLE"}),
         "REGION_PICKER_ROBOTS_PERMISSION": picker_label(
             "robots_permission", picker_robots),
         "REGION_PICKER_ATTEMPTED": picker_flag("attempted"),
