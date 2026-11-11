@@ -91,6 +91,52 @@ class RedactedCaptureFailureTests(unittest.TestCase):
         self.assertIn("CAPTURE_STATUS=UNAVAILABLE_OR_UNKNOWN", stream.getvalue())
         self.assertIn("ROBOTS_REASON=UNKNOWN", stream.getvalue())
 
+    def test_incomplete_upstream_context_reports_safe_reason_only(self):
+        self.put("v423_public_controls_results.json", {
+            "evaluation": {
+                "status": "INCONCLUSIVE_CONTROL_STUDY_INCOMPLETE",
+                "contexts": [{
+                    "context": "cheonan_a",
+                    "capture_failure_code": "CORRELATED_ROUTE_MISSING",
+                    "title": "private HDD seller name",
+                    "raw_url": "https://example.org/private-url",
+                }],
+                "source_detail_visits": 0,
+                "browser_capture_exception_types": {},
+            }
+        })
+        result = classify(self.folder)
+        self.assertEqual(result["UPSTREAM_CONTEXT_COUNT"], "1")
+        self.assertEqual(result["UPSTREAM_CONTEXT_SEQUENCE"], "cheonan_a")
+        self.assertEqual(result["UPSTREAM_FIRST_FAILURE_CODE"],
+                         "CORRELATED_ROUTE_MISSING")
+        self.assertEqual(result["UPSTREAM_EXPECTED_CONTEXTS_COMPLETE"], "NO")
+        stream = StringIO()
+        with redirect_stdout(stream):
+            main(["--output-dir", str(self.folder)])
+        self.assertNotIn("private HDD seller name", stream.getvalue())
+        self.assertNotIn("example.org", stream.getvalue())
+
+    def test_upstream_context_unknown_strings_redacted(self):
+        secret = "github_pat_EXAMPLE_UNTRUSTED_STRING"
+        self.put("v423_public_controls_results.json", {
+            "evaluation": {
+                "status": secret,
+                "contexts": [{
+                    "context": secret, "capture_failure_code": secret,
+                }, {"context": "browser", "capture_failure_code": "BROWSER_EXCEPTION"}],
+                "browser_capture_exception_types": {"STOP_Error": 1},
+                "source_detail_visits": secret,
+            }
+        })
+        output = classify(self.folder)
+        self.assertEqual(output["UPSTREAM_CAPTURE_STATUS"], "UNAVAILABLE_OR_UNKNOWN")
+        self.assertEqual(output["UPSTREAM_CONTEXT_SEQUENCE"], "UNKNOWN,browser")
+        self.assertEqual(output["UPSTREAM_FIRST_FAILURE_CODE"], "BROWSER_EXCEPTION")
+        self.assertEqual(output["UPSTREAM_SOURCE_VISITS"], "UNKNOWN")
+        self.assertEqual(output["UPSTREAM_BROWSER_EXCEPTION_PRESENT"], "YES")
+        self.assertNotIn(secret, str(output))
+
     def test_missing_files_are_reported_without_failure(self):
         result = classify(self.folder)
         self.assertEqual(result["PUBLIC_SUMMARY_PRESENT"], "NO")
