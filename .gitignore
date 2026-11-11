@@ -92,3 +92,7 @@ runtime/
 output/
 v*_output/
 v*_live_output/
+
+# Disposable local manual-Chrome comparison results (not for public Git)
+daangn_manual_region*.json
+manual_chrome_region*.json
