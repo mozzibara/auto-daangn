@@ -47,8 +47,8 @@ def classify_picker_transition(region: dict, steps: dict, events: list,
     elif len(safe_events) > 1:
         result["post_click_route_status"] = "AMBIGUOUS_FRESH_ROUTES"
     elif len(safe_events) == 1:
-        event = safe_events[0]
-        model = event.get("model") if isinstance(event, dict) else None
+        event = safe_events[0] if isinstance(safe_events[0], dict) else {}
+        model = event.get("model")
         model = model if isinstance(model, dict) else {}
         request = event.get("public_request") if isinstance(event, dict) else None
         request = request if isinstance(request, dict) else {}
