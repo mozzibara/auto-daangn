@@ -73,8 +73,10 @@ class PublicArchitectureContractTests(unittest.TestCase):
                       text)
         self.assertIn("python -m scripts.verify_github_signer", text)
         self.assertLess(text.index("python -m scripts.verify_github_signer"),
-                        text.index("python -m playwright install --with-deps chromium"))
-        self.assertLess(text.index("python -m playwright install --with-deps chromium"),
+                        text.index("python -m playwright install chromium"))
+        self.assertLess(text.index("python -m playwright install chromium"),
+                        text.index("OWNER_APPROVED_CHROMIUM_LOCAL_SMOKE_OK"))
+        self.assertLess(text.index("OWNER_APPROVED_CHROMIUM_LOCAL_SMOKE_OK"),
                         text.index("python scripts/run_secure_links_v434_checked.py"))
         self.assertIn(
             "if: success() && env.CAPTURE_TEST_MODE != "
@@ -85,9 +87,13 @@ class PublicArchitectureContractTests(unittest.TestCase):
     def test_public_source_does_not_automatically_launch_browser(self):
         body = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
         self.assertNotIn("python -m playwright install", body)
-        # Actual browser installation belongs solely to the manual live job.
+        # Actual browser installation and smoke validation belong solely
+        # to the manual, owner-approved, signer-checked live workflow.
         capture = (ROOT / WORKFLOW).read_text(encoding="utf-8")
-        self.assertIn("python -m playwright install --with-deps chromium", capture)
+        self.assertIn("python -m playwright install chromium", capture)
+        self.assertIn("await p.chromium.launch(headless=True)", capture)
+        self.assertIn("OWNER_APPROVED_CHROMIUM_LOCAL_SMOKE_OK", capture)
+        self.assertNotIn("python -m playwright install --with-deps chromium", capture)
 
     def test_oci_timers_share_bounded_host_lock(self):
         services = (
