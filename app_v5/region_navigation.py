@@ -73,22 +73,33 @@ _CHECK_UI_JS = r"""meta => {
             count:buttons.length+inputs.length,
             visible:seen(d)||buttons.length>0||inputs.length>0};
   }).filter(item=>item.visible);
-  const byTarget=candidates.filter(item=>item.targetButtons.length>0);
-  const byRegion=candidates.filter(item=>item.regionInputs.length>0);
+  // Deduplicate DOM elements appearing in nested dialog ancestors, then
+  // select the *nearest* enclosing dialog of that single real control.
+  const targetElements=[...new Set(candidates.flatMap(x=>x.targetButtons))];
+  const regionElements=[...new Set(candidates.flatMap(x=>x.regionInputs))];
+  const nearest = el => candidates.find(x=>
+      x.dialog===el.closest('[role="dialog"]'))||null;
   let chosen=null, dialogScope='NONE';
-  if(byTarget.length===1) {
-    chosen=byTarget[0]; dialogScope='TARGET_CANDIDATE';
-  } else if(byTarget.length>1) {
+  if(targetElements.length===1) {
+    chosen=nearest(targetElements[0]);
+    dialogScope=chosen?'TARGET_CANDIDATE':'AMBIGUOUS';
+  } else if(targetElements.length>1) {
     dialogScope='AMBIGUOUS';
-  } else if(byRegion.length===1) {
-    chosen=byRegion[0]; dialogScope='REGION_SEARCH_INPUT';
-  } else if(byRegion.length>1) {
+  } else if(regionElements.length===1) {
+    chosen=nearest(regionElements[0]);
+    dialogScope=chosen?'REGION_SEARCH_INPUT':'AMBIGUOUS';
+  } else if(regionElements.length>1) {
     dialogScope='AMBIGUOUS';
   } else if(candidates.length) {
     const max=Math.max(...candidates.map(x=>x.count));
     const rich=candidates.filter(x=>x.count===max);
-    if(max>0 && rich.length===1) {
-      chosen=rich[0]; dialogScope='MOST_INTERACTIVE';
+    // Nested wrappers may have equal child totals; prefer deepest unique
+    // dialog to avoid accidentally recording a broad ancestor shell.
+    const depth=x=>{let n=0,p=x.dialog;while(p&&n<100){n++;p=p.parentElement;}return n;};
+    const bestDepth=Math.max(...rich.map(depth));
+    const deepest=rich.filter(x=>depth(x)===bestDepth);
+    if(max>0 && deepest.length===1) {
+      chosen=deepest[0]; dialogScope='MOST_INTERACTIVE';
     } else {
       dialogScope='AMBIGUOUS';
     }
