@@ -457,7 +457,8 @@ async def stable_page_snapshot(page, expected_term: str, settle_ms: int) -> dict
 
 
 async def ui_select_region(page, region: dict) -> dict:
-    steps = {"target": region["term"], "clicked_region_button": False, "selected_suggestion": False,
+    steps = {"target": region["term"], "clicked_region_button": False,
+             "selected_suggestion": False, "unique_region_option": False,
              "error": None, "start_url": sanitized_url(page.url)}
     try:
         selector = page.get_by_role("button", name=re.compile(r"지역 선택"))
@@ -472,9 +473,15 @@ async def ui_select_region(page, region: dict) -> dict:
         await page.wait_for_timeout(850)
         choices = page.locator('[role="option"], [role="listbox"] button, [role="dialog"] button, [role="dialog"] [role="option"]')
         matching = choices.filter(has_text=region["term"])
-        if await matching.count() == 0:
-            steps["error"] = "matching_region_option_not_found"
+        count = await matching.count()
+        if count != 1:
+            steps["error"] = ("matching_region_option_not_found"
+                              if count == 0 else "ambiguous_region_options")
             return steps
+        if not await matching.first.is_visible():
+            steps["error"] = "region_option_not_visible"
+            return steps
+        steps["unique_region_option"] = True
         await matching.first.click(timeout=5000)
         steps["selected_suggestion"] = True
     except Exception as exc:
