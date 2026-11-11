@@ -318,7 +318,8 @@ def classify(folder: Path) -> dict[str, str]:
             "post_click_route_status",
             {"SELECTION_NOT_CONFIRMED","NO_FRESH_ROUTE",
              "AMBIGUOUS_FRESH_ROUTES","FRESH_ROUTE_OBSERVED",
-             "ROUTE_NOT_TRUSTED"}),
+             "UNPARSED_POST_CLICK_ROUTE",
+             "POST_CLICK_QUERY_OR_ROUTE_INVALID"}),
         "PICKER_POST_CLICK_SEARCH_REGION": transition_enum(
             "search_region_state", {"EXPECTED","OTHER","MISSING"}),
         "PICKER_POST_CLICK_FILTER_REGION": transition_enum(
@@ -335,7 +336,8 @@ def classify(folder: Path) -> dict[str, str]:
             "filter_apply_relation",
             {"POST_CLICK_ROUTE_NOT_OBSERVABLE","EXPECTED_REGION_PERSISTED",
              "REGION_LOST_AT_FILTER_APPLY",
-             "REGION_NOT_VERIFIED_AFTER_CLICK","NOT_OBSERVABLE"}),
+             "REGION_NOT_VERIFIED_AFTER_CLICK",
+             "FILTER_APPLY_ROUTE_NOT_OBSERVABLE","NOT_OBSERVABLE"}),
     }
 
 
