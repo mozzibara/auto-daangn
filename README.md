@@ -18,9 +18,17 @@ Current status: **public source and synthetic CI only**. Live signing, OCI cloud
 - Public pages only; respect robots.txt and access restrictions; do not bypass authentication or anti-bot controls.
 - Live collection is manual and owner-approved. CI and OCI validation are offline and synthetic.
 - Signed captures are evidence for review, **not** verified purchase availability.
-- OCI must verify producer signatures, commit identity, ciphertext and independent offsite backup before importing.
+- OCI must verify producer signatures, commit identity and ciphertext before importing. Offsite backups are currently disabled by owner decision; restoring data after disk loss is not guaranteed.
 - Do not place secrets or raw listing contents in Issues, pull requests, logs, or artifacts.
 
 The initial public source snapshot is curated from the private development repository at commit `30b8fa7882023d9dbb18f2348c55839a081222fa` without copying its Git history or Actions logs.
 
 Operational setup is intentionally separate from source publication. See `MIGRATION.md` after import for controlled cutover instructions.
+
+## Current ephemeral-data policy
+
+- Backups are **disabled**. Do not enable the Object Storage backup timer or create remote archives.
+- OCI Actions intake no longer requires an offsite backup receipt; producer Ed25519 signature, approved GitHub run provenance, archive boundary and local key checks remain mandatory.
+- Directly verified SOLD listings are deleted with their observations, events and source evidence. JSON-LD stock hints, missing search results and inferred availability do **not** prove SOLD.
+- The owner can delete an unwanted listing permanently from the live SQLite store using `python -m ops.oci.retention forget --state-dir /var/lib/auto-daangn --listing-url '<exact canonical URL>' --confirm-delete` as the `daangn` user.
+- No automated inspection of all previously tracked listings for later SOLD state is implemented yet. Existing archives, OS snapshots and external copies, if any, are not purged by database deletion.
