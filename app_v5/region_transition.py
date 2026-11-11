@@ -44,6 +44,8 @@ def classify_picker_transition(region: dict, steps: dict, events: list,
     }
     if not selected:
         result["post_click_route_status"] = "SELECTION_NOT_CONFIRMED"
+    elif len(safe_events) == 0 and count > 0:
+        result["post_click_route_status"] = "UNPARSED_POST_CLICK_ROUTE"
     elif len(safe_events) > 1:
         result["post_click_route_status"] = "AMBIGUOUS_FRESH_ROUTES"
     elif len(safe_events) == 1:
@@ -58,8 +60,10 @@ def classify_picker_transition(region: dict, steps: dict, events: list,
         result.update({
             "post_click_route_status": (
                 "FRESH_ROUTE_OBSERVED"
-                if event.get("status") == 200 and request.get("valid") is True
-                else "ROUTE_NOT_TRUSTED"),
+                if (event.get("status") == 200
+                    and request.get("valid") is True
+                    and params.get("q") == "HDD")
+                else "POST_CLICK_QUERY_OR_ROUTE_INVALID"),
             "search_region_state": _id_state(model.get("region_id"), region["id"]),
             "filter_region_state": _id_state(model.get("filter_region_id"), region["id"]),
             "server_name_state": concordance["search_region_name_state"],
@@ -80,6 +84,8 @@ def classify_filter_transition(picker: dict, applied: dict) -> str:
                 pre.get("filter_region_state"))
     post_pair = (post.get("last_route_search_region_state"),
                  post.get("last_route_filter_region_state"))
+    if any(v not in ("EXPECTED", "OTHER") for v in post_pair):
+        return "FILTER_APPLY_ROUTE_NOT_OBSERVABLE"
     if pre_pair == ("EXPECTED", "EXPECTED") and post_pair == ("EXPECTED", "EXPECTED"):
         return "EXPECTED_REGION_PERSISTED"
     if pre_pair == ("EXPECTED", "EXPECTED") and post_pair != ("EXPECTED", "EXPECTED"):
@@ -94,7 +100,8 @@ _PICKER_ENUMS = {
     "option_data_id": {"EXPECTED", "OTHER", "MISSING"},
     "post_click_route_status": {"SELECTION_NOT_CONFIRMED", "NO_FRESH_ROUTE",
                                 "AMBIGUOUS_FRESH_ROUTES", "FRESH_ROUTE_OBSERVED",
-                                "ROUTE_NOT_TRUSTED"},
+                                "UNPARSED_POST_CLICK_ROUTE",
+                                "POST_CLICK_QUERY_OR_ROUTE_INVALID"},
     "search_region_state": {"EXPECTED", "OTHER", "MISSING"},
     "filter_region_state": {"EXPECTED", "OTHER", "MISSING"},
     "server_name_state": {"EXACT", "CONTAINS", "OTHER", "MISSING"},
@@ -103,6 +110,7 @@ _PICKER_ENUMS = {
                               "EXPECTED_REGION_PERSISTED",
                               "REGION_LOST_AT_FILTER_APPLY",
                               "REGION_NOT_VERIFIED_AFTER_CLICK",
+                              "FILTER_APPLY_ROUTE_NOT_OBSERVABLE",
                               "NOT_OBSERVABLE"},
 }
 _PICKER_BOOLEANS = (
