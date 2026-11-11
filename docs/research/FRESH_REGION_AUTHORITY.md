@@ -716,3 +716,38 @@ post-activation first-party Route and independently visible selected
 region control can ever authorize locality. This is a bounded,
 one-time experiment, not an assertion that pressing Enter is the
 website's intended workflow.
+
+## Approved live #34: native second-choice event reaches button but still does not commit locality
+
+[Live #34](https://github.com/mozzibara/auto-daangn/actions/runs/43052417054)
+used the expected unique public keyword API and stable initial dialog
+(`READINESS_STATE=READY`). A target+city second DOM node passed
+`SECOND_CHOICE_GUARD=READY`; Playwright sent one native
+`ElementHandle.press('Enter')`. The target itself received a trusted
+native click event (`SECOND_CHOICE_NATIVE_CLICK_RECEIVED=YES`,
+`...TRUSTED=YES`, `SECOND_CHOICE_STATE=KEYBOARD_ACTIVATED`).
+The browser emitted **two** public search Route fetches in total,
+yet the independent second-click Route model still had target
+`searchRegion` and filter region OTHER. The top-level region control
+remained OTHER, and `in` was missing. Detail visits stayed zero.
+**Successful native event delivery is therefore not equivalent to
+application-level selection commitment**.
+
+### Next limited experiment: observe a quiet, attached second choice
+
+Before the one existing second native Enter, observe *the exact same
+newly mounted node* for a bounded 6 samples, 160 ms apart. Require
+three identical snapshots of the original dialog's visible button
+counts, new target count, region-like count and an ephemeral in-browser
+MutationObserver revision. Re-evaluate the pre-existing exact
+target+city/unique/new-node/enabled guard on the SAME ElementHandle
+after each interval. If any check becomes detached, ambiguous or
+unstable, **skip** the second key press and retain the region failure.
+The mutation revision is in browser memory only and is excluded from
+all public JSON. The report contains only a fixed
+`SECOND_CHOICE_STABILITY_STATE` category and bounded sample count.
+
+If stable and a trusted click occurs but the server still disagrees,
+this further weakens a transient-node timing hypothesis. The
+diagnostic alone never authorizes region or listings, and does not
+justify arbitrary third clicks, direct HTTP requests or bypass.
