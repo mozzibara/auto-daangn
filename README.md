@@ -32,3 +32,14 @@ Operational setup is intentionally separate from source publication. See `MIGRAT
 - Directly verified SOLD listings are deleted with their observations, events and source evidence. JSON-LD stock hints, missing search results and inferred availability do **not** prove SOLD.
 - The owner can delete an unwanted listing permanently from the live SQLite store using `python -m ops.oci.retention forget --state-dir /var/lib/auto-daangn --listing-url '<exact canonical URL>' --confirm-delete` as the `daangn` user.
 - No automated inspection of all previously tracked listings for later SOLD state is implemented yet. Existing archives, OS snapshots and external copies, if any, are not purged by database deletion.
+
+## Legacy research and offline regression coverage
+
+The current source of truth is this public repository. The previous private
+`kimalswhd0001/auto-daangn` repository remains an owner-only, read-only
+historical reference; public CI requires no permission to it. See
+[`docs/research/LEGACY_PRIVATE_HANDOFF.md`](docs/research/LEGACY_PRIVATE_HANDOFF.md)
+for the historical evidence, strict interpretation limits, restored v4
+synthetic tests, missing live-region proof and migration decisions. Historic
+raw run evidence, additional live workflow dispatchers and secrets were
+**not** imported. Backup services remain disabled by owner policy.
