@@ -14,6 +14,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import hashlib
+import inspect
 from collections import Counter
 import json
 import re
@@ -457,7 +458,7 @@ async def stable_page_snapshot(page, expected_term: str, settle_ms: int) -> dict
 
 
 async def ui_select_region(page, region: dict, *, on_before_select=None,
-                           on_before_search=None) -> dict:
+                           on_before_search=None, on_after_select=None) -> dict:
     steps = {"target": region["term"], "clicked_region_button": False,
              "selected_suggestion": False, "unique_region_option": False,
              "error": None, "start_url": sanitized_url(page.url),
@@ -512,9 +513,15 @@ async def ui_select_region(page, region: dict, *, on_before_select=None,
         except Exception:
             pass  # Unsupported markup is an unknown diagnostic, not authority.
         if on_before_select is not None:
-            on_before_select()  # Arm the response listener immediately before click.
+            callback = on_before_select()
+            if inspect.isawaitable(callback):
+                await callback  # Record immediate pre-click UI witness, then click.
         await matching.first.click(timeout=5000)
         steps["selected_suggestion"] = True
+        if on_after_select is not None:
+            callback = on_after_select()
+            if inspect.isawaitable(callback):
+                await callback  # Take the immediate post-click UI witness.
         await page.wait_for_timeout(300)
         try:
             steps["option_still_visible"] = (
