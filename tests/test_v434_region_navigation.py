@@ -163,6 +163,33 @@ class NavigationUrlTests(unittest.TestCase):
         self.assertNotIn("PRIVATE ADDRESS", str(second))
         self.assertNotIn("raw_html", str(second))
 
+    def test_dialog_scope_is_categorical_and_survives_double_sanitization(self):
+        for value in ("TARGET_CANDIDATE", "REGION_SEARCH_INPUT",
+                      "MOST_INTERACTIVE", "AMBIGUOUS", "NONE"):
+            sample = {"checkpoints": {
+                "BEFORE_CLICK": {"dialog_scope": value,
+                                  "dialog_buttons": 2,
+                                  "dialog_target_buttons": 1,
+                                  "dialog_search_inputs": 1},
+                "AFTER_SETTLE": {"dialog_scope": "MOST_INTERACTIVE",
+                                  "dialog_buttons": 9,
+                                  "dialog_target_buttons": 0,
+                                  "dialog_search_inputs": 0}}}
+            first = sanitize_navigation_trace(sample)
+            second = sanitize_navigation_trace(first)
+            self.assertEqual(first, second)
+            self.assertEqual(first["checkpoints"]["BEFORE_CLICK"]["dialog_scope"],
+                             value)
+            self.assertEqual(first["checkpoints"]["BEFORE_CLICK"]["dialog_target_buttons"], 1)
+        malicious = sanitize_navigation_trace({"checkpoints": {
+            "AFTER_CLICK": {"dialog_scope": "PRIVATE_SELECTOR_URi",
+                            "dialog_target_buttons": "SECRET_MATERIAL"}}})
+        self.assertEqual(malicious["checkpoints"]["AFTER_CLICK"]["dialog_scope"],
+                         "UNOBSERVABLE")
+        self.assertEqual(malicious["checkpoints"]["AFTER_CLICK"]["dialog_target_buttons"],
+                         -1)
+        self.assertNotIn("SECRET_MATERIAL", str(malicious))
+
     def test_malicious_raw_content_is_always_discarded(self):
         injected = {"commit_class": "https://secret.example/cookie=SECRET",
                     "events": [{"kind": "SEARCH_FETCH", "url_region": "MY_PASSWORD",
