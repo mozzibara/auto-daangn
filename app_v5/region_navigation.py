@@ -19,6 +19,15 @@ _CONTROL = frozenset(("TARGET_VISIBLE", "OTHER_VISIBLE", "NOT_VISIBLE",
 _DIALOG = frozenset(("OPEN", "CLOSED", "UNOBSERVABLE"))
 _CONFIRM = frozenset(("VISIBLE", "NOT_VISIBLE", "AMBIGUOUS", "UNOBSERVABLE"))
 _INPUT = frozenset(("EXPECTED", "OTHER", "MISSING", "UNOBSERVABLE"))
+_DIALOG_HEADING = frozenset(("PICK_NEIGHBORHOOD", "PICK_REGION", "SEARCH",
+                            "TARGET", "OTHER", "MISSING", "UNOBSERVABLE"))
+_DIALOG_FOCUS = frozenset(("INPUT", "BUTTON", "OTHER", "OUTSIDE",
+                          "NONE", "UNOBSERVABLE"))
+_ARIA_MODAL = frozenset(("TRUE", "FALSE", "MISSING", "OTHER", "UNOBSERVABLE"))
+_DIALOG_TRANSITIONS = frozenset((
+    "NEW_DIALOG_WITH_CHANGED_CONTROLS", "REPLACED_DIALOG_UNCLASSIFIED",
+    "SAME_DIALOG_REMAINS", "DIALOG_CLOSED", "NOT_OBSERVABLE",
+))
 _EVENT = frozenset(("SEARCH_FETCH", "DOCUMENT_REQUEST", "MAIN_FRAME_NAVIGATED"))
 _MAX_EVENTS = 12
 
@@ -56,6 +65,45 @@ _CHECK_UI_JS = r"""meta => {
     'input[placeholder*="지역"],input[placeholder*="동네"],[role="dialog"] input')]
     .filter(seen).slice(0,20);
   const typed=inputs.filter(e => e.value===meta.term);
+  const dlg=dialogs[0] || null;
+  const dlgButtons=dlg?[...dlg.querySelectorAll('button,[role="button"]')]
+    .filter(seen).slice(0,100):[];
+  const dlgInputs=dlg?[...dlg.querySelectorAll('input,[role="combobox"]')]
+    .filter(seen).slice(0,100):[];
+  const searchInputs=dlgInputs.filter(e => {
+    const placeholder=e.getAttribute('placeholder')||'';
+    return /지역|동네|검색/.test(placeholder) || e.type==='search';
+  });
+  const optionButtons=dlgButtons.filter(e =>
+    (e.textContent||'').includes(meta.term));
+  const heading=dlg?[...dlg.querySelectorAll('h1,h2,h3,[role="heading"]')]
+    .filter(seen).slice(0,12):[];
+  const headingText=(heading[0]?.textContent||'').replace(/\s+/g,' ').trim();
+  const headingKind=!heading.length?'MISSING':
+    headingText.includes(meta.term)?'TARGET':
+    /동네/.test(headingText) && /선택|설정|추가/.test(headingText)?'PICK_NEIGHBORHOOD':
+    /지역/.test(headingText) && /선택|설정/.test(headingText)?'PICK_REGION':
+    /검색/.test(headingText)?'SEARCH':'OTHER';
+  const focus=docFocus => {
+    if (!dlg) return 'UNOBSERVABLE';
+    if (!docFocus || docFocus===document.body) return 'NONE';
+    if (!dlg.contains(docFocus)) return 'OUTSIDE';
+    if (docFocus.matches('input,[role="combobox"]')) return 'INPUT';
+    if (docFocus.matches('button,[role="button"]')) return 'BUTTON';
+    return 'OTHER';
+  };
+  const dlgModal=dlg?.getAttribute('aria-modal');
+  const modal=dlgModal===null?'MISSING':
+    dlgModal==='true'?'TRUE':dlgModal==='false'?'FALSE':'OTHER';
+  const back=dlgButtons.some(e =>
+    /^(뒤로|이전|돌아가기)$/.test((e.textContent||'').replace(/\s+/g,' ').trim()) ||
+    /^(뒤로|이전|돌아가기)$/.test(e.getAttribute('aria-label')||''));
+  const selectable=dlg?[...dlg.querySelectorAll(
+    '[role="option"],[role="radio"],[role="checkbox"],input[type="checkbox"],input[type="radio"]')]
+    .filter(seen).length:0;
+  const selected=dlg?[...dlg.querySelectorAll(
+    '[aria-selected="true"],[aria-pressed="true"],input:checked')]
+    .filter(seen).length:0;
   return {
     control:controlsState,
     dialog:dialogs.length?'OPEN':'CLOSED',
@@ -68,7 +116,18 @@ _CHECK_UI_JS = r"""meta => {
     visible_dialogs:Math.min(dialogs.length,20),
     visible_listboxes:Math.min(lists.length,20),
     visible_confirm_actions:Math.min(actionButtons.length,20),
-    visible_inputs:Math.min(inputs.length,20)
+    visible_inputs:Math.min(inputs.length,20),
+    dialog_heading:headingKind,
+    dialog_focus:focus(document.activeElement),
+    dialog_aria_modal:modal,
+    dialog_has_labelledby:!!dlg?.getAttribute('aria-labelledby'),
+    dialog_has_back_action:back,
+    dialog_has_target_chosen:!!dlg?.querySelector('[aria-selected="true"],[aria-pressed="true"]'),
+    dialog_buttons:Math.min(dlgButtons.length,20),
+    dialog_target_buttons:Math.min(optionButtons.length,20),
+    dialog_search_inputs:Math.min(searchInputs.length,20),
+    dialog_selectables:Math.min(selectable,20),
+    dialog_selected_controls:Math.min(selected,20)
   };
 }"""
 
@@ -117,6 +176,21 @@ def _safe_checkpoint(value) -> dict:
                           else "UNOBSERVABLE",
         "input": obj.get("input") if type(obj.get("input")) is str
                  and obj["input"] in _INPUT else "UNOBSERVABLE",
+        "dialog_heading": obj.get("dialog_heading")
+                          if type(obj.get("dialog_heading")) is str
+                          and obj["dialog_heading"] in _DIALOG_HEADING
+                          else "UNOBSERVABLE",
+        "dialog_focus": obj.get("dialog_focus")
+                        if type(obj.get("dialog_focus")) is str
+                        and obj["dialog_focus"] in _DIALOG_FOCUS
+                        else "UNOBSERVABLE",
+        "dialog_aria_modal": obj.get("dialog_aria_modal")
+                             if type(obj.get("dialog_aria_modal")) is str
+                             and obj["dialog_aria_modal"] in _ARIA_MODAL
+                             else "UNOBSERVABLE",
+        "dialog_has_labelledby": obj.get("dialog_has_labelledby") is True,
+        "dialog_has_back_action": obj.get("dialog_has_back_action") is True,
+        "dialog_has_target_chosen": obj.get("dialog_has_target_chosen") is True,
         "url_region": url.get("region") if type(url.get("region")) is str
                       and url["region"] in _URL_VALUES else "INVALID",
         "url_path": url.get("path") if type(url.get("path")) is str
@@ -127,7 +201,9 @@ def _safe_checkpoint(value) -> dict:
                        else "INVALID",
     }
     for field in ("visible_controls", "visible_dialogs", "visible_listboxes",
-                  "visible_confirm_actions", "visible_inputs"):
+                  "visible_confirm_actions", "visible_inputs",
+                  "dialog_buttons", "dialog_target_buttons", "dialog_search_inputs",
+                  "dialog_selectables", "dialog_selected_controls"):
         val = obj.get(field)
         result[field] = val if type(val) is int and 0 <= val <= 20 else -1
     return result
@@ -167,6 +243,48 @@ _COMMIT_CLASSES = frozenset((
     "UI_OTHER_AND_SERVER_OTHER", "NO_VISIBLE_COMMIT_SERVER_OTHER",
     "TARGET_CONTROL_NOT_CONFIRMED", "NOT_OBSERVABLE",
 ))
+
+
+def classify_dialog_stage_transition(value) -> str:
+    """Structural stage evidence only; replacement != proof of another step."""
+    obj = value if type(value) is dict else {}
+    checkpoints = obj.get("checkpoints")
+    checkpoints = checkpoints if type(checkpoints) is dict else {}
+    before = checkpoints.get("BEFORE_CLICK")
+    before = before if type(before) is dict else {}
+    after = checkpoints.get("AFTER_SETTLE")
+    after = after if type(after) is dict else {}
+    event = obj.get("option_event")
+    event = event if type(event) is dict else {}
+    event_checkpoints = event.get("checkpoints")
+    event_checkpoints = event_checkpoints if type(event_checkpoints) is dict else {}
+    exact = event_checkpoints.get("AFTER_SETTLE")
+    exact = exact if type(exact) is dict else {}
+    old = exact.get("dialog_connected")
+    opened = after.get("dialog")
+    if old == "NO" and opened == "OPEN":
+        search_before = before.get("dialog_search_inputs")
+        search_after = after.get("dialog_search_inputs")
+        after_buttons = after.get("dialog_buttons")
+        heading_before = before.get("dialog_heading")
+        heading_after = after.get("dialog_heading")
+        headings_changed = (
+            heading_before in _DIALOG_HEADING and heading_after in _DIALOG_HEADING
+            and heading_before not in ("MISSING", "UNOBSERVABLE")
+            and heading_after not in ("MISSING", "UNOBSERVABLE")
+            and heading_before != heading_after)
+        controls_changed = (
+            type(search_before) is int and type(search_after) is int
+            and type(after_buttons) is int and search_before > 0
+            and search_after == 0 and after_buttons > 0)
+        return ("NEW_DIALOG_WITH_CHANGED_CONTROLS"
+                if headings_changed or controls_changed
+                else "REPLACED_DIALOG_UNCLASSIFIED")
+    if old == "YES" and opened == "OPEN":
+        return "SAME_DIALOG_REMAINS"
+    if opened == "CLOSED":
+        return "DIALOG_CLOSED"
+    return "NOT_OBSERVABLE"
 
 
 def sanitize_navigation_trace(value) -> dict:
@@ -210,6 +328,11 @@ def sanitize_navigation_trace(value) -> dict:
         "commit_class": status if type(status) is str and status in _COMMIT_CLASSES
                         else "NOT_OBSERVABLE",
         "option_event": sanitize_option_event(source.get("option_event")),
+        "dialog_transition": (
+            source.get("dialog_transition")
+            if type(source.get("dialog_transition")) is str
+            and source["dialog_transition"] in _DIALOG_TRANSITIONS
+            else "NOT_OBSERVABLE"),
         "authorizes_listings": False,
     }
 
