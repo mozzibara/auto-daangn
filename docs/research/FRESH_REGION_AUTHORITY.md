@@ -41,6 +41,15 @@ the listing set or a previously requested URL.
 - `RouteBodies.matched` still requires the exact same response digest from
   the independent passive observer. It no longer silently substitutes boot
   data for a missing filter-Apply response.
+- Current UI-generated search JSON on the exact HTTPS first-party search path
+  is considered even if its URL no longer carries the historical Remix `_data`
+  route marker. The response still must contain a bounded, structurally valid
+  search model and both locality IDs, meet current user-observed filters,
+  and match the original passive response SHA byte-for-byte. No URL is
+  constructed or manually fetched by this change.
+- A public-safe failed-run summary includes bounded route response counters
+  and fixed booleans for observed query/category/price/availability and
+  server region matches. It cannot expose raw titles, links or seller data.
 
 ## Important limits
 
