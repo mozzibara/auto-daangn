@@ -751,3 +751,38 @@ If stable and a trusted click occurs but the server still disagrees,
 this further weakens a transient-node timing hypothesis. The
 diagnostic alone never authorizes region or listings, and does not
 justify arbitrary third clicks, direct HTTP requests or bypass.
+
+## Live #35: first-click generated follow-up button is transient
+
+[Approved capture #35](https://github.com/mozzibara/auto-daangn/actions/runs/43116041826)
+ran the same first target candidate click following a verified API response
+and pre-click DOM stability. The 47-button expanded region dialog
+appeared again and the new target+city button initially passed the
+identity/new DOM/visible/enabled guard. However on the *first* subsequent
+160-ms quiet-interval verification the **same ElementHandle** failed
+with `DETACHED`: `SECOND_CHOICE_STATE=FOLLOWUP_NOT_STABLE`,
+`SECOND_CHOICE_STABILITY_STATE=GUARD_CHANGED`,
+`STABILITY_SAMPLES=0`. The collector therefore **did not** make the
+second keyboard click. Fresh Route and top-level selected region control
+remained OTHER, zero source listing visits. This proves the initially
+visible new target button is too transient for a stable follow-up
+click; it does *not* establish why the public SPA fails to commit locality.
+
+### Next passive diagnostic: classify the replacement UI at four stages
+
+`app_v5.region_lifecycle.RegionLifecycleWitness` takes only
+redacted categorical/count snapshots at: immediately after first click,
+immediately after the bounded second-choice guard, after the existing
+core settle, and after the normal capture settle. It independently
+enumerates visible region-related controls in **every** dialog and
+outside dialogs, plus potential exact-label confirm buttons, login
+prompts, region inputs and progress indicators. The only exported
+fields are fixed types, bounded 0..60 counts and selected-control
+EXPECTED/OTHER/MISSING. No raw HTML, accessible labels, unknown
+addresses, numeric IDs, cookies, location URLs, element selectors
+or listing text are persisted. The new probe **never clicks**.
+It may identify whether the short-lived region suggestions are followed
+by a durable selection action, an authorization prompt or simply a
+dialog shell lacking observable options. Such signals are hypotheses,
+not evidence of an actual login requirement until corroborated.
+Existing UI+fresh Route proof and robots/approval gates remain strict.

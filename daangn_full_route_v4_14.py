@@ -36,6 +36,7 @@ from app_v5.region_option_events import RegionOptionEventWitness
 from app_v5.region_button_inventory import RegionButtonInventory
 from app_v5.region_readiness import RegionReadinessWitness
 from app_v5.region_second_choice import attempt_second_choice
+from app_v5.region_lifecycle import RegionLifecycleWitness
 from app_v5.region_suggestion import (RegionSuggestionObserver,
                                        classify_suggestion_identity)
 from app_v5.search_surface_probe import run_surface_probe, sanitize_surface_probe
@@ -345,6 +346,7 @@ async def capture(browser,name,region,options,salt):
             nav_trace=RegionNavigationTrace(core.BY_KEY[region])
             option_events=RegionOptionEventWitness(core.BY_KEY[region])
             button_inventory=RegionButtonInventory(core.BY_KEY[region])
+            lifecycle=RegionLifecycleWitness(core.BY_KEY[region])
             resolver=RegionSuggestionObserver(core.BY_KEY[region])
             readiness=RegionReadinessWitness(core.BY_KEY[region],resolver)
             resolver_listener_armed=False
@@ -379,10 +381,12 @@ async def capture(browser,name,region,options,salt):
                 await nav_trace.checkpoint(page,'AFTER_CLICK')
                 await option_events.checkpoint(page,'AFTER_CLICK')
                 await button_inventory.checkpoint(page,'AFTER_CLICK')
+                await lifecycle.checkpoint(page,'AFTER_FIRST')
                 second_result.update(await attempt_second_choice(
                     page,core.BY_KEY[region],button_inventory,
                     on_before_click=before_second_click,
                     on_after_click=after_second_click))
+                await lifecycle.checkpoint(page,'AFTER_FOLLOWUP_GATE')
             try:
                 steps=await core.ui_select_region(
                     page,core.BY_KEY[region],
@@ -391,7 +395,9 @@ async def capture(browser,name,region,options,salt):
                     on_after_select=after_exact_option_click,
                     on_option_witness=arm_option_witnesses,
                     on_after_search_fill=lambda: readiness.await_ready(page))
+                await lifecycle.checkpoint(page,'AFTER_CORE_SETTLE')
                 await page.wait_for_timeout(options.settle_ms)
+                await lifecycle.checkpoint(page,'AFTER_SETTLE')
                 await nav_trace.checkpoint(page,'AFTER_SETTLE')
                 await option_events.checkpoint(page,'AFTER_SETTLE')
                 await button_inventory.checkpoint(page,'AFTER_SETTLE')
@@ -438,6 +444,7 @@ async def capture(browser,name,region,options,salt):
             nav_export['button_inventory']=button_inventory.export()
             nav_export['pre_click_readiness']=readiness.export()
             nav_export['second_choice']=second_result
+            nav_export['region_lifecycle']=lifecycle.export()
             result['region_picker']['navigation_trace']=sanitize_navigation_trace(
                 nav_export)
             result['region_picker']['button_clicked']=steps.get(
