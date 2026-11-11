@@ -282,11 +282,64 @@ async def capture(browser,name,region,options,salt):
         baseline_response_url=baseline.url
         await page.wait_for_timeout(options.settle_ms)
         await passive.drain()
+        expected_region_id=core.BY_KEY[region]['id']
         result['baseline_region_url_evidence']=classify_baseline_region_urls(
-            baseline_requested,baseline_response_url,page.url,
-            core.BY_KEY[region]['id'])
-        if core.region_id_in_url(page.url)!=core.BY_KEY[region]['id']:
-            raise RuntimeError('REGION_MISMATCH')
+            baseline_requested,baseline_response_url,page.url,expected_region_id)
+        result['region_picker']={
+            'attempted':False,'robots_permission':'NOT_NEEDED',
+            'button_clicked':False,'suggestion_selected':False,
+            'verified_region_and_keyword':False,'outcome':'NOT_NEEDED'}
+        if core.region_id_in_url(page.url)!=expected_region_id:
+            # HTTP navigation may drop a previously explicit region parameter.
+            # Allow exactly ONE ordinary public-UI region selection only when
+            # the expected search hostname, path and keyword still match.
+            evidence=result['baseline_region_url_evidence']
+            response_proof=evidence['response']
+            rendered_proof=evidence['rendered']
+            recoverable=(
+                response_proof['region']=='MISSING'
+                and rendered_proof['region']=='MISSING'
+                and rendered_proof['host']=='EXPECTED'
+                and rendered_proof['path']=='EXPECTED'
+                and rendered_proof['keyword']=='EXPECTED'
+                and rendered_proof['region_parameter']=='MISSING'
+            )
+            if not recoverable:
+                result['region_picker']['outcome']='NOT_ELIGIBLE'
+                raise RuntimeError('REGION_MISMATCH')
+            if (await render.snapshot(page))['restricted'] or passive.blocked:
+                result['region_picker']['outcome']='ACCESS_BLOCKED'
+                raise RuntimeError('ACCESS_RESTRICTION')
+            from scripts.run_live_checked import check_region_picker_robots
+            decision=await asyncio.to_thread(
+                check_region_picker_robots,core.BY_KEY[region]['term'])
+            result['region_picker']['robots_permission']=decision['reason']
+            if decision['allowed'] is not True:
+                result['region_picker']['outcome']='ROBOTS_DENIED'
+                raise RuntimeError('ACCESS_RESTRICTION')
+            result['region_picker']['attempted']=True
+            steps=await core.ui_select_region(page,core.BY_KEY[region])
+            result['region_picker']['button_clicked']=steps.get(
+                'clicked_region_button') is True
+            result['region_picker']['suggestion_selected']=steps.get(
+                'selected_suggestion') is True
+            await page.wait_for_timeout(options.settle_ms)
+            await passive.drain()
+            now_proof=classify_baseline_region_urls(
+                baseline_requested,baseline_response_url,page.url,expected_region_id)
+            valid=(
+                steps.get('selected_suggestion') is True
+                and now_proof['rendered']['host']=='EXPECTED'
+                and now_proof['rendered']['path']=='EXPECTED'
+                and now_proof['rendered']['region']=='EXPECTED'
+                and now_proof['rendered']['keyword']=='EXPECTED'
+                and not passive.blocked
+            )
+            result['region_picker']['verified_region_and_keyword']=valid
+            result['region_picker']['outcome']=(
+                'VERIFIED' if valid else 'UNVERIFIED')
+            if not valid:
+                raise RuntimeError('REGION_MISMATCH')
         if (await render.snapshot(page))['restricted'] or passive.blocked:
             raise RuntimeError('ACCESS_RESTRICTION')
         if getattr(options,'filter_recheck_v15',False):
