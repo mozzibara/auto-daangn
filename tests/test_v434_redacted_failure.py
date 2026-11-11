@@ -137,6 +137,39 @@ class RedactedCaptureFailureTests(unittest.TestCase):
         self.assertEqual(output["UPSTREAM_BROWSER_EXCEPTION_PRESENT"], "YES")
         self.assertNotIn(secret, str(output))
 
+    def test_initial_region_redirect_classes_remain_public_safe(self):
+        self.put("v423_public_controls_results.json", {
+            "evaluation": {
+                "status": "INCONCLUSIVE_CONTROL_STUDY_INCOMPLETE",
+                "contexts": [{
+                    "context": "cheonan_a",
+                    "capture_failure_code": "REGION_MISMATCH",
+                    "baseline_region_url_evidence": {
+                        "requested": {"region": "EXPECTED"},
+                        "response": {"region": "MISSING"},
+                        "rendered": {
+                            "region": "MISSING",
+                            "host": "EXPECTED", "path": "EXPECTED",
+                            "region_parameter": "MISSING",
+                            "keyword": "EXPECTED",
+                        },
+                        "response_changed_from_request": True,
+                        "rendered_changed_from_response": False,
+                        "debug_private_url": "https://example.org/SECRET",
+                    },
+                }],
+                "source_detail_visits": 0,
+            }
+        })
+        out = classify(self.folder)
+        self.assertEqual(out["BASELINE_REQUEST_REGION"], "EXPECTED")
+        self.assertEqual(out["BASELINE_HTTP_REGION"], "MISSING")
+        self.assertEqual(out["BASELINE_RENDERED_REGION"], "MISSING")
+        self.assertEqual(out["BASELINE_HTTP_URL_CHANGED"], "YES")
+        self.assertEqual(out["BASELINE_RENDERED_URL_CHANGED"], "NO")
+        self.assertNotIn("SECRET", str(out))
+        self.assertNotIn("example.org", str(out))
+
     def test_missing_files_are_reported_without_failure(self):
         result = classify(self.folder)
         self.assertEqual(result["PUBLIC_SUMMARY_PRESENT"], "NO")
