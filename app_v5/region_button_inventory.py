@@ -52,6 +52,14 @@ _ARM_JS = r"""(el, meta) => {
   const nodes=[...root.querySelectorAll(buttonQuery)]
     .filter(visible).slice(0,160);
   nodes.forEach(e=>baseline.add(e));
+  // Ephemeral mutation revision for post-click stability checks. Never
+  // exported: the public sanitizer drops it at both boundaries.
+  let mutationVersion=0;
+  const observer=new MutationObserver(records=>{
+    if(records.some(r=>r.type==='childList'||r.type==='characterData'))
+      mutationVersion=Math.min(1000,mutationVersion+1);
+  });
+  observer.observe(root,{subtree:true,childList:true,characterData:true});
   const getArea=e=>{
     if(e.closest('[role="listbox"]'))return 'LISTBOX';
     if(e.closest('header,[role="banner"]'))return 'HEADER';
@@ -141,6 +149,9 @@ _ARM_JS = r"""(el, meta) => {
         if(samples.length<8)samples.push(x);
     }
     return {scope,overflow,
+      // Browser-only internal revision for matching post-click snapshots;
+      // never survives sanitize_button_snapshot.
+      mutation_version:mutationVersion,
       visible_buttons:cap(rows.length),new_dom_buttons:cap(fresh),
       new_target_buttons:cap(freshTarget),
       new_region_like_buttons:cap(freshRegion),
@@ -170,7 +181,9 @@ _ARM_JS = r"""(el, meta) => {
     if(newCount<2) return 'NO_NEW_CANDIDATE_LIST';
     return 'READY';
   };
-  document[key]={sample,checkFollowup,stop(){delete document[key];}};
+  document[key]={sample,checkFollowup,stop(){
+    observer.disconnect();delete document[key];
+  }};
   return {armed:'ARMED',baseline:sample()};
 }"""
 
