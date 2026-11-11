@@ -50,14 +50,20 @@ OCI SECOND-INSTANCE (E2.1.Micro, ~1 GB RAM)
   separately in `kimalswhd0001/auto-daangn`; **do not run Actions there**.
 - Provenance identity is now the public repository; public issue approval is #1.
 - `main` must be protected with a public GitHub Free ruleset: block force pushes and
-  deletion, require review, require offline CI check, enforce least privilege.
+  deletion, require pull requests (solo owner: **0 required external approvals**),
+  pass Ubuntu/Windows offline CI and enforce least privilege. Use the exact
+  API body in `ops/github/main-ruleset.json`. Configuration instructions are
+  in `PUBLIC_SECURITY_SETUP.md`.
   This cannot be represented by a committed YAML file alone.
 - Default Actions `GITHUB_TOKEN`: read only. No secrets exposed to PR jobs.
   Consider pinning GitHub Actions dependencies to verified immutable SHAs.
 - No scheduled live capture. Manual `workflow_dispatch` or exact owner comment.
-- `V434_ATTEST_ED25519_KEY_B64` must be separately configured on the public repo
-  using a verified independent private channel. The pinned **public** verifier
-  remains unchanged until an explicit verified key rotation.
+- `V434_ATTEST_ED25519_KEY_B64` must be configured as **Environment Secret**
+  under `daangn-producer`, with Selected deployment branch **main only**.
+  Never use a repository-wide signer Secret. Offline-verify the original
+  private seed against the pinned public key before uploading directly through
+  the trusted owner's GitHub UI/CLI. The pin remains unchanged until an
+  explicit independently verified key rotation.
 - Offline CI: do not install Chromium binaries or retain public unittest log
   artifacts; live capture job alone installs Chromium. Stale CI for superseded
   commits may be cancelled without affecting the live approval concurrency.
