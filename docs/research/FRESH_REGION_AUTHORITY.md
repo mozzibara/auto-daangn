@@ -786,3 +786,40 @@ by a durable selection action, an authorization prompt or simply a
 dialog shell lacking observable options. Such signals are hypotheses,
 not evidence of an actual login requirement until corroborated.
 Existing UI+fresh Route proof and robots/approval gates remain strict.
+
+## Live #36: region chooser self-closes with no stable follow-up
+
+Approved [live #36](https://github.com/mozzibara/auto-daangn/actions/runs/43117277794)
+recorded the region chooser lifecycle after one **pointer-click**
+of the original verified target candidate. Immediately after that
+click, 5 visible dialog shells included **47 native buttons**,
+**1 target+city**, **44 other region-like** and one region input.
+By the first bounded follow-up guard (about 160 ms later) the exact
+new target button was already DETACHED. The UI then had 4 remaining
+dialog shells but **zero visible dialog buttons**, no region input,
+no exact confirm action, no potential login CTA and no target button
+outside dialogs. The same empty-control state persisted after core
+and capture settle. The independent selected region was still OTHER
+and fresh search/filter Route IDs were still OTHER. Nothing was
+imported (source detail visits 0).
+
+**Interpretation:** There is no evidence of a durable second picker
+step or a visible confirm/login control after the initial pointer
+click. The 47-button intermediate list is transient. Continuing
+to click it cannot be justified from UI evidence.
+
+### First choice keyboard vs pointer comparison
+
+One remaining focused UI hypothesis is the **first native pointer**
+event itself (e.g. focus loss, pointerdown or blur) causing a
+different SPA behavior than native keyboard activation. In the
+v4.34 owner-only recovery path, use the same unique target candidate
+and the same completed API/three stable DOM sample gate, but invoke
+one standard Playwright `press('Enter')` **on the first candidate**
+instead of `click()`. The existing read-only click witness records
+whether the native event reaches the actual button; this run
+intentionally **suppresses every second click**. It preserves all
+fresh Route, visible selected-control and robots/approval checks.
+If the first Enter still produces OTHER, native modality is not
+sufficient to fix this particular SPA state; do not loop arbitrary
+UI actions.

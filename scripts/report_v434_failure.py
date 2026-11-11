@@ -688,6 +688,9 @@ def classify(folder: Path) -> dict[str, str]:
             "region_parameter", params),
         "REGION_PICKER_VISIBLE_REGION_BUTTON": picker_flag(
             "selected_region_button_visible"),
+        "PICKER_FIRST_ACTIVATION_MODE": transition_enum(
+            "first_activation_mode", {"POINTER_CLICK","KEYBOARD_ENTER",
+                                      "UNOBSERVABLE"}),
         "PICKER_OPTION_SEMANTICS": transition_enum(
             "option_metadata", {"OBSERVED","UNAVAILABLE"}),
         "PICKER_OPTION_CITY_HINT": transition_flag("option_city_hint"),

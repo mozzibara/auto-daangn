@@ -343,6 +343,9 @@ async def capture(browser,name,region,options,salt):
             second_net=v46.Network()
             second_result={'state':'NOT_ATTEMPTED','guard':'UNOBSERVABLE',
                            'click_attempted':False,'click_completed':False}
+            # One controlled experiment: native Enter on the *initial*
+            # stable target choice. Do not click transient follow-up nodes.
+            first_mode='KEYBOARD_ENTER'
             nav_trace=RegionNavigationTrace(core.BY_KEY[region])
             option_events=RegionOptionEventWitness(core.BY_KEY[region])
             button_inventory=RegionButtonInventory(core.BY_KEY[region])
@@ -382,10 +385,11 @@ async def capture(browser,name,region,options,salt):
                 await option_events.checkpoint(page,'AFTER_CLICK')
                 await button_inventory.checkpoint(page,'AFTER_CLICK')
                 await lifecycle.checkpoint(page,'AFTER_FIRST')
-                second_result.update(await attempt_second_choice(
-                    page,core.BY_KEY[region],button_inventory,
-                    on_before_click=before_second_click,
-                    on_after_click=after_second_click))
+                if first_mode=='POINTER_CLICK':
+                    second_result.update(await attempt_second_choice(
+                        page,core.BY_KEY[region],button_inventory,
+                        on_before_click=before_second_click,
+                        on_after_click=after_second_click))
                 await lifecycle.checkpoint(page,'AFTER_FOLLOWUP_GATE')
             try:
                 steps=await core.ui_select_region(
@@ -394,7 +398,8 @@ async def capture(browser,name,region,options,salt):
                     on_before_select=before_exact_option_click,
                     on_after_select=after_exact_option_click,
                     on_option_witness=arm_option_witnesses,
-                    on_after_search_fill=lambda: readiness.await_ready(page))
+                    on_after_search_fill=lambda: readiness.await_ready(page),
+                    first_activation_mode=first_mode)
                 await lifecycle.checkpoint(page,'AFTER_CORE_SETTLE')
                 await page.wait_for_timeout(options.settle_ms)
                 await lifecycle.checkpoint(page,'AFTER_SETTLE')
