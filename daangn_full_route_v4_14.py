@@ -293,6 +293,7 @@ async def capture(browser,name,region,options,salt):
         result['region_picker']={
             'attempted':False,'robots_permission':'NOT_NEEDED',
             'button_clicked':False,'suggestion_selected':False,
+            'unique_region_option':False,
             'verified_region_and_keyword':False,'outcome':'NOT_NEEDED'}
         if core.region_id_in_url(page.url)!=expected_region_id:
             # HTTP navigation may drop a previously explicit region parameter.
@@ -328,6 +329,8 @@ async def capture(browser,name,region,options,salt):
                 'clicked_region_button') is True
             result['region_picker']['suggestion_selected']=steps.get(
                 'selected_suggestion') is True
+            result['region_picker']['unique_region_option']=steps.get(
+                'unique_region_option') is True
             await page.wait_for_timeout(options.settle_ms)
             await passive.drain()
             now_proof=classify_baseline_region_urls(
@@ -347,6 +350,7 @@ async def capture(browser,name,region,options,salt):
             # AND a visible selected-region control corroborate both IDs.
             provisionally_valid=(
                 steps.get('selected_suggestion') is True
+                and steps.get('unique_region_option') is True
                 and now_proof['rendered']['host']=='EXPECTED'
                 and now_proof['rendered']['path']=='EXPECTED'
                 and now_proof['rendered']['region'] in ('EXPECTED','MISSING')
@@ -374,7 +378,8 @@ async def capture(browser,name,region,options,salt):
         try:
             stage,blocked,_=await bands.capture_apply(
                 page,args,name,'target','cap_50000',salt,
-                picker_selected=result['region_picker']['suggestion_selected'])
+                picker_selected=(result['region_picker']['suggestion_selected']
+                                 and result['region_picker']['unique_region_option']))
         finally:
             page.remove_listener('response',bodies.on_response)
             await bodies.drain()
