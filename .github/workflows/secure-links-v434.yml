@@ -110,8 +110,31 @@ jobs:
         run: |
           python -m scripts.pre_oci_v434_ephemeral prepare \
             --temp-dir "$RUNNER_TEMP/v434_ephemeral"
-      - name: Install Chromium only after owner approval and signer verification
-        run: python -m playwright install --with-deps chromium
+      # GitHub-hosted Ubuntu runners already carry common Chromium shared
+      # libraries. Avoid Playwright's large apt/font dependency phase, which
+      # stalled in live #32 on a transient security.ubuntu.com DNS failure.
+      # Verify a real headless launch before any marketplace request.
+      - name: Install Chromium browser and verify headless launch (no apt)
+        timeout-minutes: 8
+        shell: bash
+        run: |
+          python -m playwright install chromium
+          python - <<'PY'
+          import asyncio
+          from playwright.async_api import async_playwright
+
+          async def check():
+              async with async_playwright() as p:
+                  browser = await p.chromium.launch(headless=True)
+                  try:
+                      page = await browser.new_page()
+                      await page.set_content('<main id="local-check">ready</main>')
+                      assert await page.locator('#local-check').text_content() == 'ready'
+                  finally:
+                      await browser.close()
+          asyncio.run(check())
+          print('OWNER_APPROVED_CHROMIUM_LOCAL_SMOKE_OK')
+          PY
       - name: Run one robots-first read-only capture and seal links in memory
         id: secure
         shell: bash
