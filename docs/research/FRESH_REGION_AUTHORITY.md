@@ -582,3 +582,50 @@ separate authorized, observable UI-to-server transition can prove it.
 The next one-shot owner-approved run may determine which kind of
 20+ buttons appeared and their relative location, but must not
 automate a hypothesized follow-up click or bypass region verification.
+
+## Controlled comparison: wait for first-party resolver AND stable option DOM before clicking
+
+Prior [owner-approved live #28](https://github.com/mozzibara/auto-daangn/actions/runs/43029616242)
+used the historical **fixed 850-ms delay after filling the location
+input**. It observed a real trusted click on the one target choice,
+then 45 new DOM buttons (44 other region-like, 1 new target+city),
+while the independent selected-location UI control and fresh Route
+remained OTHER. A timing race was a plausible explanation, **not an
+established cause**.
+
+`app_v5.region_readiness.RegionReadinessWitness` replaces that fixed
+wait **only in the existing v4.34 owner-approved recovery path**:
+1. Immediately after the already-approved public region input is filled,
+   wait up to seven seconds for the browser-generated first-party
+   `/kr/api/v1/regions/keyword` response to finish JSON parsing.
+   Require exactly one response and one exact target+city candidate,
+   with numeric ID matching the configured preset **in RAM only**.
+2. Arm a read-only `MutationObserver` on the existing visible region
+   dialog. Require three consecutive samples with an unchanged
+   capped button count, exactly one visible target button and one
+   target+city button, and unchanged mutation version. Samples
+   are separated by 180 ms. The observer is *always detached*, including
+   timeout/rejection.
+3. **Only then** perform the same unique-option click once and collect
+   the same passive navigation, event and categorical button inventory
+   diagnostics. Any missing/duplicate API event, ID mismatch, failed
+   DOM gate, timeout or blocked response fails closed **without clicking**.
+
+No new HTTP requests, challenge bypass, login, additional option click,
+raw DOM, hash, seller/listing information or region ID is sent into the
+public log. Report fields are only readiness state, bounded API
+response count, boolean agreement, bounded candidate counts and
+sample count. `READY` means only that the *pre-click* race hypothesis
+was controlled; it **never** authorizes listings or supersedes fresh
+post-click server Route + visible selected-region control.
+
+Interpret a future approved comparison against live #28 as follows:
+- Pre-click `READY` + target UI+server region EXPECTED means waiting
+  mitigated the previously observed failure in that run (not proof
+  of universal success).
+- Pre-click `READY` + post-click UI/server OTHER means the simple
+  "clicked before suggestions loaded" hypothesis is insufficient;
+  the causal frontend behavior needs a further independent witness.
+- Pre-click `API_TIMEOUT`/`DOM_NOT_STABLE` etc. is a safe abort;
+  it provides no evidence about the meaning of a hypothetical
+  follow-up selection button.
