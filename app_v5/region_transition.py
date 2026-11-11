@@ -7,6 +7,7 @@ The caller must collect only browser-emitted responses after the actual click.
 from __future__ import annotations
 
 from app_v5.region_proof import classify_region_correspondence
+from app_v5.region_suggestion import sanitize_suggestion_identity
 
 
 def _id_state(value, expected):
@@ -133,4 +134,5 @@ def sanitize_picker_transition(value: dict | None) -> dict:
     for field in _PICKER_COUNTS:
         raw = source.get(field)
         result[field] = raw if type(raw) is int and 0 <= raw <= 20 else -1
+    result["suggestion"] = sanitize_suggestion_identity(source.get("suggestion"))
     return result
