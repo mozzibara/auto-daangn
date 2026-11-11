@@ -132,6 +132,9 @@ async def capture_apply(page,args,name,region,key,salt,*,picker_selected=False):
         # may corroborate the visible selected region. A click alone is not proof.
         ui_region=await core.observe_selected_region_control(
             page,a.regions[region])
+        # picker_selected can only be set by v4.14 after a unique, visible
+        # public UI suggestion was actually selected. No assumed URL region.
+        ui_region['unique_option_clicked']=picker_selected is True
         authority=verified_region(
             a.regions[region],observed_url,
             matched[0] if len(matched)==1 else None,ui_region,
