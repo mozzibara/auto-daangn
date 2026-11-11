@@ -476,7 +476,7 @@ def classify(folder: Path) -> dict[str, str]:
     second_states = {"NOT_ATTEMPTED","CLICKED","KEYBOARD_ACTIVATED",
                      "KEY_SENT_NO_NATIVE_CLICK","CANDIDATE_NOT_UNIQUE",
                      "GUARD_REJECTED","INVENTORY_NOT_ARMED",
-                     "ELEMENT_MISSING","CLICK_FAILED"}
+                     "ELEMENT_MISSING","CLICK_FAILED","FOLLOWUP_NOT_STABLE"}
     guard_states = {"READY","DETACHED","WRONG_DIALOG","WRONG_TAG",
                     "ORIGINAL_NODE","NOT_INTERACTABLE",
                     "NOT_EXACT_TARGET_CITY","NOT_UNIQUE",
@@ -511,6 +511,17 @@ def classify(folder: Path) -> dict[str, str]:
             second.get("error_type")
             if second.get("error_type") in ("NONE","TIMEOUT","PLAYWRIGHT_ERROR","OTHER")
             else "UNKNOWN"),
+        "SECOND_CHOICE_STABILITY_STATE": (
+            second.get("stability_state")
+            if type(second.get("stability_state")) is str
+            and second["stability_state"] in {
+                "NOT_RUN","STABLE","GUARD_CHANGED","DOM_UNSTABLE",
+                "SNAPSHOT_MISSING","MUTATION_OVERFLOW","UNKNOWN"}
+            else "UNKNOWN"),
+        "SECOND_CHOICE_STABILITY_SAMPLES": (
+            str(second.get("stability_samples"))
+            if type(second.get("stability_samples")) is int
+            and 0 <= second["stability_samples"] <= 6 else "UNKNOWN"),
         "SECOND_CHOICE_AUTHORIZES_LISTINGS": "NO",
     }
     raw_outer = outer.get("status")
