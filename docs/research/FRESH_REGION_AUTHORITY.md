@@ -335,3 +335,38 @@ The only permitted live test is the existing one-shot owner-approved
 robots-first GitHub workflow. Do not repeat unchanged runs or attempt the
 robots-denied `/kr/buy-sell/s/` route. No direct OCI access, login,
 session cookies or detail-page visits are required.
+
+## Approved capture #20: visible UI never committed target
+
+The first click-specific live trace, [capture #20](https://github.com/mozzibara/auto-daangn/actions/runs/43012229055),
+confirmed all of the following:
+- `BEFORE_CLICK`: picker overlay OPEN, region input EXACT TARGET,
+  main region button displayed OTHER, URL `in` MISSING.
+- `AFTER_CLICK`: main region button still OTHER, overlay OPEN,
+  input no longer EXACT, URL `in` MISSING.
+- `AFTER_SETTLE`: main region button still OTHER, overlay OPEN,
+  input MISSING, URL `in` MISSING.
+- Exactly one first-party search fetch request, with URL region MISSING
+  and expected keyword/path; **no navigation or document request**
+  observed in that bounded click interval.
+- The real post-click search Route had both locality IDs OTHER and
+  server region name OTHER. The resolver independently returned the
+  unique correct historical Cheonan target ID.
+- Classification: `UI_OTHER_AND_SERVER_OTHER`. The original
+  `FRESH_REGION_PROOF_MISSING` stopped the capture. Source detail visits
+  zero and no item, secret, or OCI data was exported.
+
+This proves the click does **not** commit the target locality to the
+selected visible region control or its immediate search request. It
+does **not yet** distinguish a multi-step UI needing confirmation,
+a click on a noncommitting suggestion, or a frontend state propagation
+error.
+
+The next safe refinement separates real `[role=dialog]` from
+`[role=listbox]` visibility (previously aggregated as a single OPEN
+state), and observes only categorical option role/tag/ancestor/
+`aria-selected` and exact-label confirmation affordances inside the
+dialog. No additional click is automated and no arbitrary page text,
+HTML, or values are exported. A new owner-approved run after offline
+CI can discriminate a still-open confirmation dialog from a lingering
+listbox or an uncommitted autocomplete suggestion.
