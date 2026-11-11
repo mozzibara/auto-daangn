@@ -10,7 +10,7 @@ import unittest
 import daangn_v4_1_core as core
 from app_v5.region_transition import (
     classify_picker_transition, classify_filter_transition,
-    sanitize_picker_transition,
+    classify_early_region_gate, sanitize_picker_transition,
 )
 from scripts.report_v434_failure import classify
 
@@ -60,6 +60,58 @@ class PickerTransitionTests(unittest.TestCase):
         self.assertEqual(safe["option_role"], "UNKNOWN")
         self.assertEqual(safe["option_parent"], "UNKNOWN")
         self.assertNotIn("PRIVATE SECRET", str(safe))
+
+    def test_independently_wrong_ui_and_fresh_server_stop_before_filter(self):
+        other = classify_picker_transition(
+            REGION, STEPS, [event("900001","900001","다른지역")],
+            fetch_count=1)
+        self.assertEqual(
+            classify_early_region_gate(other, False),
+            "OBSERVED_WRONG_REGION")
+        self.assertEqual(
+            classify_early_region_gate(other, None),
+            "MIXED_OR_UNKNOWN")
+        self.assertEqual(
+            classify_early_region_gate(other, True),
+            "MIXED_OR_UNKNOWN")
+        expected = classify_picker_transition(
+            REGION, STEPS, [event()], fetch_count=1)
+        self.assertEqual(
+            classify_early_region_gate(expected, True),
+            "LOCALITY_CORROBORATED_DIAGNOSTIC")
+        self.assertEqual(
+            classify_early_region_gate(expected, False),
+            "MIXED_OR_UNKNOWN")
+        no_route = classify_picker_transition(
+            REGION, STEPS, [], fetch_count=0)
+        self.assertEqual(
+            classify_early_region_gate(no_route, False),
+            "NOT_OBSERVABLE")
+        self.assertEqual(
+            classify_early_region_gate({}, False),
+            "NOT_OBSERVABLE")
+
+    def test_public_early_gate_report_does_not_approve_locality(self):
+        with TemporaryDirectory() as temp:
+            folder=Path(temp)
+            payload={"evaluation":{"contexts":[{
+                "context":"cheonan_a",
+                "capture_failure_code":"REGION_MISMATCH",
+                "region_picker":{
+                    "outcome":"EARLY_REGION_UNCOMMITTED",
+                    "early_gate":"OBSERVED_WRONG_REGION",
+                    "navigation_trace":{},
+                    "unknown_private_id":"MY_PRIVATE_REGION",
+                },
+            }]}}
+            (folder/"v423_public_controls_results.json").write_text(
+                json.dumps(payload),encoding="utf-8")
+            row=classify(folder)
+            self.assertEqual(row["REGION_PICKER_OUTCOME"],
+                             "EARLY_REGION_UNCOMMITTED")
+            self.assertEqual(row["REGION_PICKER_EARLY_GATE"],
+                             "OBSERVED_WRONG_REGION")
+            self.assertNotIn("MY_PRIVATE_REGION",str(row))
 
     def test_picker_wrong_before_filter_is_not_id_drift_authority(self):
         result = classify_picker_transition(REGION, STEPS, [
