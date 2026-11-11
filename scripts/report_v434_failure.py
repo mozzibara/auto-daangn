@@ -252,6 +252,11 @@ def classify(folder: Path) -> dict[str, str]:
             ("listbox", {"OPEN", "CLOSED", "UNOBSERVABLE"}),
             ("confirm_action", {"VISIBLE", "NOT_VISIBLE", "AMBIGUOUS", "UNOBSERVABLE"}),
             ("input", {"EXPECTED", "OTHER", "MISSING", "UNOBSERVABLE"}),
+            ("dialog_heading", {"PICK_NEIGHBORHOOD","PICK_REGION","SEARCH",
+                                "TARGET","OTHER","MISSING","UNOBSERVABLE"}),
+            ("dialog_focus", {"INPUT","BUTTON","OTHER","OUTSIDE",
+                              "NONE","UNOBSERVABLE"}),
+            ("dialog_aria_modal", {"TRUE","FALSE","MISSING","OTHER","UNOBSERVABLE"}),
             ("url_region", {"EXPECTED", "OTHER", "MISSING", "INVALID"}),
             ("url_path", {"EXPECTED", "OTHER", "INVALID"}),
             ("url_keyword", {"EXPECTED", "OTHER", "MISSING", "INVALID"}),
@@ -259,6 +264,16 @@ def classify(folder: Path) -> dict[str, str]:
             val = row.get(field)
             nav_fields[f"NAV_{stage}_{field.upper()}"] = (
                 val if type(val) is str and val in valid else "UNKNOWN")
+        for key in ("dialog_has_labelledby","dialog_has_back_action",
+                    "dialog_has_selected_control"):
+            val = row.get(key)
+            nav_fields[f"NAV_{stage}_{key.upper()}"] = (
+                "YES" if val is True else "NO" if val is False else "UNKNOWN")
+        for key in ("dialog_buttons","dialog_target_buttons","dialog_search_inputs",
+                    "dialog_selectables","dialog_selected_controls"):
+            val = row.get(key)
+            nav_fields[f"NAV_{stage}_{key.upper()}"] = (
+                str(val) if type(val) is int and 0 <= val <= 20 else "UNKNOWN")
     nav_count = navigation.get("event_count")
     nav_raw_events = navigation.get("events")
     nav_raw_events = nav_raw_events if type(nav_raw_events) is list else []
@@ -531,6 +546,13 @@ def classify(folder: Path) -> dict[str, str]:
             ("CHECKED", "ROBOTS_UNAVAILABLE", "NOT_ATTEMPTED") else "UNKNOWN"),
         "SEARCH_SURFACE_BLOCKED": "YES" if probe.get("blocked") is True else "NO",
         "SEARCH_SURFACE_AUTHORIZES_LISTINGS": "NO",
+        "NAV_TRACE_DIALOG_TRANSITION": (
+            navigation.get("dialog_transition")
+            if type(navigation.get("dialog_transition")) is str
+            and navigation["dialog_transition"] in {
+                "NEW_DIALOG_WITH_CHANGED_CONTROLS","REPLACED_DIALOG_UNCLASSIFIED",
+                "SAME_DIALOG_REMAINS","DIALOG_CLOSED","NOT_OBSERVABLE"}
+            else "UNKNOWN"),
         "NAV_TRACE_COMMIT_CLASS": (
             navigation.get("commit_class")
             if type(navigation.get("commit_class")) is str
