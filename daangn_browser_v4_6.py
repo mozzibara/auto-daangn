@@ -273,14 +273,31 @@ async def document(page,args,name,region,step,url=None):
     return s
 
 class Network:
-    def __init__(self):self.events=[];self.tasks=set();self.blocked=False;self.document_status=[]
+    def __init__(self):
+        self.events=[];self.tasks=set();self.blocked=False;self.document_status=[]
+        self.search_fetch_responses=0
+        self.old_remix_route_responses=0
+        self.other_search_json_responses=0
+        self.unparsed_search_json_responses=0
     def hook(self,r):
         try:
             u=urlsplit(r.url)
-            if u.hostname!='www.daangn.com' or u.path!=core.SEARCH_PATH:return
+            if (u.scheme!='https' or u.hostname!='www.daangn.com'
+                    or u.path!=core.SEARCH_PATH):
+                return
             if r.status in core.BLOCK_STATUS:self.blocked=True
             if r.request.resource_type=='document':self.document_status.append(r.status)
-            if not core._is_search_route_response(r.url) or r.request.resource_type not in ('fetch','xhr'):return
+            if r.request.resource_type not in ('fetch','xhr'):return
+            self.search_fetch_responses+=1
+            ctype=str(r.headers.get('content-type','')).lower()
+            if 'json' not in ctype and 'remix' not in ctype:return
+            if core._is_search_route_response(r.url):
+                self.old_remix_route_responses+=1
+            else:
+                # Accept a newer UI-generated JSON route shape only if the
+                # bounded parser finds the expected first-party search model.
+                # Never construct or request an undocumented endpoint.
+                self.other_search_json_responses+=1
             async def collect():
                 try:
                     size=r.headers.get('content-length','')
@@ -290,6 +307,7 @@ class Network:
                         m=ev.extract_model(raw)
                         if m:self.events.append({'model':m,'digest':hashlib.sha256(raw).hexdigest(),'status':r.status,
                                               'public_request':ev.public_url(r.url)})
+                        else:self.unparsed_search_json_responses+=1
                 except Exception:pass
             task=asyncio.create_task(collect());self.tasks.add(task);task.add_done_callback(self.tasks.discard)
         except Exception:pass
