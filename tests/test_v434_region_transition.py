@@ -75,6 +75,24 @@ class PickerTransitionTests(unittest.TestCase):
         self.assertEqual(classify_filter_transition(result, {}),
                          "POST_CLICK_ROUTE_NOT_OBSERVABLE")
 
+    def test_nonmatching_postclick_query_not_marked_fresh(self):
+        unrelated = event()
+        unrelated["public_request"]["public_params"]["q"] = "SSD"
+        x = classify_picker_transition(REGION, STEPS, [unrelated], fetch_count=1)
+        self.assertEqual(x["post_click_route_status"],
+                         "POST_CLICK_QUERY_OR_ROUTE_INVALID")
+        self.assertEqual(classify_filter_transition(x, {}),
+                         "POST_CLICK_ROUTE_NOT_OBSERVABLE")
+
+    def test_unparsed_search_response_is_distinct_from_no_fetch(self):
+        x = classify_picker_transition(REGION, STEPS, [], fetch_count=1)
+        self.assertEqual(x["post_click_route_status"], "UNPARSED_POST_CLICK_ROUTE")
+
+    def test_missing_filter_route_does_not_claim_locality_reset(self):
+        x = classify_picker_transition(REGION, STEPS, [event()], fetch_count=1)
+        self.assertEqual(classify_filter_transition(x, {}),
+                         "FILTER_APPLY_ROUTE_NOT_OBSERVABLE")
+
     def test_two_postclick_responses_remain_ambiguous(self):
         result = classify_picker_transition(REGION, STEPS,
                                             [event(), event()], fetch_count=2)
