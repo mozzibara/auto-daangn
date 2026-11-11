@@ -87,3 +87,42 @@ def classify_filter_transition(picker: dict, applied: dict) -> str:
     if pre_pair != ("EXPECTED", "EXPECTED"):
         return "REGION_NOT_VERIFIED_AFTER_CLICK"
     return "NOT_OBSERVABLE"
+
+
+_PICKER_ENUMS = {
+    "option_metadata": {"OBSERVED", "UNAVAILABLE"},
+    "option_data_id": {"EXPECTED", "OTHER", "MISSING"},
+    "post_click_route_status": {"SELECTION_NOT_CONFIRMED", "NO_FRESH_ROUTE",
+                                "AMBIGUOUS_FRESH_ROUTES", "FRESH_ROUTE_OBSERVED",
+                                "ROUTE_NOT_TRUSTED"},
+    "search_region_state": {"EXPECTED", "OTHER", "MISSING"},
+    "filter_region_state": {"EXPECTED", "OTHER", "MISSING"},
+    "server_name_state": {"EXACT", "CONTAINS", "OTHER", "MISSING"},
+    "server_ids_agree": {"YES", "NO", "MISSING"},
+    "filter_apply_relation": {"POST_CLICK_ROUTE_NOT_OBSERVABLE",
+                              "EXPECTED_REGION_PERSISTED",
+                              "REGION_LOST_AT_FILTER_APPLY",
+                              "REGION_NOT_VERIFIED_AFTER_CLICK",
+                              "NOT_OBSERVABLE"},
+}
+_PICKER_BOOLEANS = (
+    "selection_clicked", "option_city_hint", "option_exact_term",
+    "option_still_visible", "request_keyword_matches",
+    "request_region_missing",
+)
+_PICKER_COUNTS = ("post_click_search_fetch_count", "post_click_model_count")
+
+
+def sanitize_picker_transition(value: dict | None) -> dict:
+    """Allowlist every value before it crosses the public report boundary."""
+    source = value if type(value) is dict else {}
+    result = {}
+    for field, valid in _PICKER_ENUMS.items():
+        raw = source.get(field)
+        result[field] = raw if type(raw) is str and raw in valid else "UNKNOWN"
+    for field in _PICKER_BOOLEANS:
+        result[field] = source.get(field) is True
+    for field in _PICKER_COUNTS:
+        raw = source.get(field)
+        result[field] = raw if type(raw) is int and 0 <= raw <= 20 else -1
+    return result
