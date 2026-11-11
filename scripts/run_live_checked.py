@@ -87,6 +87,36 @@ def check_robots(config, *, getter=None):
     return result
 
 
+def check_region_picker_robots(region_term: str, *, getter=None) -> dict:
+    """Read robots first for the known public region-picker suggestion endpoint.
+
+    Region selection is permitted only for the fixed observed presets, never
+    arbitrary terms or a different user-controlled endpoint.
+    """
+    from urllib.parse import quote
+    known = {core.BY_KEY[k]["term"] for k in ("cheonan", "asan")}
+    if region_term not in known:
+        return {"allowed": False, "reason": "INVALID_REGION"}
+    getter = getter or urllib.request.urlopen
+    target = (core.BASE + core.REGION_API + "?keyword=" +
+              quote(region_term, safe=""))
+    try:
+        req = urllib.request.Request(
+            core.BASE + "/robots.txt", headers={"User-Agent": AGENT})
+        with getter(req, timeout=20) as response:
+            if response.status != 200:
+                return {"allowed": False, "reason": "ROBOTS_NON_200"}
+            body = response.read(400_001)
+        if len(body) > 400_000:
+            return {"allowed": False, "reason": "ROBOTS_TOO_LARGE"}
+        rp = urllib.robotparser.RobotFileParser()
+        rp.parse(body.decode("utf-8", "replace").splitlines())
+        allowed = bool(rp.can_fetch("DaangnRegionDiagnostic", target))
+        return {"allowed": allowed, "reason": "ALLOWED" if allowed else "DISALLOWED"}
+    except Exception:
+        return {"allowed": False, "reason": "ROBOTS_UNAVAILABLE"}
+
+
 def save_json(path, obj):
     path.write_text(json.dumps(obj, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
 
