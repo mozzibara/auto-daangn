@@ -139,6 +139,14 @@ def classify(folder: Path) -> dict[str, str]:
         else "UNKNOWN"
     )
     region_ids_match = first.get("fresh_region_route_ids_match")
+    route_diag = first.get("region_route_observation")
+    route_diag = route_diag if type(route_diag) is dict else {}
+    def route_count(key):
+        value = route_diag.get(key)
+        return str(value) if type(value) is int and 0 <= value <= 20 else "UNKNOWN"
+    def route_flag(key):
+        value = route_diag.get(key)
+        return "YES" if value is True else "NO" if value is False else "UNKNOWN"
     picker_robots = {
         "NOT_NEEDED", "ALLOWED", "DISALLOWED", "INVALID_REGION",
         "ROBOTS_NON_200", "ROBOTS_TOO_LARGE", "ROBOTS_UNAVAILABLE",
@@ -222,6 +230,22 @@ def classify(folder: Path) -> dict[str, str]:
         "BASELINE_RENDERED_KEYWORD": classified("rendered", "keyword", statuses),
         "BASELINE_HTTP_URL_CHANGED": changed("response_changed_from_request"),
         "BASELINE_RENDERED_URL_CHANGED": changed("rendered_changed_from_response"),
+        "ROUTE_FIRST_PARTY_FETCH_COUNT": route_count("search_fetch_responses"),
+        "ROUTE_LEGACY_DATA_COUNT": route_count("legacy_data_responses"),
+        "ROUTE_ALTERNATE_JSON_COUNT": route_count("other_search_json_responses"),
+        "ROUTE_PARSED_MODEL_COUNT": route_count("parsed_route_models"),
+        "ROUTE_FILTER_MATCH_COUNT": route_count("matched_filter_routes"),
+        "ROUTE_KEYWORD_MATCH": route_flag("last_request_keyword_matches"),
+        "ROUTE_CATEGORY_QUERY_MATCH": route_flag("last_request_category_matches"),
+        "ROUTE_AVAILABLE_QUERY_MATCH": route_flag(
+            "last_request_availability_matches"),
+        "ROUTE_PRICE_QUERY_MATCH": route_flag("last_request_price_matches"),
+        "ROUTE_SERVER_SEARCH_REGION_MATCH": route_flag(
+            "last_route_search_region_matches"),
+        "ROUTE_SERVER_FILTER_REGION_MATCH": route_flag(
+            "last_route_filter_region_matches"),
+        "ROUTE_RESPONSE_REGION_QUERY_MISSING": route_flag(
+            "last_request_region_missing"),
         "FRESH_REGION_AUTHORITY_STATUS": authority_status,
         "FRESH_REGION_UI_SOURCE": ui_source,
         "FRESH_REGION_ROUTE_IDS_MATCH": (
