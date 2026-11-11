@@ -506,3 +506,35 @@ a final/confirmed target or a safe follow-up click.
 
 This instrument performs no new UI actions or network requests and
 retains existing region, SHA, filter, stock, privacy and robots gates.
+
+## Live #25: initial dialog fingerprint scope ambiguous — fixed in subsequent PR
+
+Owner-approved [live #25](https://github.com/mozzibara/auto-daangn/actions/runs/43026448906)
+ran on `main` commit `26c53c7986cecedde18586a2f40b0e3737433eec`.
+The original dialog node disappeared after an actual trusted click, while a
+visible dialog remained; `REPLACED_DIALOG_UNCLASSIFIED` was the correct
+fail-closed diagnostic classification. The independent server region ID,
+selected region control and request query still did not match the target,
+and there were zero detail visits.
+
+**Observation error in the new stage probe:** the first visible
+`[role=dialog]` had zero visible buttons/inputs at all three checkpoints,
+while the actual clicked candidate was a `BUTTON` inside a dialog.
+The probe selected the **first** visible dialog in document order, without
+establishing that it contained the clicked candidate. These zero counts
+cannot be interpreted as an empty choice step.
+
+The corrected read-only probe enumerates a bounded set of dialogs,
+including wrappers whose own CSS box is absent but whose children are
+visible. It deduplicates controls in nested dialogs and first selects
+the *nearest dialog ancestor* of the unique visible target candidate;
+otherwise the nearest dialog of the unique visible region search input;
+otherwise a uniquely most-interactive dialog as a marked fallback.
+It reports the fixed-enum `dialog_scope` so results can be interpreted
+according to provenance. If multiple candidates remain, `AMBIGUOUS`
+prevents the probe from inventing structural certainty. It never adds
+a click or promotes locality.
+
+**The live #25 logs remain valid for clicking, DOM replacement and
+lack of region commit, but its dialog-internal zero counts are not
+valid evidence that a separate stage lacks any controls.**
