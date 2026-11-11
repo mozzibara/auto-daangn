@@ -823,3 +823,38 @@ fresh Route, visible selected-control and robots/approval checks.
 If the first Enter still produces OTHER, native modality is not
 sufficient to fix this particular SPA state; do not loop arbitrary
 UI actions.
+
+## Live #37: native keyboard activation of the *first* stable choice also fails to commit
+
+Approved [live #37](https://github.com/mozzibara/auto-daangn/actions/runs/43118284491)
+used the original unique target region option after the same verified
+API+DOM readiness. Instead of pointer-click, Playwright sent
+`press('Enter')` **once**. The target received an actual trusted
+`CLICK_TARGET` and bubbled `CLICK_DOCUMENT`, with zero additional
+clicks. The same transient 47-button suggestion list appeared and
+later disappeared, leaving no region choice or login/confirm
+action; search/filter Route IDs and selected top-level control
+remained OTHER. Thus the original pointer blur/mouse modality is
+**not sufficient to explain the failure**.
+
+### Early fail-closed boundary (no false-positive region authorization)
+
+After the existing single controlled region selection and settled
+first-party Route, classify its matched region IDs and actual selected
+UI **before opening the filter panel**. If and only if a valid, fresh
+browser-emitted Route reports search/filter region BOTH OTHER and
+the target selected-region control is explicitly absent, mark
+`OBSERVED_WRONG_REGION`, report `EARLY_REGION_UNCOMMITTED`,
+and stop as `REGION_MISMATCH`. Unknown/ambiguous, no fresh Route or
+mixed UI/Route observations remain unverified under existing gates.
+This prevents needless filter interactions and any wrong-region
+candidate promotion while preserving independent region, URL,
+search, category, stock and signed-artifact proof.
+
+No amount of genuine click events proves the site accepted
+the chosen region in these observed unauthenticated Chromium
+sessions. Root attribution to login, website state handling or
+other environment-specific UX is **not proven**. A manual
+owner-controlled ordinary-browser comparison or a different
+officially permitted source would be required to distinguish them,
+rather than making arbitrary third clicks or bypassing robots.
