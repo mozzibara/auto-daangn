@@ -178,42 +178,11 @@ class TestGate(unittest.TestCase):
         self.assertNotIn("raw_cookie",blob)
 
 
-class TestHistoryRegression(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls):
-        cls.ref = cli.evidence_reference(Path(__file__).parents[1]/"evidence"/"reference_runs.json")
-        cls.byver={r["version"]:r for r in cls.ref}
-
-    def test_all_prior_versions_available(self):
-        self.assertEqual(set(self.byver), {"4.1", "4.2", "4.3", "4.3.1", "4.3.2"})
-
-    def test_v43_initial_four_samples_quarantined(self):
-        x=g.apply_gate(self.byver["4.3"])
-        self.assertEqual(len(x["collisions"]),1)
-        self.assertEqual(x["counts"]["QUARANTINED_CROSS_REGION_IDENTICAL_COLD_SET"],4)
-
-    def test_v431_initial_two_samples_quarantined(self):
-        x=g.apply_gate(self.byver["4.3.1"])
-        self.assertEqual(len(x["collisions"]),1)
-        self.assertEqual(x["counts"]["QUARANTINED_CROSS_REGION_IDENTICAL_COLD_SET"],2)
-
-    def test_v432_asancold_outlier(self):
-        x=g.apply_gate(self.byver["4.3.2"])
-        self.assertEqual(len(x["collisions"]),0)
-        self.assertEqual(x["counts"]["QUARANTINED_COLD_OR_SWITCH_OUTLIER"],1)
-        bad=[d for d in x["decisions"] if d["verdict"]=="QUARANTINED_COLD_OR_SWITCH_OUTLIER"]
-        self.assertEqual(bad[0]["region"],"asan")
-
-    def test_prior_versions_same_region_warm_replicate(self):
-        for version in ("4.3.1","4.3.2"):
-            x=g.apply_gate(self.byver[version])
-            self.assertGreater(x["counts"].get("LIMITED_ACCEPT_REGIONAL_LISTING_SET",0),0)
-
-    def test_reference_does_not_embed_raw_urls(self):
-        blob=(Path(__file__).parents[1]/"evidence"/"reference_runs.json").read_text(encoding="utf-8")
-        self.assertNotIn("https://www.daangn.com/kr/buy-sell/",blob)
-        self.assertNotIn("sessionStorage",blob)
-        self.assertNotIn("Set-Cookie",blob)
+# The original private repository also tested historic run-to-run matching
+# against evidence/reference_runs.json. That file contains run-scoped listing
+# fingerprints and must not become a public CI fixture. The synthetic
+# collision/outlier/independent-replication cases above cover the algorithm
+# without importing historical user observations.
 
 
 if __name__=="__main__":
