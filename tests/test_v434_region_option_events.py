@@ -194,9 +194,11 @@ class PublicFailureReportTests(unittest.TestCase):
                 "region_picker": {"navigation_trace": {
                     "dialog_transition": "NEW_DIALOG_WITH_CHANGED_CONTROLS",
                     "checkpoints": {"BEFORE_CLICK": {
+                        "dialog_scope": "TARGET_CANDIDATE",
                         "dialog_heading": "SEARCH", "dialog_search_inputs": 1,
                         "dialog_has_labelledby": True},
-                        "AFTER_SETTLE": {"dialog_heading": "PICK_REGION",
+                        "AFTER_SETTLE": {"dialog_scope": "MOST_INTERACTIVE",
+                            "dialog_heading": "PICK_REGION",
                             "dialog_search_inputs": 0,
                             "dialog_has_back_action": True}},
                     "option_event": {**event, "secret_url": "PRIVATE_SECRET_URL"}}}
@@ -208,6 +210,10 @@ class PublicFailureReportTests(unittest.TestCase):
                              "CLICK_DELIVERED_NO_COMMIT")
             self.assertEqual(output["NAV_TRACE_DIALOG_TRANSITION"],
                              "NEW_DIALOG_WITH_CHANGED_CONTROLS")
+            self.assertEqual(output["NAV_BEFORE_CLICK_DIALOG_SCOPE"],
+                             "TARGET_CANDIDATE")
+            self.assertEqual(output["NAV_AFTER_SETTLE_DIALOG_SCOPE"],
+                             "MOST_INTERACTIVE")
             self.assertEqual(output["NAV_BEFORE_CLICK_DIALOG_HEADING"], "SEARCH")
             self.assertEqual(output["NAV_AFTER_SETTLE_DIALOG_HEADING"], "PICK_REGION")
             self.assertEqual(output["NAV_AFTER_SETTLE_DIALOG_SEARCH_INPUTS"], "0")
