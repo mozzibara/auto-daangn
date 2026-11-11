@@ -16,6 +16,7 @@ _URL_VALUES = frozenset(("EXPECTED", "OTHER", "MISSING", "INVALID"))
 _CONTROL = frozenset(("TARGET_VISIBLE", "OTHER_VISIBLE", "NOT_VISIBLE",
                      "AMBIGUOUS", "UNOBSERVABLE"))
 _DIALOG = frozenset(("OPEN", "CLOSED", "UNOBSERVABLE"))
+_CONFIRM = frozenset(("VISIBLE", "NOT_VISIBLE", "AMBIGUOUS", "UNOBSERVABLE"))
 _INPUT = frozenset(("EXPECTED", "OTHER", "MISSING", "UNOBSERVABLE"))
 _EVENT = frozenset(("SEARCH_FETCH", "DOCUMENT_REQUEST", "MAIN_FRAME_NAVIGATED"))
 _MAX_EVENTS = 12
@@ -38,8 +39,18 @@ _CHECK_UI_JS = r"""meta => {
   const controlsState=controls.length>1?'AMBIGUOUS':
     controls.length===0?'NOT_VISIBLE':
     target.length===1?'TARGET_VISIBLE':'OTHER_VISIBLE';
-  const dialogs=[...document.querySelectorAll('[role="dialog"],[role="listbox"]')]
+  const dialogs=[...document.querySelectorAll('[role="dialog"]')]
     .filter(seen).slice(0,20);
+  const lists=[...document.querySelectorAll('[role="listbox"]')]
+    .filter(seen).slice(0,20);
+  // A button's *exact* visible action category is used; never export its text.
+  const actionButtons=dialogs.flatMap(d => [...d.querySelectorAll('button')])
+    .filter(seen).filter(e => {
+      const t=(e.textContent||'').replace(/\\s+/g,' ').trim();
+      const a=(e.getAttribute('aria-label')||'').trim();
+      return /^(확인|완료|적용|선택|설정|다음|이 동네로 설정|선택하기)$/.test(t) ||
+             /^(확인|완료|적용|선택|설정|다음)$/.test(a);
+    }).slice(0,20);
   const inputs=[...document.querySelectorAll(
     'input[placeholder*="지역"],input[placeholder*="동네"],[role="dialog"] input')]
     .filter(seen).slice(0,20);
@@ -47,10 +58,15 @@ _CHECK_UI_JS = r"""meta => {
   return {
     control:controlsState,
     dialog:dialogs.length?'OPEN':'CLOSED',
+    listbox:lists.length?'OPEN':'CLOSED',
+    confirm_action:actionButtons.length===0?'NOT_VISIBLE':
+      actionButtons.length===1?'VISIBLE':'AMBIGUOUS',
     input:inputs.length===0?'MISSING':
       typed.length===1?'EXPECTED':'OTHER',
     visible_controls:Math.min(controls.length,20),
     visible_dialogs:Math.min(dialogs.length,20),
+    visible_listboxes:Math.min(lists.length,20),
+    visible_confirm_actions:Math.min(actionButtons.length,20),
     visible_inputs:Math.min(inputs.length,20)
   };
 }"""
@@ -92,6 +108,12 @@ def _safe_checkpoint(value) -> dict:
                    and obj["control"] in _CONTROL else "UNOBSERVABLE",
         "dialog": obj.get("dialog") if type(obj.get("dialog")) is str
                   and obj["dialog"] in _DIALOG else "UNOBSERVABLE",
+        "listbox": obj.get("listbox") if type(obj.get("listbox")) is str
+                   and obj["listbox"] in _DIALOG else "UNOBSERVABLE",
+        "confirm_action": obj.get("confirm_action")
+                          if type(obj.get("confirm_action")) is str
+                          and obj["confirm_action"] in _CONFIRM
+                          else "UNOBSERVABLE",
         "input": obj.get("input") if type(obj.get("input")) is str
                  and obj["input"] in _INPUT else "UNOBSERVABLE",
         "url_region": url.get("region") if type(url.get("region")) is str
@@ -103,7 +125,8 @@ def _safe_checkpoint(value) -> dict:
                        and url["keyword"] in ("EXPECTED", "OTHER", "MISSING", "INVALID")
                        else "INVALID",
     }
-    for field in ("visible_controls", "visible_dialogs", "visible_inputs"):
+    for field in ("visible_controls", "visible_dialogs", "visible_listboxes",
+                  "visible_confirm_actions", "visible_inputs"):
         val = obj.get(field)
         result[field] = val if type(val) is int and 0 <= val <= 20 else -1
     return result
