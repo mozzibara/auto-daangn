@@ -83,7 +83,10 @@ def classify_browser_url(raw: str, region: dict) -> dict:
 def _safe_checkpoint(value) -> dict:
     obj = value if type(value) is dict else {}
     url = obj.get("url")
-    url = url if type(url) is dict else {}
+    if type(url) is not dict:
+        url = {"region": obj.get("url_region"),
+               "path": obj.get("url_path"),
+               "keyword": obj.get("url_keyword")}
     result = {
         "control": obj.get("control") if type(obj.get("control")) is str
                    and obj["control"] in _CONTROL else "UNOBSERVABLE",
