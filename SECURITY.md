@@ -6,7 +6,7 @@ Live collection is bounded, read-only and owner-approved. Do not bypass site acc
 
 **Pull requests:** Only offline tests run from untrusted pull requests. Do not introduce `pull_request_target` with checkout of untrusted code or grant write/secret access to pull-request jobs.
 
-**Capture signing:** Only the trusted owner-approved `main` workflow may access the optional Ed25519 signer Secret. Treat any exposure as a key-rotation incident. OCI must verify the independently pinned public key, exact producer repository/workflow, run identity, expected commit and ciphertext before import.
+**Capture signing:** The Ed25519 private signer is **required** before starting live capture. It must be stored only as the `V434_ATTEST_ED25519_KEY_B64` **Environment Secret** in `daangn-producer`, whose deployment branch policy permits `main` only. Owner approval and independent public-key matching are also required. A missing or mismatched key fails closed before Chromium starts; no unsigned live artifact is uploaded. Treat any exposure as a key-rotation incident. OCI must verify the independently pinned public key, exact producer repository/workflow, run identity, expected commit and ciphertext before import.
 
 **Credentials:** Configure secrets out of band and with least privilege. Never submit private credentials in an issue, pull request or support chat. No live secrets were migrated from the previous private repository.
 

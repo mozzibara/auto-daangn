@@ -39,6 +39,9 @@ jobs:
       group: auto-daangn-live-diagnostic
       cancel-in-progress: false
     runs-on: ubuntu-latest
+    # Only this manually approved job may request the signer environment.
+    # In GitHub Settings configure Selected deployment branches: main only.
+    environment: daangn-producer
     timeout-minutes: 25
     env:
       PYTHONUTF8: '1'
@@ -56,25 +59,18 @@ jobs:
         with:
           python-version: '3.13'
           cache: pip
-      - name: Install public browser and sealed-manifest cryptography
-        run: |
-          python -m pip install -r requirements.txt
-          python -m playwright install --with-deps chromium
-      - name: Fail closed on mismatched configured signer before public capture
+      - name: Install Python dependencies for offline signer verification
+        run: python -m pip install -r requirements.txt
+      - name: Fail closed on absent or mismatched signer before public capture
         shell: bash
         env:
           V434_ATTEST_ED25519_KEY_B64: ${{ secrets.V434_ATTEST_ED25519_KEY_B64 }}
-          CAPTURE_TEST_MODE: ${{ env.CAPTURE_TEST_MODE }}
         run: |
           if [ -z "$V434_ATTEST_ED25519_KEY_B64" ]; then
-            if [ "$CAPTURE_TEST_MODE" = "EPHEMERAL_REVIEWABLE_TEST" ]; then
-              echo 'Pre-OCI REVIEWABLE test requires configured Ed25519 signer.'
-              exit 1
-            fi
-            echo 'Signer secret not configured; capture stays ADVISORY.'
-          else
-            python -m scripts.verify_github_signer
+            echo 'PRODUCER_SIGNER_ENVIRONMENT_SECRET_NOT_CONFIGURED' >&2
+            exit 1
           fi
+          python -m scripts.verify_github_signer
       - name: Validate exact owner approval and one-time recipient public key
         if: env.CAPTURE_TEST_MODE != 'EPHEMERAL_REVIEWABLE_TEST'
         shell: bash
@@ -114,6 +110,8 @@ jobs:
         run: |
           python -m scripts.pre_oci_v434_ephemeral prepare \
             --temp-dir "$RUNNER_TEMP/v434_ephemeral"
+      - name: Install Chromium only after owner approval and signer verification
+        run: python -m playwright install --with-deps chromium
       - name: Run one robots-first read-only capture and seal links in memory
         id: secure
         shell: bash
@@ -132,12 +130,7 @@ jobs:
         shell: bash
         env:
           V434_ATTEST_ED25519_KEY_B64: ${{ secrets.V434_ATTEST_ED25519_KEY_B64 }}
-        run: |
-          if [ -z "$V434_ATTEST_ED25519_KEY_B64" ]; then
-            echo 'Producer attestation not configured; capture remains ADVISORY.'
-            exit 0
-          fi
-          python -m scripts.sign_v434_capture --output-dir v434_live_output
+        run: python -m scripts.sign_v434_capture --output-dir v434_live_output
       - name: Verify signed capture and temporary SQLite REVIEWABLE import
         if: env.CAPTURE_TEST_MODE == 'EPHEMERAL_REVIEWABLE_TEST' && steps.secure.outputs.exit_code == '0'
         shell: bash
@@ -169,7 +162,7 @@ jobs:
             echo "Secure title/link capture did not complete." >> "$GITHUB_STEP_SUMMARY"
           fi
       - name: Upload ONLY authenticated ciphertext and privacy-bounded metadata
-        if: always() && env.CAPTURE_TEST_MODE != 'EPHEMERAL_REVIEWABLE_TEST'
+        if: success() && env.CAPTURE_TEST_MODE != 'EPHEMERAL_REVIEWABLE_TEST' && steps.secure.outputs.exit_code == '0'
         uses: actions/upload-artifact@v4
         with:
           name: daangn-v434-sealed-links-${{ github.run_id }}

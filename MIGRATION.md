@@ -12,7 +12,7 @@
 
 1. Review the new repository Actions permissions. Set default workflow token permissions to **Read repository contents**. Require approval for external pull requests and protect `main`.
 2. Keep live `secure-links-v434.yml` capture **manual and owner-approved**. The `issue_comment` entrypoint is restricted to owner-authored exact commands on Issue #1.
-3. Provision `V434_ATTEST_ED25519_KEY_B64` as a new GitHub Actions Secret through the private owner-controlled channel. It is not copied automatically. Verify the signer using the manual `verify-v434-signer.yml` workflow **before any live capture**.
+3. Create GitHub Environment `daangn-producer` with **Selected deployment branch `main` only** and add **Environment Secret** `V434_ATTEST_ED25519_KEY_B64` (not a repository-wide secret). Verify the original private seed locally against the pinned public key, then run manual `verify-v434-signer.yml` **before any live capture**. See [`PUBLIC_SECURITY_SETUP.md`](PUBLIC_SECURITY_SETUP.md).
 4. Run the offline CI, synthetic OCI runtime, artifact-intake, cloud backup and AI query/Telegram analysis tests. They must not contact the marketplace or send real messages.
 5. Do **not** enable OCI Actions intake merely because CI is green. Obtain a real encrypted OCI Object Storage cloud readback, independently restore it outside OCI using the offline recovery private key, then record the verified baseline.
 
