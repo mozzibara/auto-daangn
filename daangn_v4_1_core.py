@@ -456,7 +456,8 @@ async def stable_page_snapshot(page, expected_term: str, settle_ms: int) -> dict
     return second
 
 
-async def ui_select_region(page, region: dict, *, on_before_select=None) -> dict:
+async def ui_select_region(page, region: dict, *, on_before_select=None,
+                           on_before_search=None) -> dict:
     steps = {"target": region["term"], "clicked_region_button": False,
              "selected_suggestion": False, "unique_region_option": False,
              "error": None, "start_url": sanitized_url(page.url),
@@ -472,6 +473,8 @@ async def ui_select_region(page, region: dict, *, on_before_select=None) -> dict
         if await inputs.count() == 0:
             steps["error"] = "region_input_not_found"
             return steps
+        if on_before_search is not None:
+            on_before_search()  # Observe the UI-generated suggestion API only.
         await inputs.first.fill(region["term"], timeout=4000)
         await page.wait_for_timeout(850)
         choices = page.locator('[role="option"], [role="listbox"] button, [role="dialog"] button, [role="dialog"] [role="option"]')
