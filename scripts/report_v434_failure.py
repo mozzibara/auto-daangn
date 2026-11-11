@@ -176,6 +176,24 @@ def classify(folder: Path) -> dict[str, str]:
         v = transition.get(field)
         return str(v) if type(v) is int and 0 <= v <= 20 else "UNKNOWN"
 
+    suggestion = transition.get("suggestion")
+    suggestion = suggestion if type(suggestion) is dict else {}
+    suggestion_states = {
+        "NO_RESOLVER_RESPONSE", "AMBIGUOUS_RESOLVER_RESPONSES",
+        "RESOLVER_SCHEMA_UNKNOWN", "NO_EXACT_CITY_TERM_MATCH",
+        "AMBIGUOUS_CITY_TERM_MATCH", "POST_CLICK_SEARCH_NOT_UNIQUE",
+        "UNIQUE_API_CANDIDATE_CORRELATED",
+    }
+    def suggestion_status():
+        value = suggestion.get("state")
+        return value if type(value) is str and value in suggestion_states else "UNKNOWN"
+    def suggestion_count(field):
+        value = suggestion.get(field)
+        return str(value) if type(value) is int and 0 <= value <= 20 else "UNKNOWN"
+    def suggestion_flag(field):
+        value = suggestion.get(field)
+        return "YES" if value is True else "NO" if value is False else "UNKNOWN"
+
     raw_outer = outer.get("status")
     if type(raw_outer) is str and raw_outer in OUTER_STATUSES:
         outer_code = raw_outer
@@ -338,6 +356,16 @@ def classify(folder: Path) -> dict[str, str]:
              "REGION_LOST_AT_FILTER_APPLY",
              "REGION_NOT_VERIFIED_AFTER_CLICK",
              "FILTER_APPLY_ROUTE_NOT_OBSERVABLE","NOT_OBSERVABLE"}),
+        "SUGGESTION_RESOLVER_STATUS": suggestion_status(),
+        "SUGGESTION_API_LOCATION_COUNT": suggestion_count("api_location_count"),
+        "SUGGESTION_EXACT_CITY_TERM_COUNT": suggestion_count(
+            "exact_city_term_candidate_count"),
+        "SUGGESTION_PRESET_ID_MATCH": suggestion_flag(
+            "preset_id_matches_candidate"),
+        "SUGGESTION_POST_CLICK_SERVER_ID_MATCH": suggestion_flag(
+            "candidate_matches_post_click_search_ids"),
+        "SUGGESTION_POST_CLICK_REGION_NAME_MATCH": suggestion_flag(
+            "post_click_name_matches_target"),
     }
 
 
