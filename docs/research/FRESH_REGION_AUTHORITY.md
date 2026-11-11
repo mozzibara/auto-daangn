@@ -472,3 +472,37 @@ No new live traffic beyond the existing workflow, login, cookie handling,
 challenge bypass or detail visits is permitted. A live event witness must
 be checked after cross-platform offline tests; site-side event outcomes
 are not established by synthetic mocks.
+
+## Approved live capture #23: actual trusted click; original dialog replaced
+
+One owner-approved robots-first run [#23](https://github.com/mozzibara/auto-daangn/actions/runs/43021744779)
+captured an actual trusted pointerdown/pointerup/target click, followed by
+document-level bubbling. `defaultPrevented=NO`, button HTML
+`type=button`, no `aria-haspopup`, `aria-expanded`,
+`aria-controls`, or `aria-label`, and the button was focusable.
+The clicked button disconnected from the DOM immediately. The **original
+dialog** remained visible immediately after clicking, then itself
+disconnected by settle time. At settle time, however, the independent
+whole-document UI observer still saw a *visible dialog* and a non-target
+top-level region control. Exactly one public search FETCH still omitted
+`in` and its fresh server locality fields remained OTHER.
+
+This establishes that **Playwright click-dispatch failure is ruled out**;
+the page performed a DOM transition after that button's actual click.
+It does not prove that the surviving dialog is a distinct selection
+stage, since a SPA could replace the original dialog node while
+re-rendering the same stage. A capped 20+ count of newly inserted
+buttons similarly cannot establish an additional selection step.
+
+The next distinct one-shot experiment compares categorical dialog
+*structure* at BEFORE_CLICK, AFTER_CLICK and AFTER_SETTLE: visible
+search inputs, target-matching buttons, selectables, selected-state
+controls, back-navigation affordance, button totals, focus, `aria-modal`,
+accessibility heading category and whether the original dialog was
+replaced. Raw headings, button labels, DOM, unknown identifiers and
+addresses are never exported. A replacement plus altered controls is
+reported as `NEW_DIALOG_WITH_CHANGED_CONTROLS`, **not** automatically
+a final/confirmed target or a safe follow-up click.
+
+This instrument performs no new UI actions or network requests and
+retains existing region, SHA, filter, stock, privacy and robots gates.
