@@ -124,6 +124,7 @@ def classify(folder: Path) -> dict[str, str]:
         "LEGACY_REGION_URL_WITNESS", "UI_FRESH_ROUTE_REGION_VERIFIED",
         "REGION_URL_INVALID", "REGION_UI_NOT_VERIFIED",
         "FRESH_ROUTE_NOT_VERIFIED", "ROUTE_REGION_CONFLICT",
+        "ROUTE_REGION_METADATA_MISSING",
         "REGION_URL_RESPONSE_DISAGREEMENT",
         "REGION_OMISSION_WITHOUT_UI_SELECTION",
     }
@@ -244,6 +245,16 @@ def classify(folder: Path) -> dict[str, str]:
             "last_route_search_region_matches"),
         "ROUTE_SERVER_FILTER_REGION_MATCH": route_flag(
             "last_route_filter_region_matches"),
+        "ROUTE_SEARCH_REGION_FIELD": (
+            route_diag.get("last_route_search_region_state")
+            if route_diag.get("last_route_search_region_state")
+               in ("EXPECTED","MISSING","OTHER") else "UNKNOWN"
+        ),
+        "ROUTE_FILTER_REGION_FIELD": (
+            route_diag.get("last_route_filter_region_state")
+            if route_diag.get("last_route_filter_region_state")
+               in ("EXPECTED","MISSING","OTHER") else "UNKNOWN"
+        ),
         "ROUTE_RESPONSE_REGION_QUERY_MISSING": route_flag(
             "last_request_region_missing"),
         "FRESH_REGION_AUTHORITY_STATUS": authority_status,
