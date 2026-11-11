@@ -111,6 +111,22 @@ def classify(folder: Path) -> dict[str, str]:
         value = region_proof.get(field)
         return ("YES" if value is True else "NO" if value is False
                 else "UNKNOWN")
+    picker = first.get("region_picker")
+    picker = picker if type(picker) is dict else {}
+    picker_outcomes = {
+        "NOT_NEEDED", "NOT_ELIGIBLE", "ACCESS_BLOCKED",
+        "ROBOTS_DENIED", "VERIFIED", "UNVERIFIED",
+    }
+    picker_robots = {
+        "NOT_NEEDED", "ALLOWED", "DISALLOWED", "INVALID_REGION",
+        "ROBOTS_NON_200", "ROBOTS_TOO_LARGE", "ROBOTS_UNAVAILABLE",
+    }
+    def picker_label(field, allowed):
+        value = picker.get(field)
+        return value if type(value) is str and value in allowed else "UNKNOWN"
+    def picker_flag(field):
+        value = picker.get(field)
+        return "YES" if value is True else "NO" if value is False else "UNKNOWN"
 
     raw_outer = outer.get("status")
     if type(raw_outer) is str and raw_outer in OUTER_STATUSES:
@@ -179,6 +195,13 @@ def classify(folder: Path) -> dict[str, str]:
         "BASELINE_RENDERED_KEYWORD": classified("rendered", "keyword", statuses),
         "BASELINE_HTTP_URL_CHANGED": changed("response_changed_from_request"),
         "BASELINE_RENDERED_URL_CHANGED": changed("rendered_changed_from_response"),
+        "REGION_PICKER_OUTCOME": picker_label("outcome", picker_outcomes),
+        "REGION_PICKER_ROBOTS_PERMISSION": picker_label(
+            "robots_permission", picker_robots),
+        "REGION_PICKER_ATTEMPTED": picker_flag("attempted"),
+        "REGION_PICKER_BUTTON_CLICKED": picker_flag("button_clicked"),
+        "REGION_PICKER_OPTION_SELECTED": picker_flag("suggestion_selected"),
+        "REGION_PICKER_VERIFIED": picker_flag("verified_region_and_keyword"),
     }
 
 

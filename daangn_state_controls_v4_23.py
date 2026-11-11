@@ -552,6 +552,8 @@ def aggregate(rows):
            'capture_failure_code':failure_code,
            'baseline_region_url_evidence':row.get('baseline_region_url_evidence')
                if type(row.get('baseline_region_url_evidence')) is dict else {},
+           'region_picker':row.get('region_picker')
+               if type(row.get('region_picker')) is dict else {},
            'route_correlated':row.get('route_correlated') is True,
            'source_detail_count':detail_audit.get('page_visits'),
            'control_discovery':ctrl.get('status','NOT_OBSERVED'),

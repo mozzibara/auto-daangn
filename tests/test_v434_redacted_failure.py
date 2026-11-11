@@ -170,6 +170,30 @@ class RedactedCaptureFailureTests(unittest.TestCase):
         self.assertNotIn("SECRET", str(out))
         self.assertNotIn("example.org", str(out))
 
+    def test_region_picker_reports_only_fixed_statuses(self):
+        self.put("v423_public_controls_results.json", {
+            "evaluation": {"contexts": [{
+                "context": "cheonan_a",
+                "capture_failure_code": "REGION_MISMATCH",
+                "region_picker": {
+                    "attempted": True,
+                    "robots_permission": "ALLOWED",
+                    "button_clicked": True,
+                    "suggestion_selected": False,
+                    "verified_region_and_keyword": False,
+                    "outcome": "UNVERIFIED",
+                    "raw_error": "github_pat_MUST_NOT_DISPLAY",
+                },
+            }]}
+        })
+        out = classify(self.folder)
+        self.assertEqual(out["REGION_PICKER_OUTCOME"], "UNVERIFIED")
+        self.assertEqual(out["REGION_PICKER_ROBOTS_PERMISSION"], "ALLOWED")
+        self.assertEqual(out["REGION_PICKER_ATTEMPTED"], "YES")
+        self.assertEqual(out["REGION_PICKER_BUTTON_CLICKED"], "YES")
+        self.assertEqual(out["REGION_PICKER_OPTION_SELECTED"], "NO")
+        self.assertNotIn("MUST_NOT_DISPLAY", str(out))
+
     def test_missing_files_are_reported_without_failure(self):
         result = classify(self.folder)
         self.assertEqual(result["PUBLIC_SUMMARY_PRESENT"], "NO")
