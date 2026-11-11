@@ -89,6 +89,24 @@ def classify_picker_transition(region: dict, steps: dict, events: list,
     return result
 
 
+def classify_early_region_gate(picker: dict, visible_target_control) -> str:
+    """Block only independently observed target-locality mismatches.
+
+    Absence of evidence, ambiguous Routes and unknown UI are not treated
+    as proof of a *different* locality. They remain unverified and reach
+    the existing strict downstream gates.
+    """
+    row = picker if type(picker) is dict else {}
+    if row.get("post_click_route_status") != "FRESH_ROUTE_OBSERVED":
+        return "NOT_OBSERVABLE"
+    ids = (row.get("search_region_state"), row.get("filter_region_state"))
+    if ids == ("OTHER", "OTHER") and visible_target_control is False:
+        return "OBSERVED_WRONG_REGION"
+    if ids == ("EXPECTED", "EXPECTED") and visible_target_control is True:
+        return "LOCALITY_CORROBORATED_DIAGNOSTIC"
+    return "MIXED_OR_UNKNOWN"
+
+
 def classify_filter_transition(picker: dict, applied: dict) -> str:
     """Identify where locality stopped matching; no promotion or ID inference."""
     pre = picker if isinstance(picker, dict) else {}
