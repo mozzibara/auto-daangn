@@ -13,6 +13,7 @@ from app_v5.region_transition import (
     classify_early_region_gate, sanitize_picker_transition,
 )
 from scripts.report_v434_failure import classify
+from daangn_state_controls_v4_23 import aggregate
 
 REGION = core.BY_KEY["cheonan"]
 STEPS = {
@@ -90,6 +91,43 @@ class PickerTransitionTests(unittest.TestCase):
         self.assertEqual(
             classify_early_region_gate({}, False),
             "NOT_OBSERVABLE")
+
+    def test_true_aggregation_and_report_preserve_early_stop(self):
+        row={
+            "context":"cheonan_a",
+            "error_type":"REGION_MISMATCH",
+            "fresh_region_authority_status":"REGION_UI_NOT_VERIFIED",
+            "region_picker":{
+                "outcome":"EARLY_REGION_UNCOMMITTED",
+                "early_gate":"OBSERVED_WRONG_REGION",
+                "selected_region_button_visible":False,
+                "navigation_trace":{},
+                "private_unknown_field":"SECRET_OWNER_LISTING_URL",
+            }
+        }
+        safe=aggregate([row])
+        picked=safe["contexts"][0]["region_picker"]
+        self.assertEqual(picked["outcome"],"EARLY_REGION_UNCOMMITTED")
+        self.assertEqual(picked["early_gate"],"OBSERVED_WRONG_REGION")
+        self.assertEqual(
+            safe["contexts"][0]["fresh_region_authority_status"],
+            "REGION_UI_NOT_VERIFIED")
+        self.assertEqual(
+            safe["contexts"][0]["capture_failure_code"],
+            "REGION_MISMATCH")
+        self.assertNotIn("SECRET_OWNER",json.dumps(safe))
+        with TemporaryDirectory() as temp:
+            folder=Path(temp)
+            (folder/"v423_public_controls_results.json").write_text(
+                json.dumps({"evaluation":safe}),encoding="utf-8")
+            public=classify(folder)
+            self.assertEqual(public["REGION_PICKER_OUTCOME"],
+                             "EARLY_REGION_UNCOMMITTED")
+            self.assertEqual(public["REGION_PICKER_EARLY_GATE"],
+                             "OBSERVED_WRONG_REGION")
+            self.assertEqual(public["FRESH_REGION_AUTHORITY_STATUS"],
+                             "REGION_UI_NOT_VERIFIED")
+            self.assertNotIn("SECRET_OWNER",str(public))
 
     def test_public_early_gate_report_does_not_approve_locality(self):
         with TemporaryDirectory() as temp:

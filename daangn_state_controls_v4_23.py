@@ -606,8 +606,13 @@ def aggregate(rows):
                 'NOT_NEEDED','NOT_ELIGIBLE','ACCESS_BLOCKED','ROBOTS_DENIED',
                 'VERIFIED','UNVERIFIED','PENDING_FRESH_ROUTE',
                 'VERIFIED_FRESH_ROUTE','FRESH_REGION_PROOF_MISSING',
+                'EARLY_REGION_UNCOMMITTED',
                 'ALLOWED','DISALLOWED','INVALID_REGION','ROBOTS_NON_200',
                 'ROBOTS_TOO_LARGE','ROBOTS_UNAVAILABLE') else 'UNKNOWN'
+        v=raw_picker.get('early_gate')
+        safe_picker['early_gate']=(v if type(v) is str and v in (
+            'OBSERVED_WRONG_REGION','LOCALITY_CORROBORATED_DIAGNOSTIC',
+            'MIXED_OR_UNKNOWN','NOT_OBSERVABLE') else 'NOT_OBSERVABLE')
         raw_url=raw_picker.get('after_url_proof')
         raw_url=raw_url if type(raw_url) is dict else {}
         safe_picker['after_url_proof']={

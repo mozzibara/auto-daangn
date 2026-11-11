@@ -483,6 +483,7 @@ async def capture(browser,name,region,options,salt):
             result['region_picker']['early_gate']=gate
             if gate=='OBSERVED_WRONG_REGION':
                 result['region_picker']['outcome']='EARLY_REGION_UNCOMMITTED'
+                result['fresh_region_authority_status']='REGION_UI_NOT_VERIFIED'
                 raise RuntimeError('REGION_MISMATCH')
             # The public search page may omit `in` even after an actual UI
             # selection. A click is *provisional* until a fresh Route response
