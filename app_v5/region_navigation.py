@@ -46,7 +46,7 @@ _CHECK_UI_JS = r"""meta => {
   // A button's *exact* visible action category is used; never export its text.
   const actionButtons=dialogs.flatMap(d => [...d.querySelectorAll('button')])
     .filter(seen).filter(e => {
-      const t=(e.textContent||'').replace(/\\s+/g,' ').trim();
+      const t=(e.textContent||'').replace(/\s+/g,' ').trim();
       const a=(e.getAttribute('aria-label')||'').trim();
       return /^(확인|완료|적용|선택|설정|다음|이 동네로 설정|선택하기)$/.test(t) ||
              /^(확인|완료|적용|선택|설정|다음)$/.test(a);
