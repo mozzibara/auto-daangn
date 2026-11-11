@@ -98,6 +98,19 @@ def classify(folder: Path) -> dict[str, str]:
     raw_browser_exceptions = evaluation.get("browser_capture_exception_types")
     safe_browser_exception = ("YES" if type(raw_browser_exceptions) is dict
                               and bool(raw_browser_exceptions) else "NO")
+    first = contexts[0] if contexts and type(contexts[0]) is dict else {}
+    region_proof = first.get("baseline_region_url_evidence")
+    region_proof = region_proof if type(region_proof) is dict else {}
+    statuses = {"EXPECTED", "MISSING", "OTHER", "INVALID"}
+    params = {"PRESENT", "MISSING", "INVALID"}
+    def classified(stage, field, choices):
+        source = region_proof.get(stage)
+        val = source.get(field) if type(source) is dict else None
+        return val if type(val) is str and val in choices else "UNKNOWN"
+    def changed(field):
+        value = region_proof.get(field)
+        return ("YES" if value is True else "NO" if value is False
+                else "UNKNOWN")
 
     raw_outer = outer.get("status")
     if type(raw_outer) is str and raw_outer in OUTER_STATUSES:
@@ -156,6 +169,16 @@ def classify(folder: Path) -> dict[str, str]:
         "UPSTREAM_FIRST_FAILURE_CODE": first_failure,
         "UPSTREAM_SOURCE_VISITS": safe_visits,
         "UPSTREAM_BROWSER_EXCEPTION_PRESENT": safe_browser_exception,
+        "BASELINE_REQUEST_REGION": classified("requested", "region", statuses),
+        "BASELINE_HTTP_REGION": classified("response", "region", statuses),
+        "BASELINE_RENDERED_REGION": classified("rendered", "region", statuses),
+        "BASELINE_RENDERED_HOST": classified("rendered", "host", statuses),
+        "BASELINE_RENDERED_PATH": classified("rendered", "path", statuses),
+        "BASELINE_RENDERED_REGION_PARAMETER": classified(
+            "rendered", "region_parameter", params),
+        "BASELINE_RENDERED_KEYWORD": classified("rendered", "keyword", statuses),
+        "BASELINE_HTTP_URL_CHANGED": changed("response_changed_from_request"),
+        "BASELINE_RENDERED_URL_CHANGED": changed("rendered_changed_from_response"),
     }
 
 

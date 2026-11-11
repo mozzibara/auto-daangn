@@ -17,6 +17,7 @@ import json
 from pathlib import Path
 import secrets
 from types import SimpleNamespace
+from urllib.parse import parse_qs, urlsplit
 
 import daangn_v4_1_core as core
 import daangn_v4_4_gate as old_gate
@@ -235,6 +236,32 @@ def publishable_evidence(filter_evidence,inv,region_ok,matched_digest,dom_relati
                 (dom_relation or {}).get('matched_unique_count',0)>=1)
 
 
+def classify_baseline_region_urls(requested_url, response_url, rendered_url, expected_id):
+    """Categorical URL witness only; never persist raw URL, query or region slug."""
+    def check(url):
+        try:
+            parts = urlsplit(url)
+            region_id = core.region_id_in_url(url)
+            q = parse_qs(parts.query)
+            return {
+                'host': 'EXPECTED' if parts.hostname == 'www.daangn.com' else 'OTHER',
+                'path': 'EXPECTED' if parts.path == core.SEARCH_PATH else 'OTHER',
+                'region': ('EXPECTED' if region_id == expected_id else
+                           'MISSING' if region_id is None else 'OTHER'),
+                'region_parameter': 'PRESENT' if 'in' in q else 'MISSING',
+                'keyword': 'EXPECTED' if q.get('q') == ['HDD'] else 'OTHER',
+            }
+        except (ValueError, TypeError):
+            return {k:'INVALID' for k in ('host','path','region','region_parameter','keyword')}
+    return {
+        'requested': check(requested_url),
+        'response': check(response_url),
+        'rendered': check(rendered_url),
+        'response_changed_from_request': bool(response_url != requested_url),
+        'rendered_changed_from_response': bool(rendered_url != response_url),
+    }
+
+
 async def capture(browser,name,region,options,salt):
     context=await browser.new_context(locale='ko-KR',viewport={'width':1280,'height':850})
     page=await context.new_page()
@@ -247,12 +274,17 @@ async def capture(browser,name,region,options,salt):
             'route_count':None,'inventory':{'rows':[]},'candidate_gate':False,
             'error_type':None}
     try:
-        baseline=await page.goto(core.search_url('HDD',core.BY_KEY[region]),
+        baseline_requested=core.search_url('HDD',core.BY_KEY[region])
+        baseline=await page.goto(baseline_requested,
             wait_until='domcontentloaded',timeout=options.timeout*1000)
         if not baseline or baseline.status!=200:
             raise RuntimeError('BASELINE_HTTP_INVALID')
+        baseline_response_url=baseline.url
         await page.wait_for_timeout(options.settle_ms)
         await passive.drain()
+        result['baseline_region_url_evidence']=classify_baseline_region_urls(
+            baseline_requested,baseline_response_url,page.url,
+            core.BY_KEY[region]['id'])
         if core.region_id_in_url(page.url)!=core.BY_KEY[region]['id']:
             raise RuntimeError('REGION_MISMATCH')
         if (await render.snapshot(page))['restricted'] or passive.blocked:
