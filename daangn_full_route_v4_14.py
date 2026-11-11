@@ -28,6 +28,8 @@ import daangn_network_flow_v4_11 as network
 import daangn_render_gap_v4_12 as render
 import daangn_route_structure_v4_10 as shape
 from app_v5.region_transition import classify_picker_transition, classify_filter_transition
+from app_v5.region_suggestion import (RegionSuggestionObserver,
+                                       classify_suggestion_identity)
 
 
 def now():
@@ -328,6 +330,13 @@ async def capture(browser,name,region,options,salt):
                 raise RuntimeError('ACCESS_RESTRICTION')
             result['region_picker']['attempted']=True
             picker_net=v46.Network()
+            resolver=RegionSuggestionObserver(core.BY_KEY[region])
+            resolver_listener_armed=False
+            def arm_region_suggestion():
+                nonlocal resolver_listener_armed
+                if not resolver_listener_armed:
+                    page.on('response',resolver.on_response)
+                    resolver_listener_armed=True
             picker_listener_armed=False
             def arm_post_click_route():
                 nonlocal picker_listener_armed
@@ -336,15 +345,25 @@ async def capture(browser,name,region,options,salt):
                     picker_listener_armed=True
             try:
                 steps=await core.ui_select_region(
-                    page,core.BY_KEY[region],on_before_select=arm_post_click_route)
+                    page,core.BY_KEY[region],
+                    on_before_search=arm_region_suggestion,
+                    on_before_select=arm_post_click_route)
                 await page.wait_for_timeout(options.settle_ms)
+                await resolver.drain()
                 await picker_net.drain()
             finally:
+                if resolver_listener_armed:
+                    page.remove_listener('response',resolver.on_response)
                 if picker_listener_armed:
                     page.remove_listener('response',picker_net.hook)
+            if resolver.blocked:
+                raise RuntimeError('ACCESS_RESTRICTION')
             result['region_picker']['transition']=classify_picker_transition(
                 core.BY_KEY[region],steps,picker_net.events,
                 fetch_count=picker_net.search_fetch_responses)
+            result['region_picker']['transition']['suggestion']=(
+                classify_suggestion_identity(core.BY_KEY[region],
+                                            resolver.events,picker_net.events))
             result['region_picker']['button_clicked']=steps.get(
                 'clicked_region_button') is True
             result['region_picker']['suggestion_selected']=steps.get(
