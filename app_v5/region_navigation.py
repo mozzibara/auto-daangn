@@ -160,7 +160,10 @@ def sanitize_navigation_trace(value) -> dict:
         if type(kind) is not str or kind not in _EVENT:
             continue
         url = event.get("url")
-        url = url if type(url) is dict else {}
+        if type(url) is not dict:
+            url = {"region": event.get("url_region"),
+                   "path": event.get("url_path"),
+                   "keyword": event.get("url_keyword")}
         events.append({"kind": kind,
                        "url_region": url.get("region") if type(url.get("region")) is str
                        and url["region"] in _URL_VALUES else "INVALID",
