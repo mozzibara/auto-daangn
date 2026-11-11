@@ -34,6 +34,7 @@ from app_v5.region_navigation import (
 )
 from app_v5.region_option_events import RegionOptionEventWitness
 from app_v5.region_button_inventory import RegionButtonInventory
+from app_v5.region_readiness import RegionReadinessWitness
 from app_v5.region_suggestion import (RegionSuggestionObserver,
                                        classify_suggestion_identity)
 from app_v5.search_surface_probe import run_surface_probe, sanitize_surface_probe
@@ -341,6 +342,7 @@ async def capture(browser,name,region,options,salt):
             option_events=RegionOptionEventWitness(core.BY_KEY[region])
             button_inventory=RegionButtonInventory(core.BY_KEY[region])
             resolver=RegionSuggestionObserver(core.BY_KEY[region])
+            readiness=RegionReadinessWitness(core.BY_KEY[region],resolver)
             resolver_listener_armed=False
             def arm_region_suggestion():
                 nonlocal resolver_listener_armed
@@ -370,7 +372,8 @@ async def capture(browser,name,region,options,salt):
                     on_before_search=arm_region_suggestion,
                     on_before_select=before_exact_option_click,
                     on_after_select=after_exact_option_click,
-                    on_option_witness=arm_option_witnesses)
+                    on_option_witness=arm_option_witnesses,
+                    on_after_search_fill=lambda: readiness.await_ready(page))
                 await page.wait_for_timeout(options.settle_ms)
                 await nav_trace.checkpoint(page,'AFTER_SETTLE')
                 await option_events.checkpoint(page,'AFTER_SETTLE')
@@ -406,6 +409,7 @@ async def capture(browser,name,region,options,salt):
             nav_export['dialog_transition']=classify_dialog_stage_transition(
                 nav_export)
             nav_export['button_inventory']=button_inventory.export()
+            nav_export['pre_click_readiness']=readiness.export()
             result['region_picker']['navigation_trace']=sanitize_navigation_trace(
                 nav_export)
             result['region_picker']['button_clicked']=steps.get(
