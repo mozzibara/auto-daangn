@@ -106,6 +106,7 @@ _ARM_JS = r"""(el, meta) => {
       }
       if(rows.length>=160)break;
     }
+    if(rows.length>100)overflow=true;
     let original=false, other=false;
     for(const d of seenDialogs){if(d===root)original=true;else other=true;}
     const scope=original&&other?'ORIGINAL_AND_OTHER':original?'ORIGINAL_ONLY':
