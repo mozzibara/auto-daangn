@@ -685,3 +685,34 @@ the marketplace. A missing browser shared library or blocked browser
 download will still cause a fail-closed job; it will not weaken signer,
 owner approval, robots or any locality/listing gate. This is a
 runner-availability fix, not a behavioral bypass.
+
+## Live #33: the guarded follow-up target exists, pointer click cannot complete
+
+Owner-approved [run #33](https://github.com/mozzibara/auto-daangn/actions/runs/43051194077)
+confirmed that the new target-city BUTTON inside the original region
+dialog passes the exact identity/visibility/enabled/new-node guard:
+`SECOND_CHOICE_GUARD=READY`. However the second **Playwright
+ElementHandle.click** was attempted but did not complete:
+`SECOND_CHOICE_STATE=CLICK_FAILED`,
+`CLICK_ATTEMPTED=YES`, `CLICK_COMPLETED=NO`.
+No separate native event witness had been attached to the second
+button, so this does **not** prove that the pointer event was never
+delivered, nor does it establish whether detachment, movement or
+interception caused Playwright's error. The independent selected
+region control and fresh server Route still remained OTHER, with 0
+detail visits. The browser provisioner fix in [PR #32](https://github.com/mozzibara/auto-daangn/pull/32)
+successfully bypassed the earlier GitHub apt DNS failure by smoke
+testing headless Chromium without the unrelated apt/font download.
+
+The next controlled hypothesis uses a **single native keyboard Enter
+activation** on the same *guarded* actual HTML button instead of
+Playwright pointer-click actionability. This is a normal accessibility
+operation, not `dispatchEvent`, force click, credential bypass or
+unknown button selection. A passive click listener on the exact
+button records only fixed booleans `native_click_received` and
+`native_click_trusted`; any exception is reduced to a fixed
+`error_type` enum. Regardless of Enter delivery, only the fresh
+post-activation first-party Route and independently visible selected
+region control can ever authorize locality. This is a bounded,
+one-time experiment, not an assertion that pressing Enter is the
+website's intended workflow.

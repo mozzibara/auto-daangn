@@ -473,7 +473,8 @@ def classify(folder: Path) -> dict[str, str]:
     # This report never equates click receipt with server locality authority.
     second = navigation.get("second_choice")
     second = second if type(second) is dict else {}
-    second_states = {"NOT_ATTEMPTED","CLICKED","CANDIDATE_NOT_UNIQUE",
+    second_states = {"NOT_ATTEMPTED","CLICKED","KEYBOARD_ACTIVATED",
+                     "KEY_SENT_NO_NATIVE_CLICK","CANDIDATE_NOT_UNIQUE",
                      "GUARD_REJECTED","INVENTORY_NOT_ARMED",
                      "ELEMENT_MISSING","CLICK_FAILED"}
     guard_states = {"READY","DETACHED","WRONG_DIALOG","WRONG_TAG",
@@ -494,6 +495,21 @@ def classify(folder: Path) -> dict[str, str]:
         "SECOND_CHOICE_CLICK_COMPLETED": (
             "YES" if second.get("click_completed") is True
             else "NO" if second.get("click_completed") is False
+            else "UNKNOWN"),
+        "SECOND_CHOICE_ACTIVATION_MODE": (
+            "KEYBOARD_ENTER" if second.get("activation_mode") == "KEYBOARD_ENTER"
+            else "NONE" if second.get("activation_mode") == "NONE" else "UNKNOWN"),
+        "SECOND_CHOICE_NATIVE_CLICK_RECEIVED": (
+            second.get("native_click_received")
+            if second.get("native_click_received") in ("YES","NO","UNKNOWN")
+            else "UNKNOWN"),
+        "SECOND_CHOICE_NATIVE_CLICK_TRUSTED": (
+            second.get("native_click_trusted")
+            if second.get("native_click_trusted") in ("YES","NO","UNKNOWN")
+            else "UNKNOWN"),
+        "SECOND_CHOICE_ERROR_TYPE": (
+            second.get("error_type")
+            if second.get("error_type") in ("NONE","TIMEOUT","PLAYWRIGHT_ERROR","OTHER")
             else "UNKNOWN"),
         "SECOND_CHOICE_AUTHORIZES_LISTINGS": "NO",
     }

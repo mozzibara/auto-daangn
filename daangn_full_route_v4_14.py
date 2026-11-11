@@ -415,8 +415,10 @@ async def capture(browser,name,region,options,salt):
                 raise RuntimeError('ACCESS_RESTRICTION')
             # If a guarded second target click was performed, only the
             # subsequent fresh Route response may support region authority.
-            selected_network=(second_net if second_result.get(
-                'click_completed') is True else picker_net)
+            selected_network=(second_net if (
+                second_result.get('click_completed') is True or
+                second_result.get('native_click_received') == 'YES')
+                else picker_net)
             result['region_picker']['transition']=classify_picker_transition(
                 core.BY_KEY[region],steps,selected_network.events,
                 fetch_count=selected_network.search_fetch_responses)
