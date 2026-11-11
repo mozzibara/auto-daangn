@@ -19,16 +19,15 @@ GitHub Actions (public repository, Ubuntu Chromium)
          |   only sealed artifact and redacted counts, retention 1 day
          v
 OCI SECOND-INSTANCE (E2.1.Micro, ~1 GB RAM)
-  15-minute pull timer [DISABLED until backup gate]
+  15-minute pull timer [enable only after signed dry-run]
   -> validate GitHub actor/repo/workflow/main/commit/run
   -> verify ZIP + Ed25519 signature + pinned producer key
   -> decrypt in local private state -> SQLite WAL price history
   -> bounded candidate/price-change outbox
          |                                  |
-         +-> OCI Object Storage             +-> read-only review output
-             encrypted snapshot                  through future authenticated
-             + remote SHA256 readback             ChatGPT connector / user upload
-             + independent offline restore
+         +-> backups disabled by owner       +-> read-only review output
+             (future Drive/NAS option)            through future authenticated
+                                                   ChatGPT connector / user upload
          |
          +-> future outbound Telegram sendMessage / getUpdates
              notification + allowlisted feedback only
@@ -39,10 +38,10 @@ OCI SECOND-INSTANCE (E2.1.Micro, ~1 GB RAM)
 | Component | Does | Must not |
 |---|---|---|
 | GitHub Actions | Manual owner-approved browser, robots check, bounded evidence capture, encryption and Ed25519 attestation, *synthetic* tests | Keep seller/user raw data in public logs, artifacts or source; run unrestricted scheduled scraping |
-| OCI SECOND-INSTANCE | Small Python runtime, pull sealed artifacts, validate identity and signature, SQLite history and backups, outgoing notifications | Run Chromium, a local LLM, GPU inference, or an unauthenticated HTTP listener |
+| OCI SECOND-INSTANCE | Small Python runtime, pull sealed artifacts, validate identity and signature, SQLite ephemeral history, outgoing notifications | Run Chromium, a local LLM, GPU inference, or an unauthenticated HTTP listener |
 | ChatGPT | On-demand analysis of carefully scoped, authorized review records and user-provided context | Be treated as a durable database or a direct authenticated OCI client before an explicit connector is installed |
 | Telegram | Notifications and narrowly scoped user responses | Act as the authoritative state database or publish bot credentials |
-| Object Storage | Private AES-GCM encrypted offsite recovery objects and SHA256 cloud readback | Store plaintext database or the recovery private key |
+| Deferred backup | Google Drive / NAS are future options; no automatic backup currently runs | Enable cloud uploads without a new owner decision |
 
 ## P0: public repository / trust plane (current work)
 
@@ -73,7 +72,7 @@ OCI SECOND-INSTANCE (E2.1.Micro, ~1 GB RAM)
 ## P1: reliable encrypted-artifact ingestion
 
 **Current code** already verifies exact owner, repository, branch, event, SHA,
-trusted Ed25519 producer, exact ZIP members, backup gate and at-most-one import
+trusted Ed25519 producer, exact ZIP members and at-most-one import
 per polling operation. All of these checks must stay fail-closed.
 
 - Legacy design queried *all* successful live run history with
@@ -84,10 +83,14 @@ per polling operation. All of these checks must stay fail-closed.
 - The capture artifact expires after **one day**. The 48-hour API lookback
   does **not** extend artifact lifetime. Alert if a polling failure approaches
   the retention horizon. A 15-minute timer does not guarantee delivery during
-  outages or a failed backup gate.
-- Keep both backup gates: a verified independent restore baseline, and a fresh
-  offsite readback/verified snapshot after every signed import. If the gate fails,
-  stop importing; never bypass it to keep the pipeline green.
+  outages.
+- Backups and the offsite import gate are **disabled by explicit owner decision**.
+  Retain source/owner/Ed25519/ciphertext verification. Do not enable the
+  Object Storage timer. A later Google Drive/NAS backup requires new design/tests.
+- Verified current SOLD listings are removed transactionally together with
+  listing-specific observations, events and evidence. Explicitly unwanted
+  listings are deleted by the owner using the retention CLI. Missing search
+  results, JSON-LD stock hints and an inferred sale state never trigger deletion.
 - Exactly one new signed bundle per invocation caps SQLite/CPU peak usage on a
   one-gigabyte OCI instance. Intake, offsite backup and health systemd services
   now take the same bounded `flock` on a private local path, so they never
@@ -161,15 +164,15 @@ per polling operation. All of these checks must stay fail-closed.
   `main`, review workflow changes. No live secrets needed for G0.
 - **G1 (signer)**: independent signing-key match, owner-only manual workflow,
   correct new repository identity. No real capture before this.
-- **G2 (backup)**: real cloud PUT/GET + same ciphertext SHA256, private offline
-  restore and independent operator verification; keep original OCI database.
+- **G2 (backup)**: deferred by owner. No Object Storage upload or backup gate
+  is enabled; data can be lost on an instance failure.
 - **G3 (ingest)**: one exact approved capture, signed artifact, verified OCI
-  decryption and one idempotent SQLite import; confirm refreshed backup.
+  decryption and one idempotent SQLite import; no backup receipt required.
 - **G4 (alerts)**: synthetic Telegram adapter and feedback authorization tests
   before any real send; release alerts separately from ingestion.
 - **G5 (AI bridge)**: authenticated minimal read-only review access, privacy
   boundary tests and user-owned token rotation before unattended use.
 
-Rollback is source-only while state remains untouched: disable intake/backup
+Rollback is source-only while state remains untouched: disable intake
 timers, revert code to the verified checkout and preserve private SQLite,
 HMAC and recipient keys. Never reset `/var/lib/auto-daangn` to roll back code.

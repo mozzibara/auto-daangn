@@ -197,6 +197,44 @@ class HistoryTests(unittest.TestCase):
                 ValueError, "COMPLETED_JOB_CANNOT_ACCEPT_NEW_OBSERVATIONS"):
             self.store.ingest("run2", row("2026-11-10T03:00:00Z"))
 
+    def test_owner_forget_deletes_all_listing_linked_rows(self):
+        a = self.store.ingest("run1", row("2026-11-10T00:00:00Z"))
+        self.store.ingest("run2", row("2026-11-10T01:00:00Z", price=40000))
+        other = self.store.ingest("run3", row(
+            "2026-11-10T02:00:00Z", canonical_url=URL_OTHER))
+        result = self.store.forget_listing(a["listing_key"])
+        self.assertTrue(result["deleted"])
+        self.assertEqual(result["observations_removed"], 2)
+        self.assertEqual(result["events_removed"], 1)
+        self.assertIsNone(self.store.get_listing(a["listing_key"]))
+        self.assertEqual(self.store.get_observations(a["listing_key"]), [])
+        self.assertEqual(self.store.get_events(a["listing_key"]), [])
+        self.assertIsNotNone(self.store.get_listing(other["listing_key"]))
+        self.assertFalse(self.store.forget_listing(a["listing_key"])["deleted"])
+        with closing(sqlite3.connect(self.path)) as con:
+            self.assertEqual(con.execute("PRAGMA foreign_key_check").fetchall(), [])
+
+    def test_verified_sold_is_deleted_not_unverified_or_stock_only(self):
+        original = self.store.ingest("run1", row("2026-11-10T00:00:00Z"))
+        self.store.ingest("run2", row(
+            "2026-11-10T01:00:00Z", stock_availability="OUT_OF_STOCK"))
+        self.assertIsNotNone(self.store.get_listing(original["listing_key"]))
+        sold = self.store.ingest("run3", row(
+            "2026-11-10T02:00:00Z", transaction_status="SOLD",
+            primary_status_verified=True, stock_availability="OUT_OF_STOCK"))
+        self.assertEqual(sold["listing_key"], original["listing_key"])
+        self.assertIsNone(self.store.get_listing(original["listing_key"]))
+        self.assertEqual(self.store.get_events(original["listing_key"]), [])
+        self.assertEqual(self.store.purge_verified_sold()["listings_deleted"], 0)
+
+    def test_invalid_forget_key_does_not_delete_records(self):
+        original = self.store.ingest("run1", row("2026-11-10T00:00:00Z"))
+        for invalid in ("../listing", "", original["listing_key"].upper()):
+            with self.subTest(invalid=invalid):
+                with self.assertRaisesRegex(ValueError, "INVALID_LISTING_KEY"):
+                    self.store.forget_listing(invalid)
+        self.assertIsNotNone(self.store.get_listing(original["listing_key"]))
+
     def test_bad_profile_or_job_references_rejected(self):
         with self.assertRaisesRegex(ValueError, "PROFILE_ID_CONFLICT"):
             self.store.create_profile("hdd-cheonan", name="different", keyword="HDD",

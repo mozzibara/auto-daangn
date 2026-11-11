@@ -1,8 +1,7 @@
 [Unit]
-Description=Auto Daangn pull authorized signed GitHub Actions artifacts (backup-gated)
+Description=Auto Daangn pull authorized signed GitHub Actions artifacts
 After=network-online.target
 Wants=network-online.target
-ConditionPathExists=/var/lib/auto-daangn/backup/offsite-verified.json
 ConditionPathExists=/var/lib/auto-daangn/keys/github-actions-read-token
 
 [Service]
@@ -10,8 +9,7 @@ Type=oneshot
 User=daangn
 Group=daangn
 WorkingDirectory=/opt/auto-daangn
-# Global private-state lock keeps the 1 GB OCI host from running backup, intake
-# and health jobs together; contention is bounded and recorded by systemd.
+# Global private-state lock serializes intake and private state operations on the 1 GB host.
 ExecStart=/usr/bin/flock -w 20 /var/lib/auto-daangn/db/oci-ops.lock /opt/auto-daangn/.venv/bin/python -m ops.oci.actions_intake poll --state-dir /var/lib/auto-daangn
 Environment=PYTHONUTF8=1
 UMask=0077
