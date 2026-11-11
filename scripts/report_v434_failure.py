@@ -208,7 +208,7 @@ def classify(folder: Path) -> dict[str, str]:
         obj = obj if type(obj) is dict else {}
         allowed = {
             "STATUS": ("status", {"NOT_RUN", "ROBOTS_DENIED", "HTTP_OK",
-                                 "HTTP_NON_200", "ACCESS_BLOCKED",
+                                 "HTTP_NON_200", "HTTP_REDIRECT", "ACCESS_BLOCKED",
                                  "REQUEST_ERROR", "BODY_ERROR"}),
             "SHAPE": ("shape", {"UNRECOGNIZED", "BODY_LIMIT", "MODERN_ROUTE",
                                "FLEAMARKET_API", "CHALLENGE",
