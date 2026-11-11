@@ -30,6 +30,7 @@ import daangn_route_structure_v4_10 as shape
 from app_v5.region_transition import classify_picker_transition, classify_filter_transition
 from app_v5.region_suggestion import (RegionSuggestionObserver,
                                        classify_suggestion_identity)
+from app_v5.search_surface_probe import run_surface_probe, sanitize_surface_probe
 
 
 def now():
@@ -560,6 +561,22 @@ async def capture(browser,name,region,options,salt):
                'ROUTE_LENGTH_MISMATCH','LOCAL_EXTRACTION_TRUNCATED'}
         result['status']='STOP_'+type(exc).__name__
         result['error_type']=reason if reason in known else type(exc).__name__
+        # Read-only diagnostic: independently compare three public search
+        # surfaces *only* after first target's locality proof fails.
+        # Robots checks run before every candidate path is visited. No
+        # observed item, guessed region or legacy page can satisfy the
+        # existing strict v4.34 capture / admission gates.
+        if (name == 'cheonan_a' and region == 'cheonan'
+                and reason in ('REGION_MISMATCH', 'FRESH_REGION_PROOF_MISSING')
+                and not passive.blocked):
+            try:
+                result['search_surface_probe'] = await run_surface_probe(
+                    browser, core.BY_KEY[region],
+                    timeout_ms=min(options.timeout * 1000, 20000))
+            except Exception:
+                result['search_surface_probe'] = {
+                    'robots': 'ROBOTS_UNAVAILABLE', 'blocked': False,
+                    'authorization': False, 'surfaces': {}}
     finally:
         await passive.drain()
         result['collector_errors']=passive.errors
@@ -638,7 +655,9 @@ def sanitized_context(row):
        'inventory':inv,
        'collector_errors':row.get('collector_errors'),
        'collector_overflow':row.get('collector_overflow'),
-       'access_blocked':row.get('access_blocked')}
+       'access_blocked':row.get('access_blocked'),
+       'search_surface_probe':sanitize_surface_probe(
+           row.get('search_surface_probe'))}
 
 
 def report(doc):
