@@ -252,6 +252,8 @@ def classify(folder: Path) -> dict[str, str]:
             ("listbox", {"OPEN", "CLOSED", "UNOBSERVABLE"}),
             ("confirm_action", {"VISIBLE", "NOT_VISIBLE", "AMBIGUOUS", "UNOBSERVABLE"}),
             ("input", {"EXPECTED", "OTHER", "MISSING", "UNOBSERVABLE"}),
+            ("dialog_scope", {"TARGET_CANDIDATE","REGION_SEARCH_INPUT",
+                              "MOST_INTERACTIVE","AMBIGUOUS","NONE","UNOBSERVABLE"}),
             ("dialog_heading", {"PICK_NEIGHBORHOOD","PICK_REGION","SEARCH",
                                 "TARGET","OTHER","MISSING","UNOBSERVABLE"}),
             ("dialog_focus", {"INPUT","BUTTON","OTHER","OUTSIDE",
