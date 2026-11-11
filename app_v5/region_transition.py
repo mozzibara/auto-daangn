@@ -24,6 +24,10 @@ def classify_picker_transition(region: dict, steps: dict, events: list,
     count = min(max(fetch_count, 0), 20) if type(fetch_count) is int else -1
     result = {
         "selection_clicked": selected,
+        "first_activation_mode": (
+            safe_steps.get("first_activation_mode")
+            if safe_steps.get("first_activation_mode") in
+            ("POINTER_CLICK","KEYBOARD_ENTER") else "UNOBSERVABLE"),
         "option_city_hint": safe_steps.get("option_city_hint") is True,
         "option_exact_term": safe_steps.get("option_exact_term") is True,
         "option_metadata": (safe_steps.get("option_metadata")
@@ -107,6 +111,7 @@ def classify_filter_transition(picker: dict, applied: dict) -> str:
 
 
 _PICKER_ENUMS = {
+    "first_activation_mode": {"POINTER_CLICK","KEYBOARD_ENTER","UNOBSERVABLE"},
     "option_metadata": {"OBSERVED", "UNAVAILABLE"},
     "option_data_id": {"EXPECTED", "OTHER", "MISSING"},
     "option_tag": {"BUTTON", "OTHER", "UNOBSERVABLE"},
