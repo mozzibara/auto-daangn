@@ -34,6 +34,43 @@ def _search_query(url: str, expected_keyword: str, expected_slug: str):
         return "INVALID", False
 
 
+def classify_region_correspondence(model: dict | None, region: dict) -> dict:
+    """Non-authorizing enum evidence of whether the server IDs and name agree.
+
+    Neither a matching display name nor two equal unknown region IDs upgrades
+    verified_region(). No unknown ID or raw region name leaves this function.
+    """
+    m = model if isinstance(model, dict) else {}
+    search_id = m.get("region_id")
+    filter_id = m.get("filter_region_id")
+    raw_name = m.get("search_region_name")
+    term = region["term"]
+    if not isinstance(raw_name, str) or not raw_name.strip():
+        name_state = "MISSING"
+    elif raw_name.strip() == term:
+        name_state = "EXACT"
+    elif term in raw_name:
+        name_state = "CONTAINS"
+    else:
+        name_state = "OTHER"
+    if search_id is None or filter_id is None:
+        ids_agree = "MISSING"
+    elif str(search_id) == str(filter_id):
+        ids_agree = "YES"
+    else:
+        ids_agree = "NO"
+    historical_id = str(region["id"])
+    both_other_equal = (ids_agree == "YES" and
+                        str(search_id) != historical_id)
+    return {
+        "search_region_name_state": name_state,
+        "server_region_ids_agree": ids_agree,
+        "historical_id_drift_candidate": bool(
+            both_other_equal and name_state in ("EXACT", "CONTAINS")),
+        "verified": False,  # This is diagnostic only.
+    }
+
+
 def verified_region(region: dict, page_url: str, route_event: dict | None,
                     ui_witness: dict | None, *,
                     picker_selected: bool = False, keyword: str = "HDD") -> dict:
