@@ -33,6 +33,16 @@ def classify_picker_transition(region: dict, steps: dict, events: list,
                            if safe_steps.get("option_data_id") in
                            ("EXPECTED", "OTHER", "MISSING") else "MISSING"),
         "option_still_visible": safe_steps.get("option_still_visible") is True,
+        "option_tag": (safe_steps.get("option_tag") if safe_steps.get("option_tag")
+                       in ("BUTTON", "OTHER") else "UNOBSERVABLE"),
+        "option_role": (safe_steps.get("option_role") if safe_steps.get("option_role")
+                        in ("OPTION","BUTTON","MISSING","OTHER") else "UNOBSERVABLE"),
+        "option_parent": (safe_steps.get("option_parent") if safe_steps.get("option_parent")
+                          in ("LISTBOX","DIALOG","OTHER") else "UNOBSERVABLE"),
+        "option_aria_selected": (
+            safe_steps.get("option_aria_selected")
+            if safe_steps.get("option_aria_selected") in ("TRUE","FALSE","MISSING","OTHER")
+            else "UNOBSERVABLE"),
         "post_click_search_fetch_count": count,
         "post_click_model_count": min(len(safe_events), 20),
         "post_click_route_status": "NO_FRESH_ROUTE",
@@ -99,6 +109,10 @@ def classify_filter_transition(picker: dict, applied: dict) -> str:
 _PICKER_ENUMS = {
     "option_metadata": {"OBSERVED", "UNAVAILABLE"},
     "option_data_id": {"EXPECTED", "OTHER", "MISSING"},
+    "option_tag": {"BUTTON", "OTHER", "UNOBSERVABLE"},
+    "option_role": {"OPTION", "BUTTON", "MISSING", "OTHER", "UNOBSERVABLE"},
+    "option_parent": {"LISTBOX", "DIALOG", "OTHER", "UNOBSERVABLE"},
+    "option_aria_selected": {"TRUE", "FALSE", "MISSING", "OTHER", "UNOBSERVABLE"},
     "post_click_route_status": {"SELECTION_NOT_CONFIRMED", "NO_FRESH_ROUTE",
                                 "AMBIGUOUS_FRESH_ROUTES", "FRESH_ROUTE_OBSERVED",
                                 "UNPARSED_POST_CLICK_ROUTE",

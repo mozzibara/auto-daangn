@@ -249,6 +249,8 @@ def classify(folder: Path) -> dict[str, str]:
             ("control", {"TARGET_VISIBLE", "OTHER_VISIBLE", "NOT_VISIBLE",
                          "AMBIGUOUS", "UNOBSERVABLE"}),
             ("dialog", {"OPEN", "CLOSED", "UNOBSERVABLE"}),
+            ("listbox", {"OPEN", "CLOSED", "UNOBSERVABLE"}),
+            ("confirm_action", {"VISIBLE", "NOT_VISIBLE", "AMBIGUOUS", "UNOBSERVABLE"}),
             ("input", {"EXPECTED", "OTHER", "MISSING", "UNOBSERVABLE"}),
             ("url_region", {"EXPECTED", "OTHER", "MISSING", "INVALID"}),
             ("url_path", {"EXPECTED", "OTHER", "INVALID"}),
@@ -408,6 +410,14 @@ def classify(folder: Path) -> dict[str, str]:
         "PICKER_OPTION_DATA_ID": transition_enum(
             "option_data_id", {"EXPECTED","OTHER","MISSING"}),
         "PICKER_OPTION_STILL_VISIBLE": transition_flag("option_still_visible"),
+        "PICKER_OPTION_TAG": transition_enum(
+            "option_tag", {"BUTTON","OTHER","UNOBSERVABLE"}),
+        "PICKER_OPTION_ROLE": transition_enum(
+            "option_role", {"OPTION","BUTTON","MISSING","OTHER","UNOBSERVABLE"}),
+        "PICKER_OPTION_PARENT": transition_enum(
+            "option_parent", {"LISTBOX","DIALOG","OTHER","UNOBSERVABLE"}),
+        "PICKER_OPTION_ARIA_SELECTED": transition_enum(
+            "option_aria_selected", {"TRUE","FALSE","MISSING","OTHER","UNOBSERVABLE"}),
         "PICKER_POST_CLICK_FETCH_COUNT": transition_count(
             "post_click_search_fetch_count"),
         "PICKER_POST_CLICK_MODEL_COUNT": transition_count(

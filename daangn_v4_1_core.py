@@ -464,6 +464,9 @@ async def ui_select_region(page, region: dict, *, on_before_select=None,
              "error": None, "start_url": sanitized_url(page.url),
              "option_metadata": "UNAVAILABLE", "option_city_hint": False,
              "option_exact_term": False, "option_data_id": "MISSING",
+             "option_tag": "UNOBSERVABLE", "option_role": "UNOBSERVABLE",
+             "option_parent": "UNOBSERVABLE",
+             "option_aria_selected": "UNOBSERVABLE",
              "option_still_visible": False}
     try:
         selector = page.get_by_role("button", name=re.compile(r"지역 선택"))
@@ -495,12 +498,21 @@ async def ui_select_region(page, region: dict, *, on_before_select=None,
             safe = await matching.first.evaluate("""(el, meta) => {
               const label=(el.textContent||'').replace(/\\s+/g,' ').trim().slice(0,160);
               const dataId=el.getAttribute('data-region-id');
+              const role=(el.getAttribute('role')||'').toLowerCase();
+              const selected=el.getAttribute('aria-selected');
               return {
                 option_metadata:'OBSERVED',
                 option_city_hint:label.includes(meta.city),
                 option_exact_term:label===meta.term,
                 option_data_id:!dataId?'MISSING':
-                  dataId===meta.expected?'EXPECTED':'OTHER'
+                  dataId===meta.expected?'EXPECTED':'OTHER',
+                option_tag:el.tagName==='BUTTON'?'BUTTON':'OTHER',
+                option_role:role==='option'?'OPTION':role==='button'?'BUTTON':
+                  !role?'MISSING':'OTHER',
+                option_parent:el.closest('[role="listbox"]')?'LISTBOX':
+                  el.closest('[role="dialog"]')?'DIALOG':'OTHER',
+                option_aria_selected:selected==='true'?'TRUE':
+                  selected==='false'?'FALSE':selected===null?'MISSING':'OTHER'
               };
             }""", {"city":region["label"],"term":region["term"],
                     "expected":region["id"]})
@@ -510,6 +522,13 @@ async def ui_select_region(page, region: dict, *, on_before_select=None,
                 steps["option_exact_term"]=safe.get("option_exact_term") is True
                 steps["option_data_id"]=safe.get("option_data_id") if safe.get(
                     "option_data_id") in ("EXPECTED","OTHER","MISSING") else "MISSING"
+                for field, allowed in (
+                    ("option_tag", ("BUTTON","OTHER")),
+                    ("option_role", ("OPTION","BUTTON","MISSING","OTHER")),
+                    ("option_parent", ("LISTBOX","DIALOG","OTHER")),
+                    ("option_aria_selected", ("TRUE","FALSE","MISSING","OTHER"))):
+                    value=safe.get(field)
+                    steps[field]=value if type(value) is str and value in allowed else "UNOBSERVABLE"
         except Exception:
             pass  # Unsupported markup is an unknown diagnostic, not authority.
         if on_before_select is not None:

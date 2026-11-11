@@ -103,6 +103,21 @@ class NavigationUrlTests(unittest.TestCase):
         self.assertEqual(second["events"][0]["url_path"], "EXPECTED")
         self.assertFalse(second["authorizes_listings"])
 
+    def test_dialog_listbox_and_action_are_independent(self):
+        raw = {"checkpoints": {"AFTER_SETTLE": {
+            **snap("OTHER_VISIBLE", dialog="OPEN", typed="MISSING"),
+            "listbox": "CLOSED", "confirm_action": "VISIBLE",
+            "visible_listboxes": 0, "visible_confirm_actions": 1,
+            "url": {"region": "MISSING", "path": "EXPECTED",
+                    "keyword": "EXPECTED"}}}}
+        result = sanitize_navigation_trace(raw)
+        self.assertEqual(result["checkpoints"]["AFTER_SETTLE"]["dialog"], "OPEN")
+        self.assertEqual(result["checkpoints"]["AFTER_SETTLE"]["listbox"], "CLOSED")
+        self.assertEqual(result["checkpoints"]["AFTER_SETTLE"]["confirm_action"], "VISIBLE")
+        self.assertFalse(result["authorizes_listings"])
+        again = sanitize_navigation_trace(result)
+        self.assertEqual(again["checkpoints"]["AFTER_SETTLE"]["confirm_action"], "VISIBLE")
+
     def test_malicious_raw_content_is_always_discarded(self):
         injected = {"commit_class": "https://secret.example/cookie=SECRET",
                     "events": [{"kind": "SEARCH_FETCH", "url_region": "MY_PASSWORD",
@@ -194,6 +209,8 @@ class PublicReportTests(unittest.TestCase):
             self.assertEqual(reported["NAV_TRACE_COMMIT_CLASS"],
                              "NO_VISIBLE_COMMIT_SERVER_OTHER")
             self.assertEqual(reported["NAV_AFTER_SETTLE_URL_REGION"], "MISSING")
+            self.assertEqual(reported["NAV_AFTER_SETTLE_LISTBOX"], "UNOBSERVABLE")
+            self.assertEqual(reported["NAV_AFTER_SETTLE_CONFIRM_ACTION"], "UNOBSERVABLE")
             self.assertEqual(reported["NAV_TRACE_EVENT_SEQUENCE"],
                              "SEARCH_FETCH:MISSING:EXPECTED")
             self.assertEqual(reported["NAV_TRACE_AUTHORIZES_LISTINGS"], "NO")
