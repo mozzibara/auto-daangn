@@ -111,9 +111,14 @@ class RouteBodies:
         expected=stage.get('matched_route_digest') or []
         if len(expected)!=1:
             return None
+        authority=stage.get('region_authority') or {}
+        allow_missing=bool(authority.get('verified') is True and
+                           authority.get('picker_selected') is True)
         candidates=[row for row in self.events
             if row['digest']==expected[0] and
-            bands.matched_route(row,'cap_50000',core.BY_KEY[region])]
+            bands.matched_route(
+                row,'cap_50000',core.BY_KEY[region],
+                allow_missing_region_url=allow_missing)]
         return candidates[0] if len(candidates)==1 else None
 
 
@@ -337,18 +342,20 @@ async def capture(browser,name,region,options,salt):
                         })""",core.BY_KEY[region]['term']))
             except Exception:
                 result['region_picker']['selected_region_button_visible']=False
-            valid=(
+            # The public search page may omit `in` even after an actual UI
+            # selection. A click is *provisional* until a fresh Route response
+            # AND a visible selected-region control corroborate both IDs.
+            provisionally_valid=(
                 steps.get('selected_suggestion') is True
                 and now_proof['rendered']['host']=='EXPECTED'
                 and now_proof['rendered']['path']=='EXPECTED'
-                and now_proof['rendered']['region']=='EXPECTED'
+                and now_proof['rendered']['region'] in ('EXPECTED','MISSING')
                 and now_proof['rendered']['keyword']=='EXPECTED'
                 and not passive.blocked
             )
-            result['region_picker']['verified_region_and_keyword']=valid
             result['region_picker']['outcome']=(
-                'VERIFIED' if valid else 'UNVERIFIED')
-            if not valid:
+                'PENDING_FRESH_ROUTE' if provisionally_valid else 'UNVERIFIED')
+            if not provisionally_valid:
                 raise RuntimeError('REGION_MISMATCH')
         if (await render.snapshot(page))['restricted'] or passive.blocked:
             raise RuntimeError('ACCESS_RESTRICTION')
@@ -365,7 +372,9 @@ async def capture(browser,name,region,options,salt):
         passive.phase='FILTER_APPLY'
         page.on('response',bodies.on_response)
         try:
-            stage,blocked,_=await bands.capture_apply(page,args,name,'target','cap_50000',salt)
+            stage,blocked,_=await bands.capture_apply(
+                page,args,name,'target','cap_50000',salt,
+                picker_selected=result['region_picker']['suggestion_selected'])
         finally:
             page.remove_listener('response',bodies.on_response)
             await bodies.drain()
@@ -374,9 +383,24 @@ async def capture(browser,name,region,options,salt):
             raise RuntimeError('ACCESS_RESTRICTION')
         filter_evidence=stage.get('filter_evidence') or {}
         result['filter_proof_status']=filter_evidence.get('status','UNVERIFIED')
+        result['fresh_region_authority_status']=stage.get(
+            'region_authority_status','UNKNOWN')
+        # This is the only alternate path to the old URL proof. Never let a
+        # stale Remix loader or a missing Route be interpreted as correct locality.
+        if result['region_picker']['suggestion_selected']:
+            region_verified=(stage.get('region_authority') or {}).get(
+                'verified') is True
+            result['region_picker']['verified_region_and_keyword']=region_verified
+            result['region_picker']['outcome']=(
+                'VERIFIED_FRESH_ROUTE' if region_verified
+                else 'FRESH_REGION_PROOF_MISSING')
+            if not region_verified:
+                raise RuntimeError('FRESH_REGION_PROOF_MISSING')
         ui_correlated=bool(stage.get('matched_route_count')==1 and
             stage.get('price_url_shape_observed') and stage.get('ui_selected') and
-            stage.get('region_ok') and core.region_id_in_url(page.url)==core.BY_KEY[region]['id'])
+            stage.get('region_ok') and
+            (result['region_picker']['suggestion_selected'] or
+             core.region_id_in_url(page.url)==core.BY_KEY[region]['id']))
         matched=bodies.matched(stage,region)
         if not matched or not ui_correlated or bodies.errors:
             raise RuntimeError('CORRELATED_ROUTE_MISSING')
@@ -468,7 +492,8 @@ async def capture(browser,name,region,options,salt):
     except Exception as exc:
         reason=str(exc)
         known={'BASELINE_HTTP_INVALID','REGION_MISMATCH','ACCESS_RESTRICTION',
-               'CORRELATED_ROUTE_MISSING','ROUTE_LENGTH_MISMATCH','LOCAL_EXTRACTION_TRUNCATED'}
+               'FRESH_REGION_PROOF_MISSING','CORRELATED_ROUTE_MISSING',
+               'ROUTE_LENGTH_MISMATCH','LOCAL_EXTRACTION_TRUNCATED'}
         result['status']='STOP_'+type(exc).__name__
         result['error_type']=reason if reason in known else type(exc).__name__
     finally:

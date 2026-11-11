@@ -383,6 +383,53 @@ async def get_snapshot(page) -> dict:
     return result
 
 
+async def observe_selected_region_control(page, region: dict) -> dict:
+    """Observe only a visible, localized region control, never page-wide text.
+
+    The result contains fixed booleans/counts, not HTML or seller/listing text.
+    A successful region-picker click alone is explicitly not enough.
+    """
+    try:
+        result = await page.evaluate(r"""term => {
+          const visible = e => {
+            const s = getComputedStyle(e);
+            return e.getClientRects().length > 0 &&
+                   s.display !== 'none' && s.visibility !== 'hidden';
+          };
+          const controls = [...document.querySelectorAll(
+              'button,[role="button"],[role="combobox"]')]
+              .filter(e => visible(e) &&
+                  !e.closest('article,[href*="/kr/buy-sell/"]'));
+          let matched = 0;
+          for (const e of controls.slice(0, 120)) {
+            const aria = (e.getAttribute('aria-label') || '').trim();
+            const text = (e.innerText || '').trim().replace(/\\s+/g,' ');
+            const value = (aria + ' ' + text).slice(0, 180);
+            const regionContext = /지역|동네/.test(aria) ||
+                  /지역 선택|동네 선택/.test(text) ||
+                  (/지역|동네/.test(
+                    (e.closest('[aria-label]')?.getAttribute('aria-label') || '')
+                  ));
+            if (value.includes(term) && regionContext) matched++;
+          }
+          return {verified: matched === 1,
+                  matching_controls: Math.min(matched, 3),
+                  classification: matched === 1 ? 'VISIBLE_REGION_CONTROL_MATCH'
+                      : matched === 0 ? 'REGION_CONTROL_NOT_OBSERVED'
+                      : 'AMBIGUOUS_REGION_CONTROLS'};
+        }""", region["term"])
+        return result if isinstance(result, dict) and result.get(
+            "classification") in (
+                "VISIBLE_REGION_CONTROL_MATCH",
+                "REGION_CONTROL_NOT_OBSERVED",
+                "AMBIGUOUS_REGION_CONTROLS") else {
+                    "verified": False,
+                    "classification": "REGION_CONTROL_NOT_OBSERVED"}
+    except Exception:
+        return {"verified": False,
+                "classification": "REGION_CONTROL_NOT_OBSERVED"}
+
+
 async def wait_for_route(bucket: dict, expected_id: str, timeout_seconds: float) -> Optional[dict]:
     """Wait for processed fetch JSON, not for boot-time Remix state."""
     end = asyncio.get_running_loop().time() + timeout_seconds

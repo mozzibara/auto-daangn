@@ -63,7 +63,8 @@ def classify(folder: Path) -> dict[str, str]:
     expected_contexts = ["cheonan_a", "asan_control", "cheonan_b"]
     safe_failures = {
         "NONE", "BASELINE_HTTP_INVALID", "REGION_MISMATCH",
-        "ACCESS_RESTRICTION", "CORRELATED_ROUTE_MISSING",
+        "FRESH_REGION_PROOF_MISSING", "ACCESS_RESTRICTION",
+        "CORRELATED_ROUTE_MISSING",
         "ROUTE_LENGTH_MISMATCH", "LOCAL_EXTRACTION_TRUNCATED",
         "BROWSER_EXCEPTION", "OTHER_STOP",
     }
@@ -116,7 +117,21 @@ def classify(folder: Path) -> dict[str, str]:
     picker_outcomes = {
         "NOT_NEEDED", "NOT_ELIGIBLE", "ACCESS_BLOCKED",
         "ROBOTS_DENIED", "VERIFIED", "UNVERIFIED",
+        "PENDING_FRESH_ROUTE", "VERIFIED_FRESH_ROUTE",
+        "FRESH_REGION_PROOF_MISSING",
     }
+    region_authorities = {
+        "LEGACY_REGION_URL_WITNESS", "UI_FRESH_ROUTE_REGION_VERIFIED",
+        "REGION_URL_INVALID", "REGION_UI_NOT_VERIFIED",
+        "FRESH_ROUTE_NOT_VERIFIED", "ROUTE_REGION_CONFLICT",
+        "REGION_URL_RESPONSE_DISAGREEMENT",
+        "REGION_OMISSION_WITHOUT_UI_SELECTION",
+    }
+    raw_authority = first.get("fresh_region_authority_status")
+    authority_status = (
+        raw_authority if type(raw_authority) is str
+        and raw_authority in region_authorities else "UNKNOWN"
+    )
     picker_robots = {
         "NOT_NEEDED", "ALLOWED", "DISALLOWED", "INVALID_REGION",
         "ROBOTS_NON_200", "ROBOTS_TOO_LARGE", "ROBOTS_UNAVAILABLE",
@@ -200,6 +215,7 @@ def classify(folder: Path) -> dict[str, str]:
         "BASELINE_RENDERED_KEYWORD": classified("rendered", "keyword", statuses),
         "BASELINE_HTTP_URL_CHANGED": changed("response_changed_from_request"),
         "BASELINE_RENDERED_URL_CHANGED": changed("rendered_changed_from_response"),
+        "FRESH_REGION_AUTHORITY_STATUS": authority_status,
         "REGION_PICKER_OUTCOME": picker_label("outcome", picker_outcomes),
         "REGION_PICKER_ROBOTS_PERMISSION": picker_label(
             "robots_permission", picker_robots),

@@ -23,6 +23,7 @@ import daangn_browser_v4_6 as v46
 import daangn_price_ladder_v4_7 as v47
 import daangn_v4_5_evidence as ev
 import daangn_v4_4_gate as gate
+from app_v5.region_proof import verified_region
 
 ROOT=Path(__file__).resolve().parent
 CAPS=v47.CAPS
@@ -58,12 +59,17 @@ def range_shape(value,minimum,maximum):
     return bool(m and (int(m.group(1)),int(m.group(2)))==(minimum,maximum))
 
 
-def matched_route(event,key,region):
+def matched_route(event,key,region,*,allow_missing_region_url=False):
     minimum,maximum=PROFILES[key]
     request=(event.get('public_request') or {})
     p=request.get('public_params') or {}
+    model=event.get('model') or {}
+    region_ok=(p.get('in')==region['slug'] or
+               (allow_missing_region_url and 'in' not in p and
+                str(model.get('region_id'))==region['id'] and
+                str(model.get('filter_region_id'))==region['id']))
     return bool(request.get('valid') and p.get('q')=='HDD' and
-                p.get('in')==region['slug'] and p.get('category_id')=='1' and
+                region_ok and p.get('category_id')=='1' and
                 p.get('only_on_sale')=='true' and
                 request.get('price_query_evidence',{}).get('unique') is True and
                 range_shape(p.get('price'),minimum,maximum))
@@ -101,7 +107,7 @@ def bounded_stage(stage,model,salt,key,ui=None):
     return stage
 
 
-async def capture_apply(page,args,name,region,key,salt):
+async def capture_apply(page,args,name,region,key,salt,*,picker_selected=False):
     a=profile_args(args,key)
     minimum,maximum=PROFILES[key]
     steps=[];net=v46.Network();page.on('response',net.hook)
@@ -114,15 +120,32 @@ async def capture_apply(page,args,name,region,key,salt):
     dom,boot=await v46.snap(page);observed_url=page.url
     ui=await v46.check_after(page,a,steps)
     parsed=ev.public_url(observed_url)
-    matched=[x for x in net.events if matched_route(x,key,a.regions[region])]
+    matched=[x for x in net.events if matched_route(
+        x,key,a.regions[region],allow_missing_region_url=picker_selected)]
     doc=bool(200 in net.document_status and parsed.get('valid'))
-    model=matched[-1]['model'] if matched else boot if doc else None
+    # The picker-based path cannot use the navigation's stale boot loader.
+    model=matched[-1]['model'] if matched else (
+        boot if doc and not picker_selected else None)
+    authority=None
+    if picker_selected:
+        # Only a unique fresh response observed after the actual Apply click
+        # may corroborate the visible selected region. A click alone is not proof.
+        ui_region=await core.observe_selected_region_control(
+            page,a.regions[region])
+        authority=verified_region(
+            a.regions[region],observed_url,
+            matched[0] if len(matched)==1 else None,ui_region,
+            picker_selected=True,keyword=a.keyword)
     proof=ev.validated_predicates(model,observed_url,a.regions[region]['id'],
         v46.ui_ok(selected,a) and v46.ui_ok(ui,a),bool(matched or doc),
         ui_observation_status=ui.get('observation_status'),
         expected=v46.expected_for(a),require_response_filters=True)
     stage=v46.stage(a,name,region,3,dom,model,observed_url,200,proof,
-        'spa_route' if matched else 'document' if doc else 'unmatched_route')
+        'spa_route' if matched else 'document' if doc else 'unmatched_route',
+        region_authority=authority)
+    stage['region_authority_status']=(authority or {}).get(
+        'status','LEGACY_REGION_URL_WITNESS')
+    stage['region_authority']=authority
     stage['id']=f'v48_filtered:{name}:{key}:apply'
     stage['matched_route_count']=len(matched)
     stage['unmatched_route_count']=len(net.events)-len(matched)

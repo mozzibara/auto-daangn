@@ -223,11 +223,21 @@ async def check_after(page,args,steps=None):
 async def snap(page):return await page.evaluate(core.JS_SNAPSHOT),await page.evaluate(JS_MODEL)
 
 
-def stage(args,name,region,step,dom,model,url,status=200,filter_evidence=None,transport='document'):
+def stage(args,name,region,step,dom,model,url,status=200,filter_evidence=None,
+          transport='document',*,region_authority=None):
     urls=ev.model_urls(model);visible=[u for v in dom.get('dom_visible',[]) if (u:=core.normalized_listing(v))]
     meta=region_of(args,region);rid=meta['id'];label=meta['term']
-    region_ok=bool(model and str(model.get('region_id'))==rid and str(model.get('filter_region_id'))==rid
-            and core.region_id_in_url(url)==rid and label in (dom.get('region_button') or ''))
+    model_region_ok=bool(model and str(model.get('region_id'))==rid
+                         and str(model.get('filter_region_id'))==rid)
+    if region_authority is None:
+        # Historical URL+visible-control proof. Never infer from the boot loader.
+        region_ok=bool(model_region_ok and core.region_id_in_url(url)==rid
+                       and label in (dom.get('region_button') or ''))
+    else:
+        # New evidence must come from a fresh, UI-triggered correlated Route.
+        # False or partial proof cannot fall back to legacy URL validation.
+        region_ok=bool(model_region_ok and isinstance(region_authority,dict)
+                       and region_authority.get('verified') is True)
     dom_ok=bool(visible and len(set(visible)&set(urls))/len(set(visible))>=.8)
     # Separate factual search-document integrity from filter applicability.
     # Missing filter proof is UNVERIFIED, not evidence of a corrupted response.
