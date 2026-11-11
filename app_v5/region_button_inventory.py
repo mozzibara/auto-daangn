@@ -147,7 +147,30 @@ _ARM_JS = r"""(el, meta) => {
       visible_target_buttons:cap(targets),region_like_buttons:cap(region),
       active_dialogs:cap(seenDialogs.size),groups,samples};
   };
-  document[key]={sample,stop(){delete document[key];}};
+  // Observe whether the *same* human-visible target/city choice was
+  // regenerated as a DIFFERENT native node in the original dialog.
+  // No DOM element or text is returned. This predicate never clicks.
+  const checkFollowup=(el,meta)=>{
+    if (!el?.isConnected || !root.isConnected) return 'DETACHED';
+    if(el.closest('[role="dialog"]')!==root) return 'WRONG_DIALOG';
+    if(el.tagName!=='BUTTON') return 'WRONG_TAG';
+    if(baseline.has(el)) return 'ORIGINAL_NODE';
+    if(!visible(el)||el.disabled||el.getAttribute('aria-disabled')==='true')
+      return 'NOT_INTERACTABLE';
+    const txt=(el.textContent||'').replace(/\\s+/g,' ').trim().slice(0,200);
+    if(!txt.includes(meta.term)||!txt.includes(meta.city))
+      return 'NOT_EXACT_TARGET_CITY';
+    const buttons=[...root.querySelectorAll('button')].filter(visible).slice(0,160);
+    const exact=buttons.filter(e=>{
+      const s=(e.textContent||'').replace(/\\s+/g,' ').trim().slice(0,200);
+      return s.includes(meta.term)&&s.includes(meta.city);
+    });
+    if(exact.length!==1||exact[0]!==el) return 'NOT_UNIQUE';
+    const newCount=buttons.filter(e=>!baseline.has(e)).length;
+    if(newCount<2) return 'NO_NEW_CANDIDATE_LIST';
+    return 'READY';
+  };
+  document[key]={sample,checkFollowup,stop(){delete document[key];}};
   return {armed:'ARMED',baseline:sample()};
 }"""
 
