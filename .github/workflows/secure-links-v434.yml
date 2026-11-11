@@ -188,6 +188,10 @@ jobs:
           Path('v434_private_runner.log').unlink(missing_ok=True)
           print('PRE_OCI_EPHEMERAL_FILES_PURGED')
           PY
+      - name: Print public-safe failure classification only
+        if: always() && steps.secure.outputs.exit_code != '0'
+        shell: bash
+        run: python -m scripts.report_v434_failure --output-dir v434_live_output
       - name: Fail closed on incomplete capture
         if: always() && steps.secure.outputs.exit_code != '0'
         run: |
