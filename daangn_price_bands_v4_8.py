@@ -23,7 +23,7 @@ import daangn_browser_v4_6 as v46
 import daangn_price_ladder_v4_7 as v47
 import daangn_v4_5_evidence as ev
 import daangn_v4_4_gate as gate
-from app_v5.region_proof import verified_region
+from app_v5.region_proof import verified_region, classify_region_correspondence
 
 ROOT=Path(__file__).resolve().parent
 CAPS=v47.CAPS
@@ -163,7 +163,13 @@ async def capture_apply(page,args,name,region,key,salt,*,picker_selected=False):
         # different from a contradiction with the known owner profile.
         return ('MISSING' if value is None else
                 'EXPECTED' if str(value)==expected_id else 'OTHER')
+    correspondence=classify_region_correspondence(
+        rm,a.regions[region])
     stage['region_route_observation']={
+        'server_region_name_state':correspondence['search_region_name_state'],
+        'server_region_ids_agree':correspondence['server_region_ids_agree'],
+        'historical_id_drift_candidate':correspondence[
+            'historical_id_drift_candidate'],
         'last_route_search_region_state':region_field_state(
             rm.get('region_id')),
         'last_route_filter_region_state':region_field_state(
