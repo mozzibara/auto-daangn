@@ -276,6 +276,76 @@ def classify(folder: Path) -> dict[str, str]:
             and path_state in {"EXPECTED", "OTHER", "INVALID"}):
             nav_sequence.append(kind + ":" + region_state + ":" + path_state)
 
+    # Option event evidence comes from the exact, uniquely clicked candidate.
+    # Export ONLY fixed classes/booleans/capped counts; never DOM or event objects.
+    option = navigation.get("option_event")
+    option = option if type(option) is dict else {}
+    option_attrs = option.get("attributes")
+    option_attrs = option_attrs if type(option_attrs) is dict else {}
+    option_steps = option.get("checkpoints")
+    option_steps = option_steps if type(option_steps) is dict else {}
+    option_fields = {}
+    attr_classes = {
+        "TAG": ("tag", {"BUTTON","OTHER","UNOBSERVABLE"}),
+        "ROLE": ("role", {"OPTION","BUTTON","MISSING","OTHER","UNOBSERVABLE"}),
+        "PARENT": ("parent", {"DIALOG","LISTBOX","OTHER","UNOBSERVABLE"}),
+        "HASPOPUP": ("haspopup", {"DIALOG","LISTBOX","MENU","TRUE","FALSE","MISSING","OTHER","UNOBSERVABLE"}),
+        "EXPANDED": ("expanded", {"TRUE","FALSE","MISSING","OTHER","UNOBSERVABLE"}),
+        "BUTTON_TYPE": ("button_type", {"BUTTON","SUBMIT","RESET","MISSING","OTHER","UNOBSERVABLE"}),
+        "DATA_STATE": ("data_state", {"OPEN","CLOSED","ACTIVE","INACTIVE","CHECKED","UNCHECKED","MISSING","OTHER","UNOBSERVABLE"}),
+        "ARIA_DISABLED": ("aria_disabled", {"TRUE","FALSE","MISSING","OTHER","UNOBSERVABLE"}),
+        "TAB_FOCUS": ("tab_focus", {"FOCUSABLE","NOT_FOCUSABLE","UNOBSERVABLE"}),
+        "ARIA_LABEL_RELATION": ("aria_label_relation", {"TARGET","CITY","OTHER","MISSING","UNOBSERVABLE"}),
+    }
+    for suffix, (field, choices) in attr_classes.items():
+        raw = option_attrs.get(field)
+        option_fields[f"OPTION_ATTR_{suffix}"] = raw if type(raw) is str and raw in choices else "UNKNOWN"
+    for field in ("has_aria_controls","has_aria_describedby","inside_form","native_disabled"):
+        option_fields[f"OPTION_ATTR_{field.upper()}"] = (
+            "YES" if option_attrs.get(field) is True else "NO")
+    enum_fields = {
+        "click_trusted": {"YES","NO","UNKNOWN"},
+        "default_prevented": {"YES","NO","UNKNOWN"},
+        "target_connected": {"YES","NO","UNKNOWN"},
+        "dialog_connected": {"YES","NO","UNKNOWN"},
+        "dialog_visible": {"YES","NO","UNKNOWN"},
+        "focus": {"OPTION","INSIDE_DIALOG","OUTSIDE_DIALOG","NONE","UNKNOWN"},
+        "expanded": {"TRUE","FALSE","MISSING","OTHER","UNKNOWN"},
+        "event_target": {"BUTTON","DESCENDANT","OTHER","UNKNOWN"},
+        "document_bubble": {"YES","NO","UNKNOWN"},
+    }
+    count_fields = ("child_mutations","attribute_mutations",
+                    "added_buttons","added_dialogs","added_inputs")
+    for step in ("AFTER_CLICK","AFTER_SETTLE"):
+        row = option_steps.get(step)
+        row = row if type(row) is dict else {}
+        for key, choices in enum_fields.items():
+            raw = row.get(key)
+            option_fields[f"OPTION_{step}_{key.upper()}"] = (
+                raw if type(raw) is str and raw in choices else "UNKNOWN")
+        for key in count_fields:
+            raw = row.get(key)
+            option_fields[f"OPTION_{step}_{key.upper()}"] = (
+                str(raw) if type(raw) is int and 0 <= raw <= 20 else "UNKNOWN")
+        seq = row.get("events")
+        seq = seq if type(seq) is list else []
+        option_fields[f"OPTION_{step}_EVENTS"] = ",".join(
+            v for v in seq[:8]
+            if type(v) is str and v in {
+                "POINTER_DOWN","POINTER_UP","CLICK_TARGET","CLICK_DOCUMENT"}) or "NONE"
+    status = option.get("purpose")
+    purposes = {
+        "NOT_OBSERVABLE","CLICK_EVENT_NOT_SEEN",
+        "COMMIT_CORROBORATED_DIAGNOSTIC","SECOND_STAGE_SIGNAL",
+        "CLICK_DELIVERED_NO_COMMIT","EVENT_OBSERVED_OUTCOME_UNKNOWN",
+    }
+    option_fields["OPTION_EVENT_PURPOSE"] = (
+        status if type(status) is str and status in purposes else "UNKNOWN")
+    option_fields["OPTION_EVENT_ARM_STATE"] = (
+        option.get("arm_state") if type(option.get("arm_state")) is str
+        and option["arm_state"] in {"ARMED","NOT_OBSERVABLE"} else "UNKNOWN")
+    option_fields["OPTION_EVENT_AUTHORIZES_LISTINGS"] = "NO"
+
     raw_outer = outer.get("status")
     if type(raw_outer) is str and raw_outer in OUTER_STATUSES:
         outer_code = raw_outer
@@ -473,6 +543,7 @@ def classify(folder: Path) -> dict[str, str]:
             "YES" if navigation.get("overflow") is True else "NO"),
         "NAV_TRACE_AUTHORIZES_LISTINGS": "NO",
         **nav_fields,
+        **option_fields,
         **surface_fields,
     }
 

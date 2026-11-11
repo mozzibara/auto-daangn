@@ -29,6 +29,7 @@ import daangn_render_gap_v4_12 as render
 import daangn_route_structure_v4_10 as shape
 from app_v5.region_transition import classify_picker_transition, classify_filter_transition
 from app_v5.region_navigation import RegionNavigationTrace, sanitize_navigation_trace
+from app_v5.region_option_events import RegionOptionEventWitness
 from app_v5.region_suggestion import (RegionSuggestionObserver,
                                        classify_suggestion_identity)
 from app_v5.search_surface_probe import run_surface_probe, sanitize_surface_probe
@@ -333,6 +334,7 @@ async def capture(browser,name,region,options,salt):
             result['region_picker']['attempted']=True
             picker_net=v46.Network()
             nav_trace=RegionNavigationTrace(core.BY_KEY[region])
+            option_events=RegionOptionEventWitness(core.BY_KEY[region])
             resolver=RegionSuggestionObserver(core.BY_KEY[region])
             resolver_listener_armed=False
             def arm_region_suggestion():
@@ -352,17 +354,23 @@ async def capture(browser,name,region,options,salt):
                 await nav_trace.checkpoint(page,'BEFORE_CLICK')
             async def after_exact_option_click():
                 await nav_trace.checkpoint(page,'AFTER_CLICK')
+                await option_events.checkpoint(page,'AFTER_CLICK')
             try:
                 steps=await core.ui_select_region(
                     page,core.BY_KEY[region],
                     on_before_search=arm_region_suggestion,
                     on_before_select=before_exact_option_click,
-                    on_after_select=after_exact_option_click)
+                    on_after_select=after_exact_option_click,
+                    on_option_witness=option_events.arm)
                 await page.wait_for_timeout(options.settle_ms)
                 await nav_trace.checkpoint(page,'AFTER_SETTLE')
+                await option_events.checkpoint(page,'AFTER_SETTLE')
                 await resolver.drain()
                 await picker_net.drain()
             finally:
+                # Always detach page-injected, read-only DOM listeners,
+                # including on a missing/ambiguous or failed option click.
+                await option_events.stop(page)
                 nav_trace.stop()
                 if resolver_listener_armed:
                     page.remove_listener('response',resolver.on_response)
@@ -376,9 +384,16 @@ async def capture(browser,name,region,options,salt):
             result['region_picker']['transition']['suggestion']=(
                 classify_suggestion_identity(core.BY_KEY[region],
                                             resolver.events,picker_net.events))
-            result['region_picker']['navigation_trace']=nav_trace.export(
-                post_click_region=result['region_picker']['transition'].get(
-                    'search_region_state','MISSING'))
+            region_state=result['region_picker']['transition'].get(
+                'search_region_state','MISSING')
+            nav_export=nav_trace.export(post_click_region=region_state)
+            selected_ui=(nav_export.get('checkpoints') or {}).get(
+                'AFTER_SETTLE') or {}
+            nav_export['option_event']=option_events.export(
+                server_region=region_state,
+                visible_control=selected_ui.get('control','UNOBSERVABLE'))
+            result['region_picker']['navigation_trace']=sanitize_navigation_trace(
+                nav_export)
             result['region_picker']['button_clicked']=steps.get(
                 'clicked_region_button') is True
             result['region_picker']['suggestion_selected']=steps.get(
