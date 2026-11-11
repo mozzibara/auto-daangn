@@ -44,7 +44,9 @@ class RouteBodies:
 
     def on_response(self, response):
         try:
-            if not core._is_search_route_response(response.url):
+            uri=urlsplit(response.url)
+            if (uri.scheme!='https' or uri.hostname!='www.daangn.com'
+                    or uri.path!=core.SEARCH_PATH):
                 return
             if response.status in core.BLOCK_STATUS:
                 self.blocked=True
@@ -413,9 +415,20 @@ async def capture(browser,name,region,options,salt):
         matched=bodies.matched(stage,region)
         if not matched or not ui_correlated or bodies.errors:
             raise RuntimeError('CORRELATED_ROUTE_MISSING')
-        structure=[e for e in passive.events if e['kind']=='SEARCH_ROUTE' and
-              e['phase']=='FILTER_APPLY' and e.get('status')==200]
-        if len(structure)<1 or structure[-1].get('response_shape',{}).get('search_route_count')!=matched['raw_count']:
+        # Historical _data routes are not the only possible browser-emitted
+        # first-party search JSON after Filter Apply. Match the exact body
+        # SHA with the independent v4.11 passive recorder, never the boot loader.
+        structure=[e for e in passive.events
+            if e.get('kind') in ('SEARCH_ROUTE','SEARCH_DOCUMENT')
+            and e.get('phase')=='FILTER_APPLY'
+            and e.get('resource_type') in ('fetch','xhr')
+            and e.get('status')==200
+            and e.get('body_sha256')==matched['digest']]
+        if len(structure)!=1:
+            raise RuntimeError('ROUTE_LENGTH_MISMATCH')
+        original_count=(structure[0].get('response_shape') or {}).get(
+            'search_route_count')
+        if original_count is not None and original_count!=matched['raw_count']:
             raise RuntimeError('ROUTE_LENGTH_MISMATCH')
         result['route_correlated']=True
         result['route_count']=matched['raw_count']
