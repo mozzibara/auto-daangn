@@ -85,6 +85,10 @@ def verified_region(region: dict, page_url: str, route_event: dict | None,
         status = "FRESH_ROUTE_NOT_VERIFIED"
     elif not request_valid:
         status = "REGION_URL_INVALID"
+    elif model.get("region_id") is None or model.get("filter_region_id") is None:
+        # A parsed search model may omit one or both region fields.
+        # Missing metadata is not equivalent to a verified wrong region.
+        status = "ROUTE_REGION_METADATA_MISSING"
     elif not ids_match:
         status = "ROUTE_REGION_CONFLICT"
     elif url_state != request_state:
