@@ -8,6 +8,7 @@ producer trust boundary and approval-only live capture workflow.
 from __future__ import annotations
 
 from pathlib import Path
+import json
 import unittest
 
 from app_v5.attestation import REPOSITORY
@@ -102,6 +103,26 @@ class PublicArchitectureContractTests(unittest.TestCase):
                     encoding="utf-8")
                 self.assertIn(lock, text)
                 self.assertIn("ReadWritePaths=/var/lib/auto-daangn", text)
+
+    def test_main_ruleset_contract_is_solo_ci_and_no_bypass(self):
+        ruleset = json.loads((ROOT / "ops/github/main-ruleset.json").read_text(
+            encoding="utf-8"))
+        self.assertEqual(ruleset["enforcement"], "active")
+        self.assertEqual(ruleset["conditions"]["ref_name"]["include"],
+                         ["refs/heads/main"])
+        self.assertEqual(ruleset["bypass_actors"], [])
+        rules = {rule["type"]: rule for rule in ruleset["rules"]}
+        self.assertTrue({"deletion", "non_fast_forward",
+                         "required_linear_history", "pull_request",
+                         "required_status_checks"} <= rules.keys())
+        self.assertEqual(rules["pull_request"]["parameters"][
+            "required_approving_review_count"], 0)
+        checks = rules["required_status_checks"]["parameters"][
+            "required_status_checks"]
+        self.assertEqual({x["context"] for x in checks}, {
+            "Python 3.13 / ubuntu-latest",
+            "Python 3.13 / windows-latest",
+        })
 
     def test_public_repo_has_no_private_runtime_artifacts(self):
         forbidden = (
