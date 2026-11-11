@@ -14,7 +14,7 @@
 2. Keep live `secure-links-v434.yml` capture **manual and owner-approved**. The `issue_comment` entrypoint is restricted to owner-authored exact commands on Issue #1.
 3. Create GitHub Environment `daangn-producer` with **Selected deployment branch `main` only** and add **Environment Secret** `V434_ATTEST_ED25519_KEY_B64` (not a repository-wide secret). Verify the original private seed locally against the pinned public key, then run manual `verify-v434-signer.yml` **before any live capture**. See [`PUBLIC_SECURITY_SETUP.md`](PUBLIC_SECURITY_SETUP.md).
 4. Run the offline CI, synthetic OCI runtime, artifact-intake, cloud backup and AI query/Telegram analysis tests. They must not contact the marketplace or send real messages.
-5. Do **not** enable OCI Actions intake merely because CI is green. Obtain a real encrypted OCI Object Storage cloud readback, independently restore it outside OCI using the offline recovery private key, then record the verified baseline.
+5. **Owner decision (2026-11-11): backups disabled.** Do not enable Object Storage backups or require offsite recovery before OCI Actions intake. Still require verified signer, CI, private-state and token checks, followed by one signed dry-run and controlled live intake.
 
 ## OCI SECOND-INSTANCE migration boundary
 
@@ -25,12 +25,12 @@ The new repository starts with an unrelated Git history. Do not use `git pull --
 Recommended operator-controlled cutover:
 
 1. Record existing systemd timer/service status and current commit. Disable `daangn-actions-intake.timer` and `daangn-object-storage-backup.timer` for cutover.
-2. Produce and independently test the encrypted offsite restore before cutover.
+2. Keep Object Storage backup disabled. Do not copy or reinitialize the private SQLite database or keyring during cutover.
 3. Clone this public repository to a **new** staging directory (for example `/opt/auto-daangn-public-stage`). Verify the expected public commit and installed Python dependencies independently.
 4. Review and adapt existing `/opt/auto-daangn` service expectations, then during a maintenance window switch the source checkout path; preserve the old checkout for rollback and **never overwrite** `/var/lib/auto-daangn`.
 5. Ensure the local OCI Actions-read credential is issued to read the new public repository if still used. The old Git-over-SSH Deploy Key is no longer necessary for a public HTTPS clone; retire it only after successful rollback-ready cutover.
-6. With verified recipient public key and producer key, run exactly one owner-approved capture, validate the Ed25519 source-repository/commit binding, verify sealed ciphertext and import only after the separate backup gate passes.
-7. Enable automatic intake/backup timers only after the previous steps and verify service journal summaries. No inbound webhook, browser, Docker or OCI private API key is required by the original OCI intake design.
+6. With verified recipient public key and producer key, run exactly one owner-approved capture; validate the Ed25519 source-repository/commit binding and sealed ciphertext. Intake intentionally does not require a backup.
+7. Enable only the approved Actions intake timer after the previous steps; leave Object Storage backup timer disabled. Verify the service journal summaries. No inbound webhook, browser, Docker or OCI private API key is required by the original OCI intake design.
 
 ## Security boundaries
 - GitHub does not receive individual signed capture **plaintext** title, listing URL, seller details, local database, tokens or encryption private keys.
@@ -40,4 +40,4 @@ Recommended operator-controlled cutover:
 - Signed REVIEWABLE observations are not verified current availability or purchase recommendations.
 
 ## Limitations
-The repository migration itself does not connect to the OCI instance, provision GitHub Secrets, create/validate Object Storage IAM policies, verify offline restores, start regular site collection, or send Telegram notifications. These are separate owner-controlled operational steps.
+The repository migration itself does not connect to OCI, create tokens, start live capture, or send Telegram notifications. Backups are explicitly deferred. Owner-controlled deployment remains necessary. These are separate owner-controlled operational steps.
