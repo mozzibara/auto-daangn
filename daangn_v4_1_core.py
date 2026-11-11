@@ -459,7 +459,8 @@ async def stable_page_snapshot(page, expected_term: str, settle_ms: int) -> dict
 
 async def ui_select_region(page, region: dict, *, on_before_select=None,
                            on_before_search=None, on_after_select=None,
-                           on_option_witness=None, on_after_search_fill=None) -> dict:
+                           on_option_witness=None, on_after_search_fill=None,
+                           first_activation_mode="POINTER_CLICK") -> dict:
     steps = {"target": region["term"], "clicked_region_button": False,
              "selected_suggestion": False, "unique_region_option": False,
              "error": None, "start_url": sanitized_url(page.url),
@@ -468,7 +469,10 @@ async def ui_select_region(page, region: dict, *, on_before_select=None,
              "option_tag": "UNOBSERVABLE", "option_role": "UNOBSERVABLE",
              "option_parent": "UNOBSERVABLE",
              "option_aria_selected": "UNOBSERVABLE",
-             "option_still_visible": False}
+             "option_still_visible": False,
+             "first_activation_mode": (
+                 first_activation_mode if first_activation_mode in
+                 ("POINTER_CLICK", "KEYBOARD_ENTER") else "UNOBSERVABLE")}
     try:
         selector = page.get_by_role("button", name=re.compile(r"지역 선택"))
         await selector.first.click(timeout=5000)
@@ -554,7 +558,18 @@ async def ui_select_region(page, region: dict, *, on_before_select=None,
             callback = on_before_select()
             if inspect.isawaitable(callback):
                 await callback  # Record immediate pre-click UI witness, then click.
-        await matching.first.click(timeout=5000)
+        if first_activation_mode == "KEYBOARD_ENTER":
+            # Use the ordinary accessible native button activation without
+            # triggering pointerdown/blur on the region text input.
+            if not await matching.first.is_enabled():
+                steps["error"] = "region_option_not_enabled"
+                return steps
+            await matching.first.press("Enter", timeout=5000)
+        elif first_activation_mode == "POINTER_CLICK":
+            await matching.first.click(timeout=5000)
+        else:
+            steps["error"] = "unsupported_first_activation_mode"
+            return steps
         steps["selected_suggestion"] = True
         if on_after_select is not None:
             callback = on_after_select()
