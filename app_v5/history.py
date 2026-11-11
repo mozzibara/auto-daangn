@@ -359,10 +359,25 @@ class HistoryStore:
                         )
                     except sqlite3.IntegrityError as exc:
                         raise ValueError("ATTESTED_RUN_REPLAY_CONFLICT") from exc
-            return [
+            results = [
                 self._ingest_prepared(conn, job_id, article_id, seen, data, meta)
                 for (article_id, seen, data), meta in zip(prepared, sources)
             ]
+            # A direct, verified SOLD UI state is terminal for a short-lived
+            # shopping record. Stock JSON-LD alone is never sale proof.
+            for key in {row["listing_key"] for row in results}:
+                latest = conn.execute(
+                    """SELECT o.transaction_status,o.primary_status_verified,
+                              o.evidence_level
+                       FROM listings AS l JOIN listing_observations AS o
+                         ON o.observation_id=l.latest_observation_id
+                       WHERE l.listing_key=?""", (key,)
+                ).fetchone()
+                if (latest is not None and latest["transaction_status"] == "SOLD"
+                        and latest["primary_status_verified"] == 1
+                        and latest["evidence_level"] == "REVIEWABLE"):
+                    self._forget_locked(conn, key)
+            return results
 
     def _ingest_prepared(self, conn: sqlite3.Connection, job_id: str,
                          article_id: str, seen: str, data: dict,
@@ -520,6 +535,70 @@ class HistoryStore:
             )
         return {"listing_key": listing_key, "observation_id": observation_id,
                 "events": events, "idempotent": False, "historical": historical}
+
+
+    @staticmethod
+    def _forget_locked(conn: sqlite3.Connection, listing_key: str) -> dict:
+        """Remove all listing-linked records, preserving non-listing job attestations."""
+        found = conn.execute(
+            "SELECT 1 FROM listings WHERE listing_key=?", (listing_key,)
+        ).fetchone()
+        if found is None:
+            return {"deleted": False, "observations_removed": 0,
+                    "events_removed": 0, "source_evidence_removed": 0}
+        obs = conn.execute(
+            "SELECT count(*) FROM listing_observations WHERE listing_key=?",
+            (listing_key,)
+        ).fetchone()[0]
+        events = conn.execute(
+            "SELECT count(*) FROM listing_events WHERE listing_key=?",
+            (listing_key,)
+        ).fetchone()[0]
+        sources = conn.execute(
+            """SELECT count(*) FROM listing_source_evidence
+               WHERE observation_id IN
+                 (SELECT observation_id FROM listing_observations
+                  WHERE listing_key=?)""", (listing_key,)
+        ).fetchone()[0]
+        conn.execute(
+            """DELETE FROM listing_source_evidence WHERE observation_id IN
+               (SELECT observation_id FROM listing_observations
+                WHERE listing_key=?)""", (listing_key,)
+        )
+        conn.execute("DELETE FROM listing_events WHERE listing_key=?", (listing_key,))
+        conn.execute("DELETE FROM listing_observations WHERE listing_key=?",
+                     (listing_key,))
+        conn.execute("DELETE FROM listings WHERE listing_key=?", (listing_key,))
+        return {"deleted": True, "observations_removed": obs,
+                "events_removed": events, "source_evidence_removed": sources}
+
+    def forget_listing(self, listing_key: str) -> dict:
+        """Owner-directed removal of a listing, all its events and all observations."""
+        if (not isinstance(listing_key, str)
+                or re.fullmatch(r"[a-f0-9]{64}", listing_key) is None):
+            raise ValueError("INVALID_LISTING_KEY")
+        with self._connection() as conn:
+            conn.execute("PRAGMA secure_delete=ON")
+            conn.execute("BEGIN IMMEDIATE")
+            return self._forget_locked(conn, listing_key)
+
+    def purge_verified_sold(self) -> dict:
+        """Remove listings with directly verified current SOLD status only."""
+        with self._connection() as conn:
+            conn.execute("PRAGMA secure_delete=ON")
+            conn.execute("BEGIN IMMEDIATE")
+            keys = [row[0] for row in conn.execute(
+                """SELECT l.listing_key FROM listings AS l
+                   JOIN listing_observations AS o
+                     ON o.observation_id=l.latest_observation_id
+                   WHERE o.transaction_status='SOLD'
+                     AND o.primary_status_verified=1
+                     AND o.evidence_level='REVIEWABLE'"""
+            ).fetchall()]
+            removed = [self._forget_locked(conn, key) for key in keys]
+            return {"listings_deleted": len(keys),
+                    "observations_removed": sum(x["observations_removed"]
+                                                for x in removed)}
 
 
     def get_attestation(self, job_id: str) -> dict | None:
