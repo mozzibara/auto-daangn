@@ -459,7 +459,7 @@ async def stable_page_snapshot(page, expected_term: str, settle_ms: int) -> dict
 
 async def ui_select_region(page, region: dict, *, on_before_select=None,
                            on_before_search=None, on_after_select=None,
-                           on_option_witness=None) -> dict:
+                           on_option_witness=None, on_after_search_fill=None) -> dict:
     steps = {"target": region["term"], "clicked_region_button": False,
              "selected_suggestion": False, "unique_region_option": False,
              "error": None, "start_url": sanitized_url(page.url),
@@ -481,7 +481,19 @@ async def ui_select_region(page, region: dict, *, on_before_select=None,
         if on_before_search is not None:
             on_before_search()  # Observe the UI-generated suggestion API only.
         await inputs.first.fill(region["term"], timeout=4000)
-        await page.wait_for_timeout(850)
+        if on_after_search_fill is not None:
+            # v4.34 research: require the *browser-observed* first-party API
+            # response and a stable unique visible choice before any click.
+            # Other call sites retain the historical wait behavior.
+            readiness = on_after_search_fill()
+            if inspect.isawaitable(readiness):
+                readiness = await readiness
+            if not (type(readiness) is dict
+                    and readiness.get("state") == "READY"):
+                steps["error"] = "region_suggestion_not_ready"
+                return steps
+        else:
+            await page.wait_for_timeout(850)
         choices = page.locator('[role="option"], [role="listbox"] button, [role="dialog"] button, [role="dialog"] [role="option"]')
         matching = choices.filter(has_text=region["term"])
         count = await matching.count()
