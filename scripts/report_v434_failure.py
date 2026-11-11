@@ -194,6 +194,41 @@ def classify(folder: Path) -> dict[str, str]:
         value = suggestion.get(field)
         return "YES" if value is True else "NO" if value is False else "UNKNOWN"
 
+    # Diagnostic search adapters are never sources of listing authorization.
+    # Values are re-allowlisted even though upstream already sanitizes them.
+    probe = first.get("search_surface_probe")
+    probe = probe if type(probe) is dict else {}
+    surface_rows = probe.get("surfaces")
+    surface_rows = surface_rows if type(surface_rows) is dict else {}
+    surface_fields = {}
+    for name, prefix in (("legacy_ssr", "LEGACY_SSR"),
+                         ("legacy_all_data", "LEGACY_DATA"),
+                         ("modern_s", "MODERN_S")):
+        obj = surface_rows.get(name)
+        obj = obj if type(obj) is dict else {}
+        allowed = {
+            "STATUS": ("status", {"NOT_RUN", "ROBOTS_DENIED", "HTTP_OK",
+                                 "HTTP_NON_200", "ACCESS_BLOCKED",
+                                 "REQUEST_ERROR", "BODY_ERROR"}),
+            "SHAPE": ("shape", {"UNRECOGNIZED", "BODY_LIMIT", "MODERN_ROUTE",
+                               "FLEAMARKET_API", "CHALLENGE",
+                               "SSR_ITEMLIST", "HTML_NO_ITEMLIST"}),
+            "URL_REGION": ("region", {"EXPECTED", "OTHER", "MISSING", "INVALID"}),
+            "SERVER_REGION": ("server_region", {"EXPECTED", "OTHER", "MISSING"}),
+            "FILTER_REGION": ("filter_region", {"EXPECTED", "OTHER", "MISSING"}),
+            "URL_PATH": ("path", {"EXPECTED", "OTHER"}),
+            "URL_KEYWORD": ("keyword", {"EXPECTED", "OTHER", "MISSING"}),
+        }
+        for suffix, (field, choices) in allowed.items():
+            val = obj.get(field)
+            surface_fields[f"SURFACE_{prefix}_{suffix}"] = (
+                val if type(val) is str and val in choices else "UNKNOWN")
+        for field, suffix in (("article_count", "ITEM_COUNT"),
+                              ("api_emitted", "API_EMITTED_COUNT")):
+            val = obj.get(field)
+            surface_fields[f"SURFACE_{prefix}_{suffix}"] = (
+                str(val) if type(val) is int and 0 <= val <= 650 else "UNKNOWN")
+
     raw_outer = outer.get("status")
     if type(raw_outer) is str and raw_outer in OUTER_STATUSES:
         outer_code = raw_outer
@@ -366,6 +401,12 @@ def classify(folder: Path) -> dict[str, str]:
             "candidate_matches_post_click_search_ids"),
         "SUGGESTION_POST_CLICK_REGION_NAME_MATCH": suggestion_flag(
             "post_click_name_matches_target"),
+        "SEARCH_SURFACE_ROBOTS": (
+            probe.get("robots") if probe.get("robots") in
+            ("CHECKED", "ROBOTS_UNAVAILABLE", "NOT_ATTEMPTED") else "UNKNOWN"),
+        "SEARCH_SURFACE_BLOCKED": "YES" if probe.get("blocked") is True else "NO",
+        "SEARCH_SURFACE_AUTHORIZES_LISTINGS": "NO",
+        **surface_fields,
     }
 
 
