@@ -35,9 +35,9 @@ ROBOTS_REASONS = frozenset({
 # All emitted strings are fixed constants; never echo unrecognized values.
 
 
-def _read(folder: Path, filename: str) -> dict:
+def _read(folder: Path, filename: str, *, max_bytes: int = 16000) -> dict:
     path = folder / filename
-    if path.is_symlink() or not path.is_file() or path.stat().st_size > 16000:
+    if path.is_symlink() or not path.is_file() or path.stat().st_size > max_bytes:
         return {}
     try:
         doc = json.loads(path.read_text(encoding="utf-8"))
@@ -51,6 +51,53 @@ def classify(folder: Path) -> dict[str, str]:
     robots = _read(folder, "v434_robots_decision.json")
     inner = _read(folder, "v429_run_status.json")
     study = _read(folder, "v429_public_status_results.json")
+    # v4.23 reports can contain nested per-item summaries. Read only from
+    # the fixed local file and emit *only* count and allowlisted enum fields.
+    upstream = _read(folder, "v423_public_controls_results.json",
+                     max_bytes=2 * 1024 * 1024)
+    evaluation = upstream.get("evaluation")
+    evaluation = evaluation if type(evaluation) is dict else {}
+    contexts = evaluation.get("contexts")
+    contexts = contexts if type(contexts) is list else []
+    safe_contexts = {"cheonan_a", "asan_control", "cheonan_b", "browser"}
+    expected_contexts = ["cheonan_a", "asan_control", "cheonan_b"]
+    safe_failures = {
+        "NONE", "BASELINE_HTTP_INVALID", "REGION_MISMATCH",
+        "ACCESS_RESTRICTION", "CORRELATED_ROUTE_MISSING",
+        "ROUTE_LENGTH_MISMATCH", "LOCAL_EXTRACTION_TRUNCATED",
+        "BROWSER_EXCEPTION", "OTHER_STOP",
+    }
+    safe_upstream_statuses = {
+        "STOP_ACCESS_RESTRICTION", "INCONCLUSIVE_CONTROL_STUDY_INCOMPLETE",
+        "INCONCLUSIVE_CANONICAL_CONTROL_RECORDS",
+        "PUBLIC_CONTROL_WITNESSES_CONFLICT",
+        "BOTH_SOLD_AND_RESERVED_CONTROL_UI_CORROBORATED",
+        "PARTIAL_CONTROL_CLASSES_AVAILABLE",
+        "CONTROL_UI_NOT_OBSERVABLE", "PARTIAL_CONTROL_UI_CORROBORATED",
+    }
+    raw_upstream_status = evaluation.get("status")
+    upstream_status = (raw_upstream_status if type(raw_upstream_status) is str
+                       and raw_upstream_status in safe_upstream_statuses
+                       else "UNAVAILABLE_OR_UNKNOWN")
+    safe_rows = []
+    for item in contexts[:3]:
+        item = item if type(item) is dict else {}
+        name = item.get("context")
+        code = item.get("capture_failure_code")
+        safe_rows.append((
+            name if type(name) is str and name in safe_contexts else "UNKNOWN",
+            code if type(code) is str and code in safe_failures else "UNKNOWN",
+        ))
+    safe_sequence = ",".join(x[0] for x in safe_rows) or "NONE"
+    first_failure = next((code for _, code in safe_rows
+                          if code not in ("NONE", "UNKNOWN")), "NONE")
+    matched_contexts = ([x[0] for x in safe_rows] == expected_contexts)
+    source_visits = evaluation.get("source_detail_visits")
+    safe_visits = (str(source_visits) if type(source_visits) is int
+                   and 0 <= source_visits <= 9 else "UNKNOWN")
+    raw_browser_exceptions = evaluation.get("browser_capture_exception_types")
+    safe_browser_exception = ("YES" if type(raw_browser_exceptions) is dict
+                              and bool(raw_browser_exceptions) else "NO")
 
     raw_outer = outer.get("status")
     if type(raw_outer) is str and raw_outer in OUTER_STATUSES:
@@ -99,6 +146,16 @@ def classify(folder: Path) -> dict[str, str]:
             "YES" if (folder / "v434_secure_links_summary.json").is_file()
             else "NO"
         ),
+        "UPSTREAM_CAPTURE_STATUS": upstream_status,
+        "UPSTREAM_CONTEXT_COUNT": (str(len(contexts)) if len(contexts) <= 20
+                                   else "OVER_LIMIT"),
+        "UPSTREAM_CONTEXT_SEQUENCE": safe_sequence,
+        "UPSTREAM_EXPECTED_CONTEXTS_COMPLETE": (
+            "YES" if matched_contexts else "NO"
+        ),
+        "UPSTREAM_FIRST_FAILURE_CODE": first_failure,
+        "UPSTREAM_SOURCE_VISITS": safe_visits,
+        "UPSTREAM_BROWSER_EXCEPTION_PRESENT": safe_browser_exception,
     }
 
 
