@@ -665,3 +665,23 @@ If the one-shot live capture still cannot verify the target region, retain
 fail-closed status and inspect why the new target was rejected or why its
 fresh Route remained wrong. Further attempts require new evidence, not
 blind repeated clicks.
+
+## Live #32 blocked before capture by GitHub runner DNS, not REGION_MISMATCH
+
+The owner-approved [live #32](https://github.com/mozzibara/auto-daangn/actions/runs/43048439032),
+at trusted main `755f231f065a1ee0d1c9eb0eccfe93e58079f8ef`,
+passed the signer and recipient public-key approval checks but **never
+reached the region picker**. The upstream step
+`python -m playwright install --with-deps chromium` failed during apt
+font-package retrieval with `Temporary failure resolving
+'security.ubuntu.com'` and exit code 100. Therefore this run is **not
+evidence for or against the guarded second click**.
+
+The follow-up workflow provisions the Playwright Chromium binary with
+`python -m playwright install chromium` (no unnecessary apt
+dependency transaction) and then **smoke-tests an actual headless
+Chromium launch using an in-memory local HTML page** before visiting
+the marketplace. A missing browser shared library or blocked browser
+download will still cause a fail-closed job; it will not weaken signer,
+owner approval, robots or any locality/listing gate. This is a
+runner-availability fix, not a behavioral bypass.
