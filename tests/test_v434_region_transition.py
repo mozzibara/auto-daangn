@@ -46,6 +46,21 @@ class PickerTransitionTests(unittest.TestCase):
             "last_route_filter_region_state": "EXPECTED",
         }), "EXPECTED_REGION_PERSISTED")
 
+    def test_exact_clicked_option_role_is_diagnostic_only(self):
+        steps = {**STEPS, "option_tag": "BUTTON",
+                 "option_role": "OPTION", "option_parent": "LISTBOX",
+                 "option_aria_selected": "FALSE"}
+        result = classify_picker_transition(REGION, steps, [event("90001", "90001")])
+        self.assertEqual(result["option_tag"], "BUTTON")
+        self.assertEqual(result["option_parent"], "LISTBOX")
+        self.assertEqual(result["search_region_state"], "OTHER")
+        self.assertNotIn("verified", result)
+        safe = sanitize_picker_transition({**result,
+               "option_role": "PRIVATE SECRET CLICK", "option_parent": "https://token.example/"})
+        self.assertEqual(safe["option_role"], "UNKNOWN")
+        self.assertEqual(safe["option_parent"], "UNKNOWN")
+        self.assertNotIn("PRIVATE SECRET", str(safe))
+
     def test_picker_wrong_before_filter_is_not_id_drift_authority(self):
         result = classify_picker_transition(REGION, STEPS, [
             event("900001", "900001", "다른지역")], fetch_count=1)
