@@ -242,7 +242,7 @@ def classify(folder: Path) -> dict[str, str]:
         "TARGET_CONTROL_NOT_CONFIRMED", "NOT_OBSERVABLE",
     }
     nav_fields = {}
-    for stage in ("BEFORE_CLICK", "AFTER_CLICK", "AFTER_SETTLE"):
+    for stage in ("BEFORE_CLICK", "AFTER_CLICK", "AFTER_FOLLOWUP_CLICK", "AFTER_SETTLE"):
         row = nav_stages.get(stage)
         row = row if type(row) is dict else {}
         for field, valid in (
@@ -385,7 +385,7 @@ def classify(folder: Path) -> dict[str, str]:
     count_keys = ("visible_buttons", "new_dom_buttons", "new_target_buttons",
                   "new_region_like_buttons", "visible_target_buttons",
                   "region_like_buttons", "active_dialogs")
-    for stage in ("BASELINE", "AFTER_CLICK", "AFTER_SETTLE"):
+    for stage in ("BASELINE", "AFTER_CLICK", "AFTER_FOLLOWUP_CLICK", "AFTER_SETTLE"):
         snap = (inventory.get("baseline") if stage == "BASELINE"
                 else inventory_stages.get(stage))
         snap = snap if type(snap) is dict else {}
@@ -469,6 +469,34 @@ def classify(folder: Path) -> dict[str, str]:
                 str(raw) if type(raw) is int and 0 <= raw <= 100 else "UNKNOWN")
     readiness_fields["READINESS_AUTHORIZES_LISTINGS"] = "NO"
 
+    # Only the exact new target-city UI node may have been clicked once.
+    # This report never equates click receipt with server locality authority.
+    second = navigation.get("second_choice")
+    second = second if type(second) is dict else {}
+    second_states = {"NOT_ATTEMPTED","CLICKED","CANDIDATE_NOT_UNIQUE",
+                     "GUARD_REJECTED","INVENTORY_NOT_ARMED",
+                     "ELEMENT_MISSING","CLICK_FAILED"}
+    guard_states = {"READY","DETACHED","WRONG_DIALOG","WRONG_TAG",
+                    "ORIGINAL_NODE","NOT_INTERACTABLE",
+                    "NOT_EXACT_TARGET_CITY","NOT_UNIQUE",
+                    "NO_NEW_CANDIDATE_LIST","UNOBSERVABLE"}
+    second_fields = {
+        "SECOND_CHOICE_STATE": (
+            second.get("state") if type(second.get("state")) is str
+            and second["state"] in second_states else "UNKNOWN"),
+        "SECOND_CHOICE_GUARD": (
+            second.get("guard") if type(second.get("guard")) is str
+            and second["guard"] in guard_states else "UNKNOWN"),
+        "SECOND_CHOICE_CLICK_ATTEMPTED": (
+            "YES" if second.get("click_attempted") is True
+            else "NO" if second.get("click_attempted") is False
+            else "UNKNOWN"),
+        "SECOND_CHOICE_CLICK_COMPLETED": (
+            "YES" if second.get("click_completed") is True
+            else "NO" if second.get("click_completed") is False
+            else "UNKNOWN"),
+        "SECOND_CHOICE_AUTHORIZES_LISTINGS": "NO",
+    }
     raw_outer = outer.get("status")
     if type(raw_outer) is str and raw_outer in OUTER_STATUSES:
         outer_code = raw_outer
@@ -676,6 +704,7 @@ def classify(folder: Path) -> dict[str, str]:
         **option_fields,
         **inv_fields,
         **readiness_fields,
+        **second_fields,
         **surface_fields,
     }
 
