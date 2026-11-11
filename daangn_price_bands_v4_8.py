@@ -157,7 +157,17 @@ async def capture_apply(page,args,name,region,key,salt,*,picker_selected=False):
     observed=net.events[-1] if net.events else {}
     rp=(observed.get('public_request') or {}).get('public_params') or {}
     rm=observed.get('model') or {}
+    expected_id=a.regions[region]['id']
+    def region_field_state(value):
+        # Do not expose unknown ID values. A missing field is materially
+        # different from a contradiction with the known owner profile.
+        return ('MISSING' if value is None else
+                'EXPECTED' if str(value)==expected_id else 'OTHER')
     stage['region_route_observation']={
+        'last_route_search_region_state':region_field_state(
+            rm.get('region_id')),
+        'last_route_filter_region_state':region_field_state(
+            rm.get('filter_region_id')),
         'search_fetch_responses':min(net.search_fetch_responses,20),
         'legacy_data_responses':min(net.old_remix_route_responses,20),
         'other_search_json_responses':min(net.other_search_json_responses,20),
