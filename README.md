@@ -9,6 +9,7 @@ This repository contains source code, synthetic tests, and opt-in GitHub Actions
 - [ARCHITECTURE.md](ARCHITECTURE.md): GitHub Actions / OCI SECOND-INSTANCE / ChatGPT / Telegram responsibility boundaries, reliability gates and rollout priorities.
 - [MIGRATION.md](MIGRATION.md): controlled OCI cutover with the original private database and keys preserved.
 - [SECURITY.md](SECURITY.md): threat model, secrets handling and public-repository safeguards.
+- [PUBLIC_SECURITY_SETUP.md](PUBLIC_SECURITY_SETUP.md): owner-only environment signer Secret, main Ruleset and Actions policy setup.
 
 Current status: **public source and synthetic CI only**. Live signing, OCI cloud-readback restoration, real Telegram messages and ChatGPT–OCI direct access are **not activated**.
 
