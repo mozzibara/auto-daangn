@@ -9,7 +9,7 @@ import unittest
 
 from app_v5.region_navigation import (
     RegionNavigationTrace, classify_browser_url, classify_commit_trace,
-    sanitize_navigation_trace,
+    classify_dialog_stage_transition, sanitize_navigation_trace,
 )
 from daangn_v4_1_core import BY_KEY
 from scripts.report_v434_failure import classify
@@ -118,6 +118,51 @@ class NavigationUrlTests(unittest.TestCase):
         again = sanitize_navigation_trace(result)
         self.assertEqual(again["checkpoints"]["AFTER_SETTLE"]["confirm_action"], "VISIBLE")
 
+    def test_old_dialog_removed_new_dialog_open_and_structurally_changed(self):
+        probe = {"checkpoints": {
+            "BEFORE_CLICK": {"dialog": "OPEN", "dialog_search_inputs": 1,
+                             "dialog_heading": "SEARCH"},
+            "AFTER_SETTLE": {"dialog": "OPEN", "dialog_search_inputs": 0,
+                              "dialog_buttons": 8,
+                              "dialog_heading": "PICK_NEIGHBORHOOD"}},
+            "option_event": {"checkpoints": {
+                "AFTER_SETTLE": {"dialog_connected": "NO"}}}}
+        self.assertEqual(classify_dialog_stage_transition(probe),
+                         "NEW_DIALOG_WITH_CHANGED_CONTROLS")
+        probe["checkpoints"]["AFTER_SETTLE"]["dialog_search_inputs"] = 1
+        probe["checkpoints"]["AFTER_SETTLE"]["dialog_heading"] = "SEARCH"
+        self.assertEqual(classify_dialog_stage_transition(probe),
+                         "REPLACED_DIALOG_UNCLASSIFIED")
+        probe["option_event"]["checkpoints"]["AFTER_SETTLE"]["dialog_connected"] = "YES"
+        self.assertEqual(classify_dialog_stage_transition(probe),
+                         "SAME_DIALOG_REMAINS")
+        probe["checkpoints"]["AFTER_SETTLE"]["dialog"] = "CLOSED"
+        self.assertEqual(classify_dialog_stage_transition(probe),
+                         "DIALOG_CLOSED")
+
+    def test_dialog_fingerprint_sanitized_twice_and_raw_headings_discarded(self):
+        raw = {"dialog_transition": "NEW_DIALOG_WITH_CHANGED_CONTROLS",
+               "checkpoints": {"BEFORE_CLICK": {
+                   "dialog_heading": "SEARCH", "dialog_search_inputs": 1,
+                   "dialog_buttons": 7, "dialog_has_labelledby": True,
+                   "dialog_focus": "INPUT", "dialog_aria_modal": "TRUE"},
+                   "AFTER_SETTLE": {
+                     "dialog_heading": "PERSONAL PRIVATE ADDRESS",
+                     "dialog_search_inputs": 0, "dialog_buttons": 9,
+                     "dialog_has_back_action": "yes",
+                     "dialog_aria_modal": "FALSE", "raw_html": "<secret>"}}}
+        first = sanitize_navigation_trace(raw)
+        second = sanitize_navigation_trace(first)
+        self.assertEqual(first, second)
+        self.assertEqual(second["dialog_transition"],
+                         "NEW_DIALOG_WITH_CHANGED_CONTROLS")
+        self.assertEqual(second["checkpoints"]["BEFORE_CLICK"]["dialog_search_inputs"], 1)
+        self.assertEqual(second["checkpoints"]["AFTER_SETTLE"]["dialog_heading"],
+                         "UNOBSERVABLE")
+        self.assertFalse(second["checkpoints"]["AFTER_SETTLE"]["dialog_has_back_action"])
+        self.assertNotIn("PRIVATE ADDRESS", str(second))
+        self.assertNotIn("raw_html", str(second))
+
     def test_malicious_raw_content_is_always_discarded(self):
         injected = {"commit_class": "https://secret.example/cookie=SECRET",
                     "events": [{"kind": "SEARCH_FETCH", "url_region": "MY_PASSWORD",
@@ -208,6 +253,8 @@ class PublicReportTests(unittest.TestCase):
             reported = classify(folder)
             self.assertEqual(reported["NAV_TRACE_COMMIT_CLASS"],
                              "NO_VISIBLE_COMMIT_SERVER_OTHER")
+            self.assertEqual(reported["NAV_TRACE_DIALOG_TRANSITION"],
+                             "NOT_OBSERVABLE")
             self.assertEqual(reported["NAV_AFTER_SETTLE_URL_REGION"], "MISSING")
             self.assertEqual(reported["NAV_AFTER_SETTLE_LISTBOX"], "UNOBSERVABLE")
             self.assertEqual(reported["NAV_AFTER_SETTLE_CONFIRM_ACTION"], "UNOBSERVABLE")
