@@ -10,6 +10,7 @@ from __future__ import annotations
 from urllib.parse import parse_qs, urlsplit
 
 from daangn_v4_1_core import SEARCH_PATH
+from app_v5.region_option_events import sanitize_option_event
 
 _CHECKPOINTS = ("BEFORE_CLICK", "AFTER_CLICK", "AFTER_SETTLE")
 _URL_VALUES = frozenset(("EXPECTED", "OTHER", "MISSING", "INVALID"))
@@ -208,6 +209,7 @@ def sanitize_navigation_trace(value) -> dict:
         "overflow": dropped is True,
         "commit_class": status if type(status) is str and status in _COMMIT_CLASSES
                         else "NOT_OBSERVABLE",
+        "option_event": sanitize_option_event(source.get("option_event")),
         "authorizes_listings": False,
     }
 
