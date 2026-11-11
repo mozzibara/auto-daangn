@@ -157,12 +157,12 @@ _ARM_JS = r"""(el, meta) => {
     if(baseline.has(el)) return 'ORIGINAL_NODE';
     if(!visible(el)||el.disabled||el.getAttribute('aria-disabled')==='true')
       return 'NOT_INTERACTABLE';
-    const txt=(el.textContent||'').replace(/\\s+/g,' ').trim().slice(0,200);
+    const txt=(el.textContent||'').replace(/\s+/g,' ').trim().slice(0,200);
     if(!txt.includes(meta.term)||!txt.includes(meta.city))
       return 'NOT_EXACT_TARGET_CITY';
     const buttons=[...root.querySelectorAll('button')].filter(visible).slice(0,160);
     const exact=buttons.filter(e=>{
-      const s=(e.textContent||'').replace(/\\s+/g,' ').trim().slice(0,200);
+      const s=(e.textContent||'').replace(/\s+/g,' ').trim().slice(0,200);
       return s.includes(meta.term)&&s.includes(meta.city);
     });
     if(exact.length!==1||exact[0]!==el) return 'NOT_UNIQUE';
