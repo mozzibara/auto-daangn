@@ -162,6 +162,7 @@ class CoreCallbackTests(unittest.IsolatedAsyncioTestCase):
     class Locator:
         def __init__(self):
             self.clicks = 0
+            self.presses = 0
             self.fills = 0
 
         @property
@@ -182,6 +183,13 @@ class CoreCallbackTests(unittest.IsolatedAsyncioTestCase):
 
         async def click(self, **kwargs):
             self.clicks += 1
+
+        async def is_enabled(self):
+            return True
+
+        async def press(self, key, **kwargs):
+            assert key == "Enter"
+            self.presses += 1
 
         async def evaluate(self, *args):
             return {"option_metadata": "OBSERVED", "option_tag": "BUTTON"}
@@ -216,6 +224,36 @@ class CoreCallbackTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(r["selected_suggestion"])
         self.assertEqual(steps, [(1, 0)])
         self.assertEqual(page.option.clicks, 1)
+
+    async def test_initial_native_enter_avoids_pointer_activation(self):
+        page = self.Page()
+        order = []
+
+        async def before():
+            order.append(("BEFORE", page.option.clicks, page.option.presses))
+
+        async def after():
+            order.append(("AFTER", page.option.clicks, page.option.presses))
+
+        result = await ui_select_region(
+            page, REGION, on_after_search_fill=lambda: {"state": "READY"},
+            on_before_select=before, on_after_select=after,
+            first_activation_mode="KEYBOARD_ENTER")
+        self.assertTrue(result["selected_suggestion"])
+        self.assertEqual(result["first_activation_mode"], "KEYBOARD_ENTER")
+        self.assertEqual(page.option.presses, 1)
+        self.assertEqual(page.option.clicks, 0)
+        self.assertEqual(order, [("BEFORE", 0, 0), ("AFTER", 0, 1)])
+
+    async def test_unsupported_activation_never_presses(self):
+        page = self.Page()
+        result = await ui_select_region(
+            page, REGION, on_after_search_fill=lambda: {"state": "READY"},
+            first_activation_mode="FORCE_JS_CLICK")
+        self.assertEqual(result["error"], "unsupported_first_activation_mode")
+        self.assertFalse(result["selected_suggestion"])
+        self.assertEqual(page.option.clicks, 0)
+        self.assertEqual(page.option.presses, 0)
 
     async def test_missing_or_ambiguous_api_never_clicks(self):
         for state in ("API_TIMEOUT", "API_NOT_UNIQUE", "DOM_NOT_STABLE"):
