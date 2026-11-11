@@ -164,6 +164,18 @@ def classify(folder: Path) -> dict[str, str]:
         value = picker_url.get(field)
         return value if type(value) is str and value in choices else "UNKNOWN"
 
+    transition = picker.get("transition")
+    transition = transition if type(transition) is dict else {}
+    def transition_enum(field, choices):
+        v = transition.get(field)
+        return v if type(v) is str and v in choices else "UNKNOWN"
+    def transition_flag(field):
+        v = transition.get(field)
+        return "YES" if v is True else "NO" if v is False else "UNKNOWN"
+    def transition_count(field):
+        v = transition.get(field)
+        return str(v) if type(v) is int and 0 <= v <= 20 else "UNKNOWN"
+
     raw_outer = outer.get("status")
     if type(raw_outer) is str and raw_outer in OUTER_STATUSES:
         outer_code = raw_outer
@@ -291,6 +303,39 @@ def classify(folder: Path) -> dict[str, str]:
             "region_parameter", params),
         "REGION_PICKER_VISIBLE_REGION_BUTTON": picker_flag(
             "selected_region_button_visible"),
+        "PICKER_OPTION_SEMANTICS": transition_enum(
+            "option_metadata", {"OBSERVED","UNAVAILABLE"}),
+        "PICKER_OPTION_CITY_HINT": transition_flag("option_city_hint"),
+        "PICKER_OPTION_EXACT_TERM": transition_flag("option_exact_term"),
+        "PICKER_OPTION_DATA_ID": transition_enum(
+            "option_data_id", {"EXPECTED","OTHER","MISSING"}),
+        "PICKER_OPTION_STILL_VISIBLE": transition_flag("option_still_visible"),
+        "PICKER_POST_CLICK_FETCH_COUNT": transition_count(
+            "post_click_search_fetch_count"),
+        "PICKER_POST_CLICK_MODEL_COUNT": transition_count(
+            "post_click_model_count"),
+        "PICKER_POST_CLICK_ROUTE_STATUS": transition_enum(
+            "post_click_route_status",
+            {"SELECTION_NOT_CONFIRMED","NO_FRESH_ROUTE",
+             "AMBIGUOUS_FRESH_ROUTES","FRESH_ROUTE_OBSERVED",
+             "ROUTE_NOT_TRUSTED"}),
+        "PICKER_POST_CLICK_SEARCH_REGION": transition_enum(
+            "search_region_state", {"EXPECTED","OTHER","MISSING"}),
+        "PICKER_POST_CLICK_FILTER_REGION": transition_enum(
+            "filter_region_state", {"EXPECTED","OTHER","MISSING"}),
+        "PICKER_POST_CLICK_REGION_NAME": transition_enum(
+            "server_name_state", {"EXACT","CONTAINS","OTHER","MISSING"}),
+        "PICKER_POST_CLICK_IDS_AGREE": transition_enum(
+            "server_ids_agree", {"YES","NO","MISSING"}),
+        "PICKER_POST_CLICK_KEYWORD": transition_flag(
+            "request_keyword_matches"),
+        "PICKER_POST_CLICK_REGION_QUERY_MISSING": transition_flag(
+            "request_region_missing"),
+        "PICKER_FILTER_APPLY_TRANSITION": transition_enum(
+            "filter_apply_relation",
+            {"POST_CLICK_ROUTE_NOT_OBSERVABLE","EXPECTED_REGION_PERSISTED",
+             "REGION_LOST_AT_FILTER_APPLY",
+             "REGION_NOT_VERIFIED_AFTER_CLICK","NOT_OBSERVABLE"}),
     }
 
 
