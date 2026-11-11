@@ -390,6 +390,10 @@ async def capture(browser,name,region,options,salt):
         result['filter_proof_status']=filter_evidence.get('status','UNVERIFIED')
         result['fresh_region_authority_status']=stage.get(
             'region_authority_status','UNKNOWN')
+        result['fresh_region_ui_source']=(stage.get('region_authority') or {}).get(
+            'ui_source','NONE')
+        result['fresh_region_route_ids_match']=(stage.get('region_authority') or {}).get(
+            'route_ids_match') is True
         # This is the only alternate path to the old URL proof. Never let a
         # stale Remix loader or a missing Route be interpreted as correct locality.
         if result['region_picker']['suggestion_selected']:
