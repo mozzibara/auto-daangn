@@ -858,3 +858,25 @@ other environment-specific UX is **not proven**. A manual
 owner-controlled ordinary-browser comparison or a different
 officially permitted source would be required to distinguish them,
 rather than making arbitrary third clicks or bypassing robots.
+
+## Live #38: early wrong-region abort confirmed, public diagnostic enum dropped
+
+[Approved #38](https://github.com/mozzibara/auto-daangn/actions/runs/43119242955)
+confirmed that the first native Enter produced a fresh first-party
+Route with both region IDs OTHER and missing target selected-region
+control. The new early gate stopped as `REGION_MISMATCH` before
+the unrelated filter panel or any source listing details were
+visited (source visits 0). However the public sanitized reporter
+printed `REGION_PICKER_OUTCOME=UNKNOWN` and
+`REGION_PICKER_EARLY_GATE=UNKNOWN`, since the separate, older
+`daangn_state_controls_v4_23.aggregate` allowlist did not yet
+permit the two new diagnostic enums. This was a reporting contract
+gap, not a failure of fail-closed locality protection.
+
+The repair explicitly allows only
+`EARLY_REGION_UNCOMMITTED` and the four fixed
+`early_gate` categories through that aggregation boundary, and
+sets `REGION_UI_NOT_VERIFIED` when the early gate blocks.
+An offline end-to-end **raw capture -> aggregate -> public failure
+report** regression proves the class survives without leaking
+unknown strings, identifiers or listing URLs.
