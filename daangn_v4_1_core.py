@@ -458,7 +458,8 @@ async def stable_page_snapshot(page, expected_term: str, settle_ms: int) -> dict
 
 
 async def ui_select_region(page, region: dict, *, on_before_select=None,
-                           on_before_search=None, on_after_select=None) -> dict:
+                           on_before_search=None, on_after_select=None,
+                           on_option_witness=None) -> dict:
     steps = {"target": region["term"], "clicked_region_button": False,
              "selected_suggestion": False, "unique_region_option": False,
              "error": None, "start_url": sanitized_url(page.url),
@@ -531,6 +532,12 @@ async def ui_select_region(page, region: dict, *, on_before_select=None,
                     steps[field]=value if type(value) is str and value in allowed else "UNOBSERVABLE"
         except Exception:
             pass  # Unsupported markup is an unknown diagnostic, not authority.
+        if on_option_witness is not None:
+            # Arm passive DOM listeners on the *exact* unique visible candidate.
+            # This callback cannot choose or click a different region.
+            callback = on_option_witness(matching.first)
+            if inspect.isawaitable(callback):
+                await callback
         if on_before_select is not None:
             callback = on_before_select()
             if inspect.isawaitable(callback):
