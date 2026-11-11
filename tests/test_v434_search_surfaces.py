@@ -5,7 +5,7 @@ import unittest
 
 from app_v5.search_surface_probe import (
     SURFACES, check_surface_robots, classify_final_url,
-    classify_surface_body, sanitize_surface_probe, surface_url,
+    classify_surface_body, run_surface_probe, sanitize_surface_probe, surface_url,
 )
 from daangn_v4_1_core import BY_KEY
 
@@ -114,6 +114,83 @@ class SearchSurfaceTests(unittest.TestCase):
         self.assertEqual(result["surfaces"]["legacy_ssr"]["article_count"], 0)
         self.assertNotIn("secret", str(result).lower())
         self.assertEqual(len(result["surfaces"]), 3)
+
+
+class StubResponse:
+    def __init__(self, uri, body, content_type="text/html", status=200):
+        self.url = uri
+        self._body = body
+        self.status = status
+        self.headers = {"content-type": content_type}
+        self.request = type("Request", (), {"resource_type": "document"})()
+
+    async def body(self):
+        return self._body
+
+
+class StubPage:
+    def __init__(self):
+        self.url = ""
+        self.callbacks = []
+
+    def on(self, event, handler):
+        self.callbacks.append((event, handler))
+
+    async def goto(self, url, **kwargs):
+        self.url = url
+        if "_data=" in url:
+            content = json.dumps({"allPage": {"fleamarketArticles": [
+                {"title": "DO_NOT_LEAK", "id": "private-listing-id"}]}}).encode()
+            return StubResponse(url, content, "application/json")
+        return StubResponse(url, b'<script>{"@type":"ItemList"}</script>')
+
+    async def wait_for_timeout(self, ms):
+        return None
+
+
+class StubContext:
+    def __init__(self, browser):
+        self.browser = browser
+
+    async def new_page(self):
+        return StubPage()
+
+    async def close(self):
+        self.browser.closed += 1
+
+
+class StubBrowser:
+    def __init__(self):
+        self.context_count = 0
+        self.closed = 0
+
+    async def new_context(self, **kwargs):
+        self.context_count += 1
+        return StubContext(self)
+
+
+class ProbeExecutionTests(unittest.IsolatedAsyncioTestCase):
+    async def test_disallowed_paths_never_launch_a_browser(self):
+        browser = StubBrowser()
+        result = await run_surface_probe(browser, BY_KEY["cheonan"],
+            checker=lambda region: {"state": "CHECKED",
+                                    "allowed": {name: False for name in SURFACES}})
+        self.assertEqual(browser.context_count, 0)
+        self.assertEqual(result["surfaces"]["modern_s"]["status"], "ROBOTS_DENIED")
+        self.assertFalse(result["authorization"])
+
+    async def test_three_isolated_surfaces_produce_only_aggregate_evidence(self):
+        browser = StubBrowser()
+        result = await run_surface_probe(browser, BY_KEY["cheonan"],
+            settle_ms=0, checker=lambda region: {"state": "CHECKED",
+                                                 "allowed": {name: True for name in SURFACES}})
+        self.assertEqual(browser.context_count, 3)
+        self.assertEqual(browser.closed, 3)
+        self.assertEqual(result["surfaces"]["legacy_all_data"]["shape"], "FLEAMARKET_API")
+        self.assertEqual(result["surfaces"]["legacy_all_data"]["article_count"], 1)
+        self.assertFalse(result["authorization"])
+        self.assertNotIn("private-listing-id", str(result))
+        self.assertNotIn("DO_NOT_LEAK", str(result))
 
 
 if __name__ == "__main__":
