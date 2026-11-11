@@ -96,6 +96,47 @@ region IDs appear in public diagnostics. Subsequent user-approved code review
 must establish full administrative locality and source integrity before
 migrating any region preset.
 
+## Investigation after approved capture #12: picker-to-Apply transition
+
+Owner-approved [capture #12](https://github.com/mozzibara/auto-daangn/actions/runs/42988365267)
+showed a uniquely clicked visible locality option, but the subsequent
+filter-Apply Route's `searchRegion.name` is `OTHER`; both server region IDs
+agree with each other yet are `OTHER` relative to historic Cheonan 2292.
+This does **not** establish ID drift. It suggests the region selection was
+not reflected in the subsequent query.
+
+The new investigation is diagnostic-only; it changes **no authority gate**:
+
+1. Immediately before the *unique visible locality option's actual click*,
+   arm the existing first-party read-only response listener. The listener is
+   not armed for mere selector opening, typing or ambiguous/hidden results.
+2. Inspect only option semantic predicates: whether its bounded visible label
+   contains the configured city name, whether it exactly equals the locality
+   term, whether a `data-region-id` (if present) matches the known ID, and
+   whether that same option remains visible after click. The option's raw
+   text, markup, href, data attributes and unknown IDs are **not** persisted.
+3. Observe only real UI-emitted search `fetch`/`xhr` JSON responses after
+   click. Classify zero, one or multiple candidate Route models and their
+   already-established searchRegion/currentFilters ID, name and keyword
+   predicates. Do not synthesize requests or trust boot-time loader state.
+4. Compare the immediate post-click Route with the independently observed
+   filter-Apply Route:
+   - `REGION_NOT_VERIFIED_AFTER_CLICK`: selected click did not yield an
+     authoritative matching server locality (or conflicts immediately).
+   - `REGION_LOST_AT_FILTER_APPLY`: one fresh matching post-click server
+     region existed but was replaced at filter Apply.
+   - `POST_CLICK_ROUTE_NOT_OBSERVABLE`: no unique fresh post-click model;
+     no conclusion about whether UI selection persisted.
+   - `EXPECTED_REGION_PERSISTED`: diagnostics agree at both stages but the
+     preexisting strict independent UI/Route SHA/price/category/stock checks
+     are still required for any candidate promotion.
+5. All transition output passes a fixed-value allowlist; no private runner
+   log, raw server region ID, listing, seller or query token becomes public.
+
+Do not run the same capture unchanged. After Linux and Windows offline CI
+pass, request a new owner-approved, robots-first *single live capture*. CI and
+this diagnostic itself cannot justify editing the historical region preset.
+
 ## Important limits
 
 The original v4.15 post-reload strict filter persistence check is *not*
