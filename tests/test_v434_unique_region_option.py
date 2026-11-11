@@ -109,6 +109,40 @@ class RegionSelectorUniquenessTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(result["selected_suggestion"])
         self.assertEqual(calls, [("BEFORE_CLICK", 0), ("AFTER_CLICK", 1)])
 
+    async def test_passive_option_witness_receives_actual_locator_before_click(self):
+        p = FakePage(1)
+        order = []
+
+        async def arm_option(locator):
+            order.append(("OPTION_ARMED", locator is p.option, p.option.clicks))
+
+        async def before():
+            order.append(("BEFORE", True, p.option.clicks))
+
+        async def after():
+            order.append(("AFTER", True, p.option.clicks))
+
+        result = await core.ui_select_region(
+            p, core.BY_KEY["cheonan"],
+            on_option_witness=arm_option,
+            on_before_select=before,
+            on_after_select=after)
+        self.assertTrue(result["selected_suggestion"])
+        self.assertEqual(order, [
+            ("OPTION_ARMED", True, 0),
+            ("BEFORE", True, 0),
+            ("AFTER", True, 1),
+        ])
+
+    async def test_ambiguous_option_never_arms_dom_event_witness(self):
+        p = FakePage(2)
+        calls = []
+        result = await core.ui_select_region(
+            p, core.BY_KEY["cheonan"],
+            on_option_witness=lambda loc: calls.append("ARMED"))
+        self.assertFalse(result["selected_suggestion"])
+        self.assertEqual(calls, [])
+
     async def test_ambiguous_option_never_samples_post_click_ui(self):
         p = FakePage(2)
         calls = []
