@@ -629,3 +629,39 @@ Interpret a future approved comparison against live #28 as follows:
 - Pre-click `API_TIMEOUT`/`DOM_NOT_STABLE` etc. is a safe abort;
   it provides no evidence about the meaning of a hypothetical
   follow-up selection button.
+
+## One guarded follow-up target click experiment
+
+Approved [live #30](https://github.com/mozzibara/auto-daangn/actions/runs/43032527868)
+established that even after exactly one correct first-party region API response
+and three stable DOM samples, the **first actual clicked target button** is
+removed and a **new distinct target+city button appears alongside 44 other
+region-like buttons in the original dialog**. The visible selected-region
+control and fresh server Route still remain OTHER. This rules out the simple
+"clicked before resolver completion" explanation for that run.
+
+The next scoped fix tests the ordinary UI's possible **two-step selection**:
+immediately after the first click (before the existing 300-ms settle), check
+in the *existing browser only* that the new candidate is the sole visible
+target+city native BUTTON in the *same original dialog*,
+not in the pre-click WeakSet, enabled and truly visible, and accompanied by
+other newly mounted candidate buttons. Then, at most **one additional
+ordinary Playwright click on that exact ElementHandle** is permitted.
+No JS synthetic click, no hidden/force click, arbitrary candidate choice or
+network injection is allowed. On ambiguity, element replacement, missing
+candidate or any guard failure the second click is skipped; its reason is a
+fixed enum in the report.
+
+A separate first-party search response recorder starts immediately before
+this optional second click; **only fresh Route responses after that second
+click** can corroborate its locality. The original independent visible
+selected-region control, URL host/path/keyword checks, Route filters,
+category/price/stock and source proof remain mandatory; the second click is
+never itself sufficient to approve listings. DOM text, numeric IDs,
+external hrefs, cookies and raw page data never leave browser memory.
+
+This is a test of a specific public UI hypothesis, not a promised workaround.
+If the one-shot live capture still cannot verify the target region, retain
+fail-closed status and inspect why the new target was rejected or why its
+fresh Route remained wrong. Further attempts require new evidence, not
+blind repeated clicks.
