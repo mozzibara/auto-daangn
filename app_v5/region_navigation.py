@@ -122,7 +122,7 @@ _CHECK_UI_JS = r"""meta => {
     dialog_aria_modal:modal,
     dialog_has_labelledby:!!dlg?.getAttribute('aria-labelledby'),
     dialog_has_back_action:back,
-    dialog_has_target_chosen:!!dlg?.querySelector('[aria-selected="true"],[aria-pressed="true"]'),
+    dialog_has_selected_control:!!dlg?.querySelector('[aria-selected="true"],[aria-pressed="true"]'),
     dialog_buttons:Math.min(dlgButtons.length,20),
     dialog_target_buttons:Math.min(optionButtons.length,20),
     dialog_search_inputs:Math.min(searchInputs.length,20),
@@ -190,7 +190,7 @@ def _safe_checkpoint(value) -> dict:
                              else "UNOBSERVABLE",
         "dialog_has_labelledby": obj.get("dialog_has_labelledby") is True,
         "dialog_has_back_action": obj.get("dialog_has_back_action") is True,
-        "dialog_has_target_chosen": obj.get("dialog_has_target_chosen") is True,
+        "dialog_has_selected_control": obj.get("dialog_has_selected_control") is True,
         "url_region": url.get("region") if type(url.get("region")) is str
                       and url["region"] in _URL_VALUES else "INVALID",
         "url_path": url.get("path") if type(url.get("path")) is str
