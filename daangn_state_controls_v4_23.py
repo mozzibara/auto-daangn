@@ -525,7 +525,21 @@ def aggregate(rows):
         if isinstance(row,dict) and row.get('context')=='browser'
         and isinstance(row.get('status'),str)
         and re.fullmatch(r'STOP_[A-Za-z]{1,48}',row['status']))
+    # Only finite, developer-authored failure reasons may leave the private
+    # browser runner. Never emit raw exception messages or marketplace data.
+    safe_failures={'BASELINE_HTTP_INVALID','REGION_MISMATCH',
+                   'ACCESS_RESTRICTION','CORRELATED_ROUTE_MISSING',
+                   'ROUTE_LENGTH_MISMATCH','LOCAL_EXTRACTION_TRUNCATED'}
     for row in rows:
+        raw_failure=row.get('error_type')
+        if type(raw_failure) is str and raw_failure in safe_failures:
+            failure_code=raw_failure
+        elif row.get('context')=='browser':
+            failure_code='BROWSER_EXCEPTION'
+        elif type(row.get('status')) is str and row['status'].startswith('STOP_'):
+            failure_code='OTHER_STOP'
+        else:
+            failure_code='NONE'
         detail_audit=row.get('v420_detail_audit') or {}
         ctrl=detail_audit.get('v423_controls') or {}
         samples=detail_audit.get('samples') or []
@@ -535,6 +549,7 @@ def aggregate(rows):
             for st in TARGET_STATES:source_counts[st]+=eligible.get(st,0) or 0
         controls+=ctrl.get('controls') or []
         bycontext.append({'context':row.get('context'),
+           'capture_failure_code':failure_code,
            'route_correlated':row.get('route_correlated') is True,
            'source_detail_count':detail_audit.get('page_visits'),
            'control_discovery':ctrl.get('status','NOT_OBSERVED'),
