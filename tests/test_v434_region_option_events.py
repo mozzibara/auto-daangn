@@ -192,6 +192,13 @@ class PublicFailureReportTests(unittest.TestCase):
                 "context": "cheonan_a", "capture_failure_code":
                     "FRESH_REGION_PROOF_MISSING",
                 "region_picker": {"navigation_trace": {
+                    "dialog_transition": "NEW_DIALOG_WITH_CHANGED_CONTROLS",
+                    "checkpoints": {"BEFORE_CLICK": {
+                        "dialog_heading": "SEARCH", "dialog_search_inputs": 1,
+                        "dialog_has_labelledby": True},
+                        "AFTER_SETTLE": {"dialog_heading": "PICK_REGION",
+                            "dialog_search_inputs": 0,
+                            "dialog_has_back_action": True}},
                     "option_event": {**event, "secret_url": "PRIVATE_SECRET_URL"}}}
             }]}}
             (folder / "v423_public_controls_results.json").write_text(
@@ -199,6 +206,11 @@ class PublicFailureReportTests(unittest.TestCase):
             output = classify(folder)
             self.assertEqual(output["OPTION_EVENT_PURPOSE"],
                              "CLICK_DELIVERED_NO_COMMIT")
+            self.assertEqual(output["NAV_TRACE_DIALOG_TRANSITION"],
+                             "NEW_DIALOG_WITH_CHANGED_CONTROLS")
+            self.assertEqual(output["NAV_BEFORE_CLICK_DIALOG_HEADING"], "SEARCH")
+            self.assertEqual(output["NAV_AFTER_SETTLE_DIALOG_HEADING"], "PICK_REGION")
+            self.assertEqual(output["NAV_AFTER_SETTLE_DIALOG_SEARCH_INPUTS"], "0")
             self.assertEqual(output["OPTION_EVENT_ARM_STATE"], "ARMED")
             self.assertEqual(output["OPTION_ATTR_HASPOPUP"], "MISSING")
             self.assertEqual(output["OPTION_AFTER_SETTLE_ADDED_BUTTONS"], "3")

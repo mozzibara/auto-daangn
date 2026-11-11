@@ -28,7 +28,10 @@ import daangn_network_flow_v4_11 as network
 import daangn_render_gap_v4_12 as render
 import daangn_route_structure_v4_10 as shape
 from app_v5.region_transition import classify_picker_transition, classify_filter_transition
-from app_v5.region_navigation import RegionNavigationTrace, sanitize_navigation_trace
+from app_v5.region_navigation import (
+    RegionNavigationTrace, sanitize_navigation_trace,
+    classify_dialog_stage_transition,
+)
 from app_v5.region_option_events import RegionOptionEventWitness
 from app_v5.region_suggestion import (RegionSuggestionObserver,
                                        classify_suggestion_identity)
@@ -392,6 +395,8 @@ async def capture(browser,name,region,options,salt):
             nav_export['option_event']=option_events.export(
                 server_region=region_state,
                 visible_control=selected_ui.get('control','UNOBSERVABLE'))
+            nav_export['dialog_transition']=classify_dialog_stage_transition(
+                nav_export)
             result['region_picker']['navigation_trace']=sanitize_navigation_trace(
                 nav_export)
             result['region_picker']['button_clicked']=steps.get(
