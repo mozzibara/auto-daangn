@@ -417,3 +417,58 @@ interaction to an owner-visible browser and only add a *new*
 robots-approved, privacy-safe observation or UI action justified by
 specific evidence. Never adopt an unrelated locality, derive
 authority from SSR ItemList, or weaken the filter/SHA/region gates.
+
+## Exact candidate button event/ARIA witness (next discriminating experiment)
+
+Approved live [#21](https://github.com/mozzibara/auto-daangn/actions/runs/43013233966)
+proved that the clicked locality candidate was a generic `BUTTON` nested
+in an open dialog, with no `role=option`, `aria-selected`, or data-region-id.
+The target region never reached the visible region button nor the fresh
+search response. **This does not, by itself, reveal whether the button
+was an intermediate step or a failed final action.**
+
+`app_v5.region_option_events.RegionOptionEventWitness` now instruments
+**only that same unique, visible, robots-approved option**, immediately
+before its single existing Playwright click. It adds and removes
+passive, short-lived DOM listeners (`pointerdown`, `pointerup`,
+`click` on the button; a filtered document bubbling witness), plus a
+bounded MutationObserver of the existing dialog. The observer never
+calls `click`, `dispatchEvent`, `preventDefault`, or `stopPropagation`.
+It makes no new requests. All resources are detached in a `finally`
+block, even after a failed click.
+
+The initial ARIA witness classifies, without exporting raw attribute
+values: `role`, `aria-haspopup`, `aria-expanded`,
+`aria-disabled`, `aria-controls` presence, `aria-describedby`
+presence, HTML button `type`, `data-state`, `tabIndex`,
+form membership, disabled state and whether an accessible label
+matches the configured target/city. The subsequent two checkpoints
+(`AFTER_CLICK`, `AFTER_SETTLE`) contain only event-kind sequence,
+`event.isTrusted`, `defaultPrevented`, event propagation to
+document, target connection/visibility, focus relationship, button
+expansion state and capped dialog DOM mutation counts (added
+dialogs/buttons/inputs). There are no event timestamps, selectors,
+seller/item strings, raw HTML, element attributes, URLs, numeric unknown
+region IDs, cookies, storage or React internal state in the public log.
+
+Interpretation must remain conservative:
+
+- `CLICK_EVENT_NOT_SEEN`: a successful Playwright call does **not**
+  establish that instrumentation saw an actual target click.
+- `CLICK_DELIVERED_NO_COMMIT`: target click was observed, but the
+  independent selected region control and fresh server Route were still
+  `OTHER`. This indicates **non-commitment**, not a definite front-end
+  defect or definite intermediate-step semantics.
+- `SECOND_STAGE_SIGNAL`: a new dialog appeared, or the clicked option's
+  accessible `aria-expanded` transitioned to true. It indicates
+  a **potential** additional step, never permission to click unknown UI.
+- `COMMIT_CORROBORATED_DIAGNOSTIC`: both visible region control and
+  current server locality matched, but the original independent
+  `verified_region`, SHA, filters, stock and candidate gates still
+  apply.
+
+The capture remains an owner-approved, robots-first, one-shot diagnostic.
+No new live traffic beyond the existing workflow, login, cookie handling,
+challenge bypass or detail visits is permitted. A live event witness must
+be checked after cross-platform offline tests; site-side event outcomes
+are not established by synthetic mocks.
