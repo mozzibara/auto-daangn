@@ -51,6 +51,32 @@ the listing set or a previously requested URL.
   and fixed booleans for observed query/category/price/availability and
   server region matches. It cannot expose raw titles, links or seller data.
 
+## Diagnosing current server metadata without changing the gate
+
+The approved 2026-11-11 capture #9 received one UI-generated alternate
+first-party search JSON response for the expected keyword and filters, but
+the parsed model did not contain both expected Cheonan region IDs. The public
+failure log at the time could only show two negative Boolean comparisons.
+
+The diagnostics now distinguish `EXPECTED`, `MISSING`, and `OTHER` for
+both `searchRegion.id` and `currentFilters.regionId`, separately. A
+missing field cannot be treated as a known mismatched region, but **neither
+permits promotion**. Only fixed enums are emitted; no numeric non-target
+region IDs, raw JSON, seller data, listing URL or credentials leave the
+private runner.
+
+This classifier provides the next discriminating evidence:
+- `MISSING/MISSING`: investigate a changed response schema or loss of
+  locality metadata; do not infer geography from query or content.
+- `OTHER/*` or `*/OTHER`: the selected region was not authoritatively
+  applied, or a different region is being returned; stop.
+- `EXPECTED/EXPECTED`: the remaining blocker is response correlation,
+  transport, UI filter persistence or DOM evidence; inspect the matching
+  stage rather than loosening locality proof.
+
+The classifications are an offline-tested diagnostic change, not an
+unverified inference that site-side region state was actually changed.
+
 ## Important limits
 
 The original v4.15 post-reload strict filter persistence check is *not*
