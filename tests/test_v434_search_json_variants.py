@@ -9,6 +9,7 @@ import unittest
 
 import daangn_browser_v4_6 as v46
 from daangn_full_route_v4_14 import RouteBodies
+from daangn_network_flow_v4_11 import NetworkRecorder
 
 
 SEARCH = ("https://www.daangn.com/kr/search/buy-sell/"
@@ -34,13 +35,16 @@ def payload():
 class FakeRequest:
     resource_type = "fetch"
 
+    def __init__(self, url):
+        self.url = url
+
 
 class FakeResponse:
     def __init__(self, url, body, content_type="application/json"):
         self.url = url
         self.body_bytes = body
         self.status = 200
-        self.request = FakeRequest()
+        self.request = FakeRequest(url)
         self.headers = {
             "content-type": content_type,
             "content-length": str(len(body)),
@@ -58,10 +62,15 @@ class SearchResponseVariants(unittest.IsolatedAsyncioTestCase):
         r = FakeResponse(variant, body)
         net = v46.Network()
         passive = RouteBodies()
+        observer = NetworkRecorder()
+        observer.phase = "FILTER_APPLY"
+        observer.on_request(r.request)
         net.hook(r)
         passive.on_response(r)
+        observer.on_response(r)
         await net.drain()
         await passive.drain()
+        await observer.drain()
         self.assertEqual(net.search_fetch_responses, 1)
         self.assertEqual(net.old_remix_route_responses, 0)
         self.assertEqual(net.other_search_json_responses, 1)
@@ -70,6 +79,10 @@ class SearchResponseVariants(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(net.events[0]["digest"],
                          hashlib.sha256(body).hexdigest())
         self.assertEqual(passive.events[0]["digest"],
+                         net.events[0]["digest"])
+        self.assertEqual(len(observer.events), 1)
+        self.assertEqual(observer.events[0]["kind"], "SEARCH_DOCUMENT")
+        self.assertEqual(observer.events[0]["body_sha256"],
                          net.events[0]["digest"])
         self.assertEqual(str(net.events[0]["model"]["region_id"]), "2292")
         self.assertEqual(str(net.events[0]["model"]["filter_region_id"]),
