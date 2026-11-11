@@ -57,7 +57,15 @@ def verified_region(region: dict, page_url: str, route_event: dict | None,
     model = ev.get("model")
     model = model if isinstance(model, dict) else {}
     ui = ui_witness if isinstance(ui_witness, dict) else {}
-    selected_ui = ui.get("verified") is True
+    visible_ui = ui.get("verified") is True
+    unique_ui_action = (picker_selected is True
+                        and ui.get("unique_option_clicked") is True)
+    # A uniquely identified public suggestion selected by the actual browser
+    # is an independent UI action witness when the selected locality label
+    # disappears from the page. Neither witness substitutes for Route IDs.
+    selected_ui = visible_ui or unique_ui_action
+    ui_source = ("VISIBLE_REGION_CONTROL" if visible_ui else
+                 "UNIQUE_REGION_OPTION" if unique_ui_action else "NONE")
     ids_match = (str(model.get("region_id")) == expected_id
                  and str(model.get("filter_region_id")) == expected_id)
     digest = ev.get("digest")
@@ -89,6 +97,7 @@ def verified_region(region: dict, page_url: str, route_event: dict | None,
         "status": status,
         "verified": status == "UI_FRESH_ROUTE_REGION_VERIFIED",
         "ui_witness": selected_ui,
+        "ui_source": ui_source,
         "route_ids_match": ids_match,
         "fresh_response_authenticated": response_trusted,
         "url_region": url_state,

@@ -26,7 +26,7 @@ the listing set or a previously requested URL.
   produced by the actual Filter → Apply UI action, under a bounded listener.
   No manually generated Route URLs or arbitrary query attempts are used.
 - `app_v5.region_proof.verified_region` requires all of:
-  1. A visible, scoped region control matching the intended locality;
+  1. A visible, scoped selected-region control **or** an actual, uniquely identified visible public region suggestion clicked during this capture. A generic success flag or ambiguous matching option is insufficient;
   2. A single current XHR/fetch result with first-party HTTPS search URL,
      HTTP 200, SHA-256 digest, correct `q=HDD`;
   3. Both `searchRegion.id` and `currentFilters.regionId` equal the
@@ -47,7 +47,7 @@ the listing set or a previously requested URL.
 The original v4.15 post-reload strict filter persistence check is *not*
 relaxed. If a full reload removes the region or filter selection, a candidate
 must remain unverified; a one-time SPA success is not proof of persistence.
-An unobservable UI locality label likewise blocks promotion. A successful
+An unobservable UI locality label requires the stricter unique-option click plus fresh matching Route; an ambiguous option still blocks promotion. A successful
 offline CI test is **not** evidence that the current website exposes the
 needed field values in an actual GitHub-runner session.
 
@@ -64,6 +64,6 @@ python -m unittest discover -s tests -p 'test_v434_fresh_region_proof.py' -v
 python -m unittest discover -s tests -p 'test_*.py' -q
 ```
 
-Synthetic negative cases include mismatched server IDs, missing UI, stale
+Synthetic negative cases include mismatched server IDs, missing UI and absent unique action, stale
 loader data, absent/altered SHA, different or ambiguous `in` values, wrong
 host/query, and missing owner-selected region action.

@@ -132,6 +132,13 @@ def classify(folder: Path) -> dict[str, str]:
         raw_authority if type(raw_authority) is str
         and raw_authority in region_authorities else "UNKNOWN"
     )
+    raw_ui_source = first.get("fresh_region_ui_source")
+    ui_source = (
+        raw_ui_source if type(raw_ui_source) is str and raw_ui_source in
+        {"VISIBLE_REGION_CONTROL", "UNIQUE_REGION_OPTION", "NONE"}
+        else "UNKNOWN"
+    )
+    region_ids_match = first.get("fresh_region_route_ids_match")
     picker_robots = {
         "NOT_NEEDED", "ALLOWED", "DISALLOWED", "INVALID_REGION",
         "ROBOTS_NON_200", "ROBOTS_TOO_LARGE", "ROBOTS_UNAVAILABLE",
@@ -216,12 +223,18 @@ def classify(folder: Path) -> dict[str, str]:
         "BASELINE_HTTP_URL_CHANGED": changed("response_changed_from_request"),
         "BASELINE_RENDERED_URL_CHANGED": changed("rendered_changed_from_response"),
         "FRESH_REGION_AUTHORITY_STATUS": authority_status,
+        "FRESH_REGION_UI_SOURCE": ui_source,
+        "FRESH_REGION_ROUTE_IDS_MATCH": (
+            "YES" if region_ids_match is True
+            else "NO" if region_ids_match is False else "UNKNOWN"
+        ),
         "REGION_PICKER_OUTCOME": picker_label("outcome", picker_outcomes),
         "REGION_PICKER_ROBOTS_PERMISSION": picker_label(
             "robots_permission", picker_robots),
         "REGION_PICKER_ATTEMPTED": picker_flag("attempted"),
         "REGION_PICKER_BUTTON_CLICKED": picker_flag("button_clicked"),
         "REGION_PICKER_OPTION_SELECTED": picker_flag("suggestion_selected"),
+        "REGION_PICKER_UNIQUE_OPTION": picker_flag("unique_region_option"),
         "REGION_PICKER_VERIFIED": picker_flag("verified_region_and_keyword"),
         "REGION_PICKER_FINAL_URL_REGION": picker_url_value("region", statuses),
         "REGION_PICKER_FINAL_URL_HOST": picker_url_value("host", statuses),

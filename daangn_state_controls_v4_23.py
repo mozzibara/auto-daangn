@@ -558,9 +558,16 @@ def aggregate(rows):
         raw_authority=row.get('fresh_region_authority_status')
         authority=(raw_authority if type(raw_authority) is str
                    and raw_authority in safe_authority else 'UNKNOWN')
+        source=row.get('fresh_region_ui_source')
+        source=(source if type(source) is str and source in (
+            'VISIBLE_REGION_CONTROL','UNIQUE_REGION_OPTION','NONE')
+            else 'UNKNOWN')
         bycontext.append({'context':row.get('context'),
            'capture_failure_code':failure_code,
            'fresh_region_authority_status':authority,
+           'fresh_region_ui_source':source,
+           'fresh_region_route_ids_match':row.get(
+               'fresh_region_route_ids_match') is True,
            'baseline_region_url_evidence':row.get('baseline_region_url_evidence')
                if type(row.get('baseline_region_url_evidence')) is dict else {},
            'region_picker':row.get('region_picker')

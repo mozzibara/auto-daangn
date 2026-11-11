@@ -1,0 +1,83 @@
+# -*- coding: utf-8 -*-
+"""Purely synthetic Playwright locator fakes: no browser or network."""
+from __future__ import annotations
+
+import unittest
+
+import daangn_v4_1_core as core
+
+
+class FakeLocator:
+    def __init__(self, count=1, visible=True):
+        self.n = count
+        self.visible = visible
+        self.clicks = 0
+        self.fills = 0
+
+    @property
+    def first(self):
+        return self
+
+    def filter(self, **kwargs):
+        return self
+
+    async def count(self):
+        return self.n
+
+    async def click(self, **kwargs):
+        self.clicks += 1
+
+    async def fill(self, text, **kwargs):
+        self.fills += 1
+
+    async def is_visible(self):
+        return self.visible
+
+
+class FakePage:
+    url = "https://www.daangn.com/kr/search/buy-sell/?q=HDD"
+
+    def __init__(self, matching_count, visible=True):
+        self.region_button = FakeLocator()
+        self.input = FakeLocator()
+        self.option = FakeLocator(matching_count, visible)
+
+    def get_by_role(self, role, name):
+        return self.region_button
+
+    def locator(self, selector):
+        return self.input if "input[placeholder" in selector else self.option
+
+    async def wait_for_timeout(self, value):
+        return None
+
+
+class RegionSelectorUniquenessTests(unittest.IsolatedAsyncioTestCase):
+    async def test_one_visible_region_option_may_be_clicked(self):
+        p = FakePage(1)
+        result = await core.ui_select_region(p, core.BY_KEY["cheonan"])
+        self.assertTrue(result["clicked_region_button"])
+        self.assertTrue(result["unique_region_option"])
+        self.assertTrue(result["selected_suggestion"])
+        self.assertEqual(p.option.clicks, 1)
+
+    async def test_multiple_matching_region_options_never_get_clicked(self):
+        p = FakePage(2)
+        result = await core.ui_select_region(p, core.BY_KEY["cheonan"])
+        self.assertFalse(result["unique_region_option"])
+        self.assertFalse(result["selected_suggestion"])
+        self.assertEqual(result["error"], "ambiguous_region_options")
+        self.assertEqual(p.option.clicks, 0)
+
+    async def test_hidden_or_missing_region_option_fails_closed(self):
+        for n, visible in [(0, True), (1, False)]:
+            with self.subTest(n=n, visible=visible):
+                p = FakePage(n, visible)
+                result = await core.ui_select_region(
+                    p, core.BY_KEY["cheonan"])
+                self.assertFalse(result["selected_suggestion"])
+                self.assertEqual(p.option.clicks, 0)
+
+
+if __name__ == "__main__":
+    unittest.main()
