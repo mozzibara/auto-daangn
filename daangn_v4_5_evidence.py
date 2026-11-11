@@ -192,6 +192,10 @@ def extract_model(obj):
     x=candidates[0]; filt=x.get('currentFilters') or {};region=x.get('searchRegion') or {}
     return {'region_id':str(region.get('id')) if region.get('id') is not None else None,
             'filter_region_id':str(filt.get('regionId')) if filt.get('regionId') is not None else None,
+            # Search-region display name is kept in the in-memory model only.
+            # Public diagnostics may emit a fixed match enum, never the text.
+            'search_region_name':region.get('name')[:90]
+                if isinstance(region.get('name'),str) else None,
             'filters':filt,'articles':[{'href':r.get('href') or r.get('url') or '',
                 'price':r.get('price'),'categoryId':r.get('categoryId',r.get('category_id')),
                 'isSoldOut':r.get('isSoldOut',r.get('soldOut',r.get('isSold')))}

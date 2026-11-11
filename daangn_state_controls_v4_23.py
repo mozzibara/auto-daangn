@@ -574,6 +574,16 @@ def aggregate(rows):
         safe_route={k:(raw_route[k] if type(raw_route.get(k)) is int
                       and 0<=raw_route[k]<=20 else -1) for k in counter_keys}
         safe_route.update({k:raw_route.get(k) is True for k in flag_keys})
+        raw_name_state=raw_route.get('server_region_name_state')
+        safe_route['server_region_name_state']=(
+            raw_name_state if type(raw_name_state) is str and raw_name_state
+            in ('MISSING','EXACT','CONTAINS','OTHER') else 'UNKNOWN')
+        raw_ids_agree=raw_route.get('server_region_ids_agree')
+        safe_route['server_region_ids_agree']=(
+            raw_ids_agree if type(raw_ids_agree) is str and raw_ids_agree
+            in ('YES','NO','MISSING') else 'UNKNOWN')
+        safe_route['historical_id_drift_candidate']=(
+            raw_route.get('historical_id_drift_candidate') is True)
         for key in ('last_route_search_region_state',
                     'last_route_filter_region_state'):
             value=raw_route.get(key)

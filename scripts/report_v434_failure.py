@@ -245,6 +245,18 @@ def classify(folder: Path) -> dict[str, str]:
             "last_route_search_region_matches"),
         "ROUTE_SERVER_FILTER_REGION_MATCH": route_flag(
             "last_route_filter_region_matches"),
+        "ROUTE_SERVER_REGION_NAME": (
+            route_diag.get("server_region_name_state")
+            if route_diag.get("server_region_name_state")
+            in ("MISSING","EXACT","CONTAINS","OTHER") else "UNKNOWN"
+        ),
+        "ROUTE_SERVER_REGION_IDS_AGREE": (
+            route_diag.get("server_region_ids_agree")
+            if route_diag.get("server_region_ids_agree")
+            in ("YES","NO","MISSING") else "UNKNOWN"
+        ),
+        "ROUTE_HISTORICAL_REGION_ID_DRIFT_CANDIDATE": route_flag(
+            "historical_id_drift_candidate"),
         "ROUTE_SEARCH_REGION_FIELD": (
             route_diag.get("last_route_search_region_state")
             if route_diag.get("last_route_search_region_state")

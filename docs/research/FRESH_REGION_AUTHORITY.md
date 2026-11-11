@@ -77,6 +77,25 @@ This classifier provides the next discriminating evidence:
 The classifications are an offline-tested diagnostic change, not an
 unverified inference that site-side region state was actually changed.
 
+## Owner-approved capture #10: server locality differs from preset
+
+The one-shot [capture #10](https://github.com/mozzibara/auto-daangn/actions/runs/42987173182)
+confirmed `OTHER` for *both present* server locality IDs, not `MISSING`.
+Its UI-generated search JSON matched the search keyword, category, availability
+and price query while omitting the `in` parameter. This does not prove whether
+the historical `2292` preset is stale or whether the UI selection failed.
+
+A new strictly diagnostic `searchRegion.name` correspondence check now emits
+`EXACT`, `CONTAINS`, `OTHER` or `MISSING` against the configured region
+term, plus `YES`/`NO`/`MISSING` for agreement of the two returned server
+IDs. A `historical_id_drift_candidate` flag means only that the region
+name appears to match while both server IDs agree with *each other* but not
+the legacy preset. It is **not** a valid proof of region identity or grounds
+for automatically changing the preset. No raw region name or unknown numeric
+region IDs appear in public diagnostics. Subsequent user-approved code review
+must establish full administrative locality and source integrity before
+migrating any region preset.
+
 ## Important limits
 
 The original v4.15 post-reload strict filter persistence check is *not*
