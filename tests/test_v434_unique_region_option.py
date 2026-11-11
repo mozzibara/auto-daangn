@@ -33,6 +33,12 @@ class FakeLocator:
     async def is_visible(self):
         return self.visible
 
+    async def evaluate(self, *args):
+        return {"option_metadata": "OBSERVED", "option_city_hint": True,
+                "option_exact_term": False, "option_data_id": "MISSING",
+                "option_tag": "BUTTON", "option_role": "OPTION",
+                "option_parent": "LISTBOX", "option_aria_selected": "FALSE"}
+
 
 class FakePage:
     url = "https://www.daangn.com/kr/search/buy-sell/?q=HDD"
@@ -60,6 +66,10 @@ class RegionSelectorUniquenessTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(result["unique_region_option"])
         self.assertTrue(result["selected_suggestion"])
         self.assertEqual(p.option.clicks, 1)
+        self.assertEqual(result["option_tag"], "BUTTON")
+        self.assertEqual(result["option_role"], "OPTION")
+        self.assertEqual(result["option_parent"], "LISTBOX")
+        self.assertEqual(result["option_aria_selected"], "FALSE")
 
     async def test_resolver_listener_arms_before_search_input_fill(self):
         p = FakePage(1)
