@@ -25,6 +25,7 @@ import daangn_detail_crosscheck_v4_20 as detail
 import daangn_sale_sources_v4_21 as sources
 from daangn_state_consumers_v4_25 import consume, control_comparison, summarize
 import daangn_status_dom_v4_22 as dom
+from app_v5.region_transition import sanitize_picker_transition
 import daangn_full_route_v4_14 as full
 
 TARGET_STATES=('SOLD','RESERVED')
@@ -589,6 +590,32 @@ def aggregate(rows):
             value=raw_route.get(key)
             safe_route[key]=(value if type(value) is str and value in
                 ('EXPECTED','MISSING','OTHER') else 'UNKNOWN')
+        raw_picker=row.get('region_picker')
+        raw_picker=raw_picker if type(raw_picker) is dict else {}
+        safe_picker={
+            k:(raw_picker.get(k) is True)
+            for k in ('attempted','button_clicked','suggestion_selected',
+                      'unique_region_option','verified_region_and_keyword',
+                      'selected_region_button_visible')
+        }
+        for k in ('outcome','robots_permission'):
+            v=raw_picker.get(k)
+            safe_picker[k]=v if type(v) is str and v in (
+                'NOT_NEEDED','NOT_ELIGIBLE','ACCESS_BLOCKED','ROBOTS_DENIED',
+                'VERIFIED','UNVERIFIED','PENDING_FRESH_ROUTE',
+                'VERIFIED_FRESH_ROUTE','FRESH_REGION_PROOF_MISSING',
+                'ALLOWED','DISALLOWED','INVALID_REGION','ROBOTS_NON_200',
+                'ROBOTS_TOO_LARGE','ROBOTS_UNAVAILABLE') else 'UNKNOWN'
+        raw_url=raw_picker.get('after_url_proof')
+        raw_url=raw_url if type(raw_url) is dict else {}
+        safe_picker['after_url_proof']={
+            k:(v if type(v) is str and v in
+               ('EXPECTED','MISSING','OTHER','INVALID','PRESENT') else 'INVALID')
+            for k,v in raw_url.items() if k in
+               ('host','path','keyword','region','region_parameter')
+        }
+        safe_picker['transition']=sanitize_picker_transition(
+            raw_picker.get('transition'))
         bycontext.append({'context':row.get('context'),
            'region_route_observation':safe_route,
            'capture_failure_code':failure_code,
@@ -598,8 +625,7 @@ def aggregate(rows):
                'fresh_region_route_ids_match') is True,
            'baseline_region_url_evidence':row.get('baseline_region_url_evidence')
                if type(row.get('baseline_region_url_evidence')) is dict else {},
-           'region_picker':row.get('region_picker')
-               if type(row.get('region_picker')) is dict else {},
+           'region_picker':safe_picker,
            'route_correlated':row.get('route_correlated') is True,
            'source_detail_count':detail_audit.get('page_visits'),
            'control_discovery':ctrl.get('status','NOT_OBSERVED'),

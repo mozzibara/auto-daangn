@@ -456,10 +456,13 @@ async def stable_page_snapshot(page, expected_term: str, settle_ms: int) -> dict
     return second
 
 
-async def ui_select_region(page, region: dict) -> dict:
+async def ui_select_region(page, region: dict, *, on_before_select=None) -> dict:
     steps = {"target": region["term"], "clicked_region_button": False,
              "selected_suggestion": False, "unique_region_option": False,
-             "error": None, "start_url": sanitized_url(page.url)}
+             "error": None, "start_url": sanitized_url(page.url),
+             "option_metadata": "UNAVAILABLE", "option_city_hint": False,
+             "option_exact_term": False, "option_data_id": "MISSING",
+             "option_still_visible": False}
     try:
         selector = page.get_by_role("button", name=re.compile(r"지역 선택"))
         await selector.first.click(timeout=5000)
@@ -482,10 +485,42 @@ async def ui_select_region(page, region: dict) -> dict:
             steps["error"] = "region_option_not_visible"
             return steps
         steps["unique_region_option"] = True
+        # Inspect only fixed semantic predicates on the exact clicked option.
+        # Never persist option text, DOM, attributes or any unknown region ID.
+        try:
+            safe = await matching.first.evaluate("""(el, meta) => {
+              const label=(el.textContent||'').replace(/\\s+/g,' ').trim().slice(0,160);
+              const dataId=el.getAttribute('data-region-id');
+              return {
+                option_metadata:'OBSERVED',
+                option_city_hint:label.includes(meta.city),
+                option_exact_term:label===meta.term,
+                option_data_id:!dataId?'MISSING':
+                  dataId===meta.expected?'EXPECTED':'OTHER'
+              };
+            }""", {"city":region["label"],"term":region["term"],
+                    "expected":region["id"]})
+            if isinstance(safe, dict) and safe.get("option_metadata")=="OBSERVED":
+                steps["option_metadata"]="OBSERVED"
+                steps["option_city_hint"]=safe.get("option_city_hint") is True
+                steps["option_exact_term"]=safe.get("option_exact_term") is True
+                steps["option_data_id"]=safe.get("option_data_id") if safe.get(
+                    "option_data_id") in ("EXPECTED","OTHER","MISSING") else "MISSING"
+        except Exception:
+            pass  # Unsupported markup is an unknown diagnostic, not authority.
+        if on_before_select is not None:
+            on_before_select()  # Arm the response listener immediately before click.
         await matching.first.click(timeout=5000)
         steps["selected_suggestion"] = True
+        await page.wait_for_timeout(300)
+        try:
+            steps["option_still_visible"] = (
+                await matching.count() > 0 and
+                await matching.first.is_visible())
+        except Exception:
+            pass
     except Exception as exc:
-        steps["error"] = type(exc).__name__ + ":" + str(exc)[:180]
+        steps["error"] = type(exc).__name__
     steps["end_url"] = sanitized_url(page.url)
     return steps
 
