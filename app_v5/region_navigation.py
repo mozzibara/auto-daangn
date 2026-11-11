@@ -24,6 +24,8 @@ _DIALOG_HEADING = frozenset(("PICK_NEIGHBORHOOD", "PICK_REGION", "SEARCH",
 _DIALOG_FOCUS = frozenset(("INPUT", "BUTTON", "OTHER", "OUTSIDE",
                           "NONE", "UNOBSERVABLE"))
 _ARIA_MODAL = frozenset(("TRUE", "FALSE", "MISSING", "OTHER", "UNOBSERVABLE"))
+_DIALOG_SCOPE = frozenset(("TARGET_CANDIDATE","REGION_SEARCH_INPUT",
+                           "MOST_INTERACTIVE","AMBIGUOUS","NONE","UNOBSERVABLE"))
 _DIALOG_TRANSITIONS = frozenset((
     "NEW_DIALOG_WITH_CHANGED_CONTROLS", "REPLACED_DIALOG_UNCLASSIFIED",
     "SAME_DIALOG_REMAINS", "DIALOG_CLOSED", "NOT_OBSERVABLE",
@@ -49,13 +51,56 @@ _CHECK_UI_JS = r"""meta => {
   const controlsState=controls.length>1?'AMBIGUOUS':
     controls.length===0?'NOT_VISIBLE':
     target.length===1?'TARGET_VISIBLE':'OTHER_VISIBLE';
-  const dialogs=[...document.querySelectorAll('[role="dialog"]')]
-    .filter(seen).slice(0,20);
+  // Some React dialog wrappers have no own CSS box, so visible children
+  // do NOT imply getClientRects() on the wrapper itself. Prefer the exact
+  // candidate's nearest dialog ancestor, never the document's first dialog.
+  const allDialogs=[...document.querySelectorAll('[role="dialog"]')].slice(0,60);
   const lists=[...document.querySelectorAll('[role="listbox"]')]
     .filter(seen).slice(0,20);
-  // A button's *exact* visible action category is used; never export its text.
-  const actionButtons=dialogs.flatMap(d => [...d.querySelectorAll('button')])
-    .filter(seen).filter(e => {
+  const inputSearch=e => {
+    const p=e.getAttribute('placeholder')||'';
+    return /지역|동네|검색/.test(p) || e.type==='search';
+  };
+  const candidates=allDialogs.map(d => {
+    const buttons=[...d.querySelectorAll('button,[role="button"]')]
+      .filter(seen).slice(0,100);
+    const inputs=[...d.querySelectorAll('input,[role="combobox"]')]
+      .filter(seen).slice(0,100);
+    const regionInputs=inputs.filter(inputSearch);
+    const targetButtons=buttons.filter(e=>
+      (e.textContent||'').includes(meta.term));
+    return {dialog:d,buttons,inputs,regionInputs,targetButtons,
+            count:buttons.length+inputs.length,
+            visible:seen(d)||buttons.length>0||inputs.length>0};
+  }).filter(item=>item.visible);
+  const byTarget=candidates.filter(item=>item.targetButtons.length>0);
+  const byRegion=candidates.filter(item=>item.regionInputs.length>0);
+  let chosen=null, dialogScope='NONE';
+  if(byTarget.length===1) {
+    chosen=byTarget[0]; dialogScope='TARGET_CANDIDATE';
+  } else if(byTarget.length>1) {
+    dialogScope='AMBIGUOUS';
+  } else if(byRegion.length===1) {
+    chosen=byRegion[0]; dialogScope='REGION_SEARCH_INPUT';
+  } else if(byRegion.length>1) {
+    dialogScope='AMBIGUOUS';
+  } else if(candidates.length) {
+    const max=Math.max(...candidates.map(x=>x.count));
+    const rich=candidates.filter(x=>x.count===max);
+    if(max>0 && rich.length===1) {
+      chosen=rich[0]; dialogScope='MOST_INTERACTIVE';
+    } else {
+      dialogScope='AMBIGUOUS';
+    }
+  }
+  const dialogs=candidates.map(x=>x.dialog);
+  const dlg=chosen?.dialog||null;
+  const dlgButtons=chosen?.buttons||[];
+  const dlgInputs=chosen?.inputs||[];
+  const searchInputs=chosen?.regionInputs||[];
+  const optionButtons=chosen?.targetButtons||[];
+  // Exact action-label existence only; do not export any label text.
+  const actionButtons=dlgButtons.filter(e => {
       const t=(e.textContent||'').replace(/\s+/g,' ').trim();
       const a=(e.getAttribute('aria-label')||'').trim();
       return /^(확인|완료|적용|선택|설정|다음|이 동네로 설정|선택하기)$/.test(t) ||
@@ -65,17 +110,6 @@ _CHECK_UI_JS = r"""meta => {
     'input[placeholder*="지역"],input[placeholder*="동네"],[role="dialog"] input')]
     .filter(seen).slice(0,20);
   const typed=inputs.filter(e => e.value===meta.term);
-  const dlg=dialogs[0] || null;
-  const dlgButtons=dlg?[...dlg.querySelectorAll('button,[role="button"]')]
-    .filter(seen).slice(0,100):[];
-  const dlgInputs=dlg?[...dlg.querySelectorAll('input,[role="combobox"]')]
-    .filter(seen).slice(0,100):[];
-  const searchInputs=dlgInputs.filter(e => {
-    const placeholder=e.getAttribute('placeholder')||'';
-    return /지역|동네|검색/.test(placeholder) || e.type==='search';
-  });
-  const optionButtons=dlgButtons.filter(e =>
-    (e.textContent||'').includes(meta.term));
   const heading=dlg?[...dlg.querySelectorAll('h1,h2,h3,[role="heading"]')]
     .filter(seen).slice(0,12):[];
   const headingText=(heading[0]?.textContent||'').replace(/\s+/g,' ').trim();
@@ -117,6 +151,7 @@ _CHECK_UI_JS = r"""meta => {
     visible_listboxes:Math.min(lists.length,20),
     visible_confirm_actions:Math.min(actionButtons.length,20),
     visible_inputs:Math.min(inputs.length,20),
+    dialog_scope:dialogScope,
     dialog_heading:headingKind,
     dialog_focus:focus(document.activeElement),
     dialog_aria_modal:modal,
@@ -176,6 +211,10 @@ def _safe_checkpoint(value) -> dict:
                           else "UNOBSERVABLE",
         "input": obj.get("input") if type(obj.get("input")) is str
                  and obj["input"] in _INPUT else "UNOBSERVABLE",
+        "dialog_scope": obj.get("dialog_scope")
+                        if type(obj.get("dialog_scope")) is str
+                        and obj["dialog_scope"] in _DIALOG_SCOPE
+                        else "UNOBSERVABLE",
         "dialog_heading": obj.get("dialog_heading")
                           if type(obj.get("dialog_heading")) is str
                           and obj["dialog_heading"] in _DIALOG_HEADING
