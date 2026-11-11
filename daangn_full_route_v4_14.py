@@ -28,6 +28,7 @@ import daangn_network_flow_v4_11 as network
 import daangn_render_gap_v4_12 as render
 import daangn_route_structure_v4_10 as shape
 from app_v5.region_transition import classify_picker_transition, classify_filter_transition
+from app_v5.region_navigation import RegionNavigationTrace, sanitize_navigation_trace
 from app_v5.region_suggestion import (RegionSuggestionObserver,
                                        classify_suggestion_identity)
 from app_v5.search_surface_probe import run_surface_probe, sanitize_surface_probe
@@ -331,6 +332,7 @@ async def capture(browser,name,region,options,salt):
                 raise RuntimeError('ACCESS_RESTRICTION')
             result['region_picker']['attempted']=True
             picker_net=v46.Network()
+            nav_trace=RegionNavigationTrace(core.BY_KEY[region])
             resolver=RegionSuggestionObserver(core.BY_KEY[region])
             resolver_listener_armed=False
             def arm_region_suggestion():
@@ -344,15 +346,24 @@ async def capture(browser,name,region,options,salt):
                 if not picker_listener_armed:
                     page.on('response',picker_net.hook)
                     picker_listener_armed=True
+            async def before_exact_option_click():
+                arm_post_click_route()
+                nav_trace.arm(page)
+                await nav_trace.checkpoint(page,'BEFORE_CLICK')
+            async def after_exact_option_click():
+                await nav_trace.checkpoint(page,'AFTER_CLICK')
             try:
                 steps=await core.ui_select_region(
                     page,core.BY_KEY[region],
                     on_before_search=arm_region_suggestion,
-                    on_before_select=arm_post_click_route)
+                    on_before_select=before_exact_option_click,
+                    on_after_select=after_exact_option_click)
                 await page.wait_for_timeout(options.settle_ms)
+                await nav_trace.checkpoint(page,'AFTER_SETTLE')
                 await resolver.drain()
                 await picker_net.drain()
             finally:
+                nav_trace.stop()
                 if resolver_listener_armed:
                     page.remove_listener('response',resolver.on_response)
                 if picker_listener_armed:
@@ -365,6 +376,9 @@ async def capture(browser,name,region,options,salt):
             result['region_picker']['transition']['suggestion']=(
                 classify_suggestion_identity(core.BY_KEY[region],
                                             resolver.events,picker_net.events))
+            result['region_picker']['navigation_trace']=nav_trace.export(
+                post_click_region=result['region_picker']['transition'].get(
+                    'search_region_state','MISSING'))
             result['region_picker']['button_clicked']=steps.get(
                 'clicked_region_button') is True
             result['region_picker']['suggestion_selected']=steps.get(
@@ -657,7 +671,9 @@ def sanitized_context(row):
        'collector_overflow':row.get('collector_overflow'),
        'access_blocked':row.get('access_blocked'),
        'search_surface_probe':sanitize_surface_probe(
-           row.get('search_surface_probe'))}
+           row.get('search_surface_probe')),
+       'region_navigation_trace':sanitize_navigation_trace(
+           (row.get('region_picker') or {}).get('navigation_trace'))}
 
 
 def report(doc):

@@ -229,6 +229,51 @@ def classify(folder: Path) -> dict[str, str]:
             surface_fields[f"SURFACE_{prefix}_{suffix}"] = (
                 str(val) if type(val) is int and 0 <= val <= 650 else "UNKNOWN")
 
+    # Independent visible UI + navigation evidence around the exact picker
+    # click. Every byte exported below is a fixed enum, not an actual URL.
+    navigation = picker.get("navigation_trace")
+    navigation = navigation if type(navigation) is dict else {}
+    nav_stages = navigation.get("checkpoints")
+    nav_stages = nav_stages if type(nav_stages) is dict else {}
+    nav_classes = {
+        "VISIBLE_TARGET_REVERTED_TO_OTHER", "VISIBLE_TARGET_LOST",
+        "UI_TARGET_SERVER_OTHER", "UI_TARGET_VISIBLE_DIAGNOSTIC_ONLY",
+        "UI_OTHER_AND_SERVER_OTHER", "NO_VISIBLE_COMMIT_SERVER_OTHER",
+        "TARGET_CONTROL_NOT_CONFIRMED", "NOT_OBSERVABLE",
+    }
+    nav_fields = {}
+    for stage in ("BEFORE_CLICK", "AFTER_CLICK", "AFTER_SETTLE"):
+        row = nav_stages.get(stage)
+        row = row if type(row) is dict else {}
+        for field, valid in (
+            ("control", {"TARGET_VISIBLE", "OTHER_VISIBLE", "NOT_VISIBLE",
+                         "AMBIGUOUS", "UNOBSERVABLE"}),
+            ("dialog", {"OPEN", "CLOSED", "UNOBSERVABLE"}),
+            ("input", {"EXPECTED", "OTHER", "MISSING", "UNOBSERVABLE"}),
+            ("url_region", {"EXPECTED", "OTHER", "MISSING", "INVALID"}),
+            ("url_path", {"EXPECTED", "OTHER", "INVALID"}),
+            ("url_keyword", {"EXPECTED", "OTHER", "MISSING", "INVALID"}),
+        ):
+            val = row.get(field)
+            nav_fields[f"NAV_{stage}_{field.upper()}"] = (
+                val if type(val) is str and val in valid else "UNKNOWN")
+    nav_count = navigation.get("event_count")
+    nav_raw_events = navigation.get("events")
+    nav_raw_events = nav_raw_events if type(nav_raw_events) is list else []
+    nav_sequence = []
+    for event in nav_raw_events[:12]:
+        event = event if type(event) is dict else {}
+        kind = event.get("kind")
+        region_state = event.get("url_region")
+        path_state = event.get("url_path")
+        if (type(kind) is str and
+            kind in {"SEARCH_FETCH", "DOCUMENT_REQUEST", "MAIN_FRAME_NAVIGATED"}
+            and type(region_state) is str
+            and region_state in {"EXPECTED", "OTHER", "MISSING", "INVALID"}
+            and type(path_state) is str
+            and path_state in {"EXPECTED", "OTHER", "INVALID"}):
+            nav_sequence.append(kind + ":" + region_state + ":" + path_state)
+
     raw_outer = outer.get("status")
     if type(raw_outer) is str and raw_outer in OUTER_STATUSES:
         outer_code = raw_outer
@@ -406,6 +451,18 @@ def classify(folder: Path) -> dict[str, str]:
             ("CHECKED", "ROBOTS_UNAVAILABLE", "NOT_ATTEMPTED") else "UNKNOWN"),
         "SEARCH_SURFACE_BLOCKED": "YES" if probe.get("blocked") is True else "NO",
         "SEARCH_SURFACE_AUTHORIZES_LISTINGS": "NO",
+        "NAV_TRACE_COMMIT_CLASS": (
+            navigation.get("commit_class")
+            if type(navigation.get("commit_class")) is str
+            and navigation["commit_class"] in nav_classes else "UNKNOWN"),
+        "NAV_TRACE_EVENT_COUNT": (
+            str(nav_count) if type(nav_count) is int
+            and 0 <= nav_count <= 12 else "UNKNOWN"),
+        "NAV_TRACE_EVENT_SEQUENCE": ",".join(nav_sequence) or "NONE",
+        "NAV_TRACE_OVERFLOW": (
+            "YES" if navigation.get("overflow") is True else "NO"),
+        "NAV_TRACE_AUTHORIZES_LISTINGS": "NO",
+        **nav_fields,
         **surface_fields,
     }
 
