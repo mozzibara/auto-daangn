@@ -152,6 +152,29 @@ async def capture_apply(page,args,name,region,key,salt,*,picker_selected=False):
     stage['id']=f'v48_filtered:{name}:{key}:apply'
     stage['matched_route_count']=len(matched)
     stage['unmatched_route_count']=len(net.events)-len(matched)
+    # Public-safe observability: counts and boolean matches only. Never emit
+    # response bodies, item identities, URLs, seller labels or arbitrary keys.
+    observed=net.events[-1] if net.events else {}
+    rp=(observed.get('public_request') or {}).get('public_params') or {}
+    rm=observed.get('model') or {}
+    stage['region_route_observation']={
+        'search_fetch_responses':min(net.search_fetch_responses,20),
+        'legacy_data_responses':min(net.old_remix_route_responses,20),
+        'other_search_json_responses':min(net.other_search_json_responses,20),
+        'unparsed_search_json_responses':min(net.unparsed_search_json_responses,20),
+        'parsed_route_models':min(len(net.events),20),
+        'matched_filter_routes':min(len(matched),20),
+        'last_request_keyword_matches':rp.get('q')=='HDD',
+        'last_request_category_matches':rp.get('category_id')=='1',
+        'last_request_availability_matches':rp.get('only_on_sale')=='true',
+        'last_request_price_matches':range_shape(
+            rp.get('price'),minimum,maximum),
+        'last_route_search_region_matches':str(
+            rm.get('region_id'))==a.regions[region]['id'],
+        'last_route_filter_region_matches':str(
+            rm.get('filter_region_id'))==a.regions[region]['id'],
+        'last_request_region_missing':'in' not in rp,
+    }
     stage['price_url_shape_observed']=range_shape(parsed.get('public_params',{}).get('price'),minimum,maximum)
     stage['matched_route_digest']=[x['digest'] for x in matched[-1:]]
     # Keep non-sensitive diagnostics on a failed APPLY step. A mismatched
