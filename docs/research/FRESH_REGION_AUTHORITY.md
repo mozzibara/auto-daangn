@@ -207,9 +207,12 @@ fails with `REGION_MISMATCH` or `FRESH_REGION_PROOF_MISSING`, and
 no access restriction was detected.
 
 For each of three exact, fixed URLs, a fresh guest browser context performs
-at most one normal navigation after a fail-closed, per-path robots.txt check.
-No scrolling, authentication, cookie reuse, direct hidden API call, challenge
-bypass, detail page visit, notification or retry is allowed. Observed
+at most one request after a fail-closed, per-path robots.txt check. The old
+SSR and modern search use browser navigation; the legacy `_data` JSON surface
+uses the same ordinary public GET as k-skill, with `max_redirects=0` so an
+unapproved redirected path is never followed. No scrolling, authentication,
+cookie reuse, hidden API call, challenge bypass, detail page visit,
+notification or retry is allowed. Observed
 `fleamarket/search` responses are **passive**; they are never synthesized.
 The first access restriction aborts all remaining surface probes.
 
@@ -234,3 +237,11 @@ semantics; if one retains the intended region and carries matching server
 metadata, investigate a **separately authorized** integration of that route
 without replacing the strict filter proof. A missing server region field or
 mere listing geography is never enough.
+
+Owner-approved capture [#17](https://github.com/mozzibara/auto-daangn/actions/runs/43000868603)
+showed: SSR `HTTP_OK` + `SSR_ITEMLIST` but a redirected URL without `in`;
+the legacy `_data` direct-document navigation failed with `REQUEST_ERROR`
+(the browser cannot reliably render JSON documents); and the `modern_s`
+path was denied by robots.txt. Only the `_data` transport is corrected in
+the follow-up; previously denied paths must remain unvisited. This finding
+does not authorize using the old SSR result for listing admission.
