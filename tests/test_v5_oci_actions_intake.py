@@ -214,18 +214,20 @@ class OciActionsIntakeTests(unittest.TestCase):
         self.assertEqual(backup.inspect_backup(downloaded, self.private)[
             "state"], "OFFLINE_RESTORE_VERIFIED")
 
-    def test_backup_missing_or_unverified_prevents_any_api_call(self):
+    def test_backup_missing_does_not_block_signed_capture(self):
         fake = self.api((9201, 42000, "2026-11-10T01:00:00+00:00"))
-        with self.assertRaisesRegex(ValueError, "OFFSITE_VERIFIED_BACKUP_REQUIRED"):
-            intake.poll_once(self.state, fake, now=CLOCK)
-        self.assertEqual(fake.artifact_checks, [])
-        self.confirm(now=CLOCK)
-        with self.assertRaisesRegex(ValueError, "OFFSITE_BACKUP_CONFIRMATION_EXPIRED"):
-            intake.poll_once(self.state, fake, now=CLOCK+timedelta(days=8))
-        self.assertEqual(fake.artifact_checks, [])
+        self.assertFalse((self.state / "backup" / "offsite-verified.json").exists())
+        preview = intake.poll_once(self.state, fake, dry_run=True, now=CLOCK)
+        self.assertEqual(preview["state"], "APPROVED_ARTIFACT_AVAILABLE")
+        self.assertEqual(preview["backup_policy"], "DISABLED_BY_OWNER")
+        self.assertEqual(fake.downloads, [])
+        result = intake.poll_once(self.state, fake, now=CLOCK)
+        self.assertEqual(result["state"], "SIGNED_ARTIFACT_IMPORTED")
+        self.assertEqual(result["imported"], 1)
+        self.assertEqual(result["backup_policy"], "DISABLED_BY_OWNER")
+        self.assertFalse((self.state / "backup" / "offsite-verified.json").exists())
 
-    def test_signed_import_drop_replay_and_backup_refresh_gate(self):
-        self.confirm(now=CLOCK)
+    def test_signed_import_drop_replay_without_backup_refresh(self):
         fake = self.api(
             (9201, 45000, "2026-11-10T01:00:00+00:00"),
             (9202, 35000, "2026-11-11T01:00:00+00:00")
@@ -238,15 +240,11 @@ class OciActionsIntakeTests(unittest.TestCase):
         self.assertEqual(first["events_generated"], 0)
         self.assertEqual(fake.downloads, [9201])
         self.assertFalse(list((self.state / "inbox").iterdir()))
-        # The 9201 change is not yet included in an offsite-verified backup.
-        with self.assertRaisesRegex(ValueError, "DATABASE_HAS_UNBACKED_SIGNED_CAPTURES"):
-            intake.poll_once(self.state, fake, now=CLOCK)
-        self.confirm(now=CLOCK + timedelta(hours=1))
+        # The next independently signed capture is accepted without a backup.
         second = intake.poll_once(self.state, fake, now=CLOCK+timedelta(hours=1))
         self.assertEqual(second["run_id"], 9202)
         self.assertEqual(second["events_generated"], 1)
         self.assertEqual(runtime.status(self.state)["counts"]["listing_events"], 1)
-        self.confirm(now=CLOCK + timedelta(hours=2))
         repeated = intake.poll_once(self.state, fake, now=CLOCK+timedelta(hours=2))
         self.assertEqual(repeated["state"], "NO_ELIGIBLE_NEW_SIGNED_ARTIFACT")
         self.assertEqual(fake.downloads, [9201, 9202])
