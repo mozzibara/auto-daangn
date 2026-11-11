@@ -26,6 +26,7 @@ import daangn_sale_sources_v4_21 as sources
 from daangn_state_consumers_v4_25 import consume, control_comparison, summarize
 import daangn_status_dom_v4_22 as dom
 from app_v5.region_transition import sanitize_picker_transition
+from app_v5.search_surface_probe import sanitize_surface_probe
 import daangn_full_route_v4_14 as full
 
 TARGET_STATES=('SOLD','RESERVED')
@@ -626,6 +627,8 @@ def aggregate(rows):
            'baseline_region_url_evidence':row.get('baseline_region_url_evidence')
                if type(row.get('baseline_region_url_evidence')) is dict else {},
            'region_picker':safe_picker,
+           'search_surface_probe':sanitize_surface_probe(
+               row.get('search_surface_probe')),
            'route_correlated':row.get('route_correlated') is True,
            'source_detail_count':detail_audit.get('page_visits'),
            'control_discovery':ctrl.get('status','NOT_OBSERVED'),
