@@ -26,6 +26,7 @@ import daangn_sale_sources_v4_21 as sources
 from daangn_state_consumers_v4_25 import consume, control_comparison, summarize
 import daangn_status_dom_v4_22 as dom
 from app_v5.region_transition import sanitize_picker_transition
+from app_v5.region_navigation import sanitize_navigation_trace
 from app_v5.search_surface_probe import sanitize_surface_probe
 import daangn_full_route_v4_14 as full
 
@@ -617,6 +618,8 @@ def aggregate(rows):
         }
         safe_picker['transition']=sanitize_picker_transition(
             raw_picker.get('transition'))
+        safe_picker['navigation_trace']=sanitize_navigation_trace(
+            raw_picker.get('navigation_trace'))
         bycontext.append({'context':row.get('context'),
            'region_route_observation':safe_route,
            'capture_failure_code':failure_code,
