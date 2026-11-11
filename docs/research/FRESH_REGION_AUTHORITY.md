@@ -185,3 +185,52 @@ python -m unittest discover -s tests -p 'test_*.py' -q
 Synthetic negative cases include mismatched server IDs, missing UI and absent unique action, stale
 loader data, absent/altered SHA, different or ambiguous `in` values, wrong
 host/query, and missing owner-selected region action.
+
+## Three-source compatibility experiment (diagnostic only)
+
+The independent code patterns studied in Nov 2026 are:
+
+- [leemgs/used-notifier](https://github.com/leemgs/used-notifier/blob/main/scripts/daangn.js):
+  old `/kr/buy-sell/` SSR HTML plus an explicit, separate listing-region
+  cross-check; its historical default-location fallback must not authorize results.
+- [NomaDamas/k-skill](https://github.com/NomaDamas/k-skill/blob/main/daangn-used-goods-search/scripts/daangn_used_goods.py):
+  a resolved `in=<term>-<id>` on the old
+  `/kr/buy-sell/all/?_data=routes/kr.buy-sell._index` JSON route.
+- [hanmyeonglee/daangn-crawler](https://github.com/hanmyeonglee/daangn-crawler/blob/main/search.py):
+  a browser navigation to `/kr/buy-sell/s/` with passive observation of
+  first-party `/kr/api/v1/fleamarket/search` responses.
+
+`app_v5.search_surface_probe` independently implements those **read-only
+diagnostics**, without importing other repositories' code or requiring new
+dependencies. It is invoked once, only when the first target Cheonan capture
+fails with `REGION_MISMATCH` or `FRESH_REGION_PROOF_MISSING`, and
+no access restriction was detected.
+
+For each of three exact, fixed URLs, a fresh guest browser context performs
+at most one normal navigation after a fail-closed, per-path robots.txt check.
+No scrolling, authentication, cookie reuse, direct hidden API call, challenge
+bypass, detail page visit, notification or retry is allowed. Observed
+`fleamarket/search` responses are **passive**; they are never synthesized.
+The first access restriction aborts all remaining surface probes.
+
+Each result contains only fixed status/URL enums, bounded aggregate response
+counts, and any explicit `searchRegion.id` and `currentFilters.regionId`
+agreement with the pre-established region, with numeric IDs discarded.
+An SSR `ItemList` signal, a successful old `_data` response, and a matching
+request `in` are **not** evidence that a locality was applied: none can
+authorize candidate collection or listing recommendations.
+
+The probe adds a maximum of three **search-document** navigations to the
+existing one-shot, owner-approved job after the current strict capture fails,
+and does not change the maximum 9 source + 6 control **detail** visits. The
+existing signed/encrypted artifact and OCI transfer paths are unchanged. A
+public failed-run log exposes only allowlisted `SURFACE_*` classifications;
+a full capture is still required to satisfy the original fresh UI+Route
+locality, category, maximum price, availability and SHA gates.
+
+Follow-up investigation is determined by the observed result: if all three
+surfaces redirect to missing locality, investigate local UI commit/session
+semantics; if one retains the intended region and carries matching server
+metadata, investigate a **separately authorized** integration of that route
+without replacing the strict filter proof. A missing server region field or
+mere listing geography is never enough.
