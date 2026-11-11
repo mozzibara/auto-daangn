@@ -54,6 +54,33 @@ class PublicArchitectureContractTests(unittest.TestCase):
                     encoding="utf-8"):
                 self.assertIn(file.name, permit)
 
+    def test_signer_only_accessible_in_main_only_environment(self):
+        for workflow in ("secure-links-v434.yml",
+                         "verify-v434-signer.yml"):
+            text = (ROOT / ".github/workflows" / workflow).read_text(
+                encoding="utf-8")
+            with self.subTest(workflow=workflow):
+                self.assertIn("environment: daangn-producer", text)
+                self.assertIn("secrets.V434_ATTEST_ED25519_KEY_B64", text)
+                self.assertIn("contents: read", text)
+                self.assertNotIn("pull_request_target:", text)
+                self.assertNotIn("schedule:", text)
+
+    def test_missing_or_invalid_signer_fails_before_browser_capture(self):
+        text = (ROOT / WORKFLOW).read_text(encoding="utf-8")
+        self.assertIn("PRODUCER_SIGNER_ENVIRONMENT_SECRET_NOT_CONFIGURED",
+                      text)
+        self.assertIn("python -m scripts.verify_github_signer", text)
+        self.assertLess(text.index("python -m scripts.verify_github_signer"),
+                        text.index("python -m playwright install --with-deps chromium"))
+        self.assertLess(text.index("python -m playwright install --with-deps chromium"),
+                        text.index("python scripts/run_secure_links_v434_checked.py"))
+        self.assertIn(
+            "if: success() && env.CAPTURE_TEST_MODE != "
+            "'EPHEMERAL_REVIEWABLE_TEST' && "
+            "steps.secure.outputs.exit_code == '0'", text)
+        self.assertNotIn("capture remains ADVISORY", text)
+
     def test_public_source_does_not_automatically_launch_browser(self):
         body = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
         self.assertNotIn("python -m playwright install", body)
