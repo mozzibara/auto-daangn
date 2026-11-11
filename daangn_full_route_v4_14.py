@@ -27,7 +27,10 @@ import daangn_price_bands_v4_8 as bands
 import daangn_network_flow_v4_11 as network
 import daangn_render_gap_v4_12 as render
 import daangn_route_structure_v4_10 as shape
-from app_v5.region_transition import classify_picker_transition, classify_filter_transition
+from app_v5.region_transition import (
+    classify_picker_transition, classify_filter_transition,
+    classify_early_region_gate,
+)
 from app_v5.region_navigation import (
     RegionNavigationTrace, sanitize_navigation_trace,
     classify_dialog_stage_transition,
@@ -471,6 +474,16 @@ async def capture(browser,name,region,options,salt):
                         })""",core.BY_KEY[region]['term']))
             except Exception:
                 result['region_picker']['selected_region_button_visible']=False
+            # Observed WRONG IDs in a fresh first-party Route *and* absent
+            # expected top-level selection cannot become valid by later
+            # unrelated filter clicks. Stop before mutating any filters.
+            gate=classify_early_region_gate(
+                result['region_picker']['transition'],
+                result['region_picker']['selected_region_button_visible'])
+            result['region_picker']['early_gate']=gate
+            if gate=='OBSERVED_WRONG_REGION':
+                result['region_picker']['outcome']='EARLY_REGION_UNCOMMITTED'
+                raise RuntimeError('REGION_MISMATCH')
             # The public search page may omit `in` even after an actual UI
             # selection. A click is *provisional* until a fresh Route response
             # AND a visible selected-region control corroborate both IDs.
