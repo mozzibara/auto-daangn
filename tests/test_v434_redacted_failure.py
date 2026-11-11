@@ -194,6 +194,31 @@ class RedactedCaptureFailureTests(unittest.TestCase):
         self.assertEqual(out["REGION_PICKER_OPTION_SELECTED"], "NO")
         self.assertNotIn("MUST_NOT_DISPLAY", str(out))
 
+    def test_post_picker_url_and_button_are_categorical_only(self):
+        secret = "https://example.invalid/PRIVATE_LISTING"
+        self.put("v423_public_controls_results.json", {
+            "evaluation": {"contexts": [{
+                "context": "cheonan_a",
+                "region_picker": {
+                    "after_url_proof": {
+                        "region": "MISSING",
+                        "host": "EXPECTED",
+                        "path": "EXPECTED",
+                        "keyword": "OTHER",
+                        "region_parameter": "MISSING",
+                        "bad_raw_url": secret,
+                    },
+                    "selected_region_button_visible": True,
+                },
+            }]}
+        })
+        result = classify(self.folder)
+        self.assertEqual(result["REGION_PICKER_FINAL_URL_REGION"], "MISSING")
+        self.assertEqual(result["REGION_PICKER_FINAL_URL_KEYWORD"], "OTHER")
+        self.assertEqual(result["REGION_PICKER_FINAL_URL_PATH"], "EXPECTED")
+        self.assertEqual(result["REGION_PICKER_VISIBLE_REGION_BUTTON"], "YES")
+        self.assertNotIn(secret, str(result))
+
     def test_missing_files_are_reported_without_failure(self):
         result = classify(self.folder)
         self.assertEqual(result["PUBLIC_SUMMARY_PRESENT"], "NO")

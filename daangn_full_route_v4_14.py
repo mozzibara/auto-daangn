@@ -327,6 +327,16 @@ async def capture(browser,name,region,options,salt):
             await passive.drain()
             now_proof=classify_baseline_region_urls(
                 baseline_requested,baseline_response_url,page.url,expected_region_id)
+            result['region_picker']['after_url_proof']=now_proof['rendered']
+            try:
+                result['region_picker']['selected_region_button_visible']=bool(
+                    await page.evaluate("""term => [...document.querySelectorAll(
+                        'button[aria-label]')].some(b => {
+                          const label=b.getAttribute('aria-label') || '';
+                          return label.includes('지역 선택') && label.includes(term);
+                        })""",core.BY_KEY[region]['term']))
+            except Exception:
+                result['region_picker']['selected_region_button_visible']=False
             valid=(
                 steps.get('selected_suggestion') is True
                 and now_proof['rendered']['host']=='EXPECTED'

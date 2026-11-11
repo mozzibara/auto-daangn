@@ -127,6 +127,11 @@ def classify(folder: Path) -> dict[str, str]:
     def picker_flag(field):
         value = picker.get(field)
         return "YES" if value is True else "NO" if value is False else "UNKNOWN"
+    picker_url = picker.get("after_url_proof")
+    picker_url = picker_url if type(picker_url) is dict else {}
+    def picker_url_value(field, choices):
+        value = picker_url.get(field)
+        return value if type(value) is str and value in choices else "UNKNOWN"
 
     raw_outer = outer.get("status")
     if type(raw_outer) is str and raw_outer in OUTER_STATUSES:
@@ -202,6 +207,14 @@ def classify(folder: Path) -> dict[str, str]:
         "REGION_PICKER_BUTTON_CLICKED": picker_flag("button_clicked"),
         "REGION_PICKER_OPTION_SELECTED": picker_flag("suggestion_selected"),
         "REGION_PICKER_VERIFIED": picker_flag("verified_region_and_keyword"),
+        "REGION_PICKER_FINAL_URL_REGION": picker_url_value("region", statuses),
+        "REGION_PICKER_FINAL_URL_HOST": picker_url_value("host", statuses),
+        "REGION_PICKER_FINAL_URL_PATH": picker_url_value("path", statuses),
+        "REGION_PICKER_FINAL_URL_KEYWORD": picker_url_value("keyword", statuses),
+        "REGION_PICKER_FINAL_URL_REGION_PARAMETER": picker_url_value(
+            "region_parameter", params),
+        "REGION_PICKER_VISIBLE_REGION_BUTTON": picker_flag(
+            "selected_region_button_visible"),
     }
 
 
