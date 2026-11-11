@@ -67,12 +67,16 @@ def verified_region(region: dict, page_url: str, route_event: dict | None,
                         and request.get("valid") is True)
     omitted = url_state == "MISSING" or request_state == "MISSING"
     mismatched_url = url_state == "OTHER" or request_state == "OTHER"
-    if not url_valid or not request_valid or mismatched_url:
+    if not url_valid or url_state == "OTHER" or request_state == "OTHER":
         status = "REGION_URL_INVALID"
     elif not selected_ui:
         status = "REGION_UI_NOT_VERIFIED"
     elif not response_trusted:
+        # An absent response has no request URL to classify, and must not be
+        # confused with an observed mismatched region or malformed query.
         status = "FRESH_ROUTE_NOT_VERIFIED"
+    elif not request_valid:
+        status = "REGION_URL_INVALID"
     elif not ids_match:
         status = "ROUTE_REGION_CONFLICT"
     elif url_state != request_state:
