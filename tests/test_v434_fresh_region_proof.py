@@ -104,6 +104,33 @@ class ProofTests(unittest.TestCase):
         self.assertEqual(self.verify(route_event=event(
             filter_region_id="2333"))["status"], "ROUTE_REGION_CONFLICT")
 
+    def test_absent_both_route_region_fields_are_not_wrong_region(self):
+        # One correctly parsed fresh Route may omit both locality fields.
+        proof = self.verify(route_event=event(region_id=None,
+                                              filter_region_id=None))
+        self.assertEqual(proof["status"], "ROUTE_REGION_METADATA_MISSING")
+        self.assertFalse(proof["verified"])
+        self.assertFalse(proof["route_ids_match"])
+
+    def test_one_route_region_field_absent_fails_closed(self):
+        for field in ("region_id", "filter_region_id"):
+            kwargs = {field: None}
+            with self.subTest(field=field):
+                proof = self.verify(route_event=event(**kwargs))
+                self.assertEqual(proof["status"],
+                                 "ROUTE_REGION_METADATA_MISSING")
+                self.assertFalse(proof["verified"])
+
+    def test_missing_metadata_has_no_fallback_to_ui_or_original_url(self):
+        proof = self.verify(page_url=WITH_REGION,
+                            route_event=event(
+                                WITH_REGION, region_id=None,
+                                filter_region_id=None),
+                            ui={"verified": True},
+                            picker_selected=False)
+        self.assertEqual(proof["status"], "ROUTE_REGION_METADATA_MISSING")
+        self.assertFalse(proof["verified"])
+
     def test_explicit_wrong_url_region_cannot_be_ignored(self):
         self.assertEqual(self.verify(page_url=BAD_REGION)["status"],
                          "REGION_URL_INVALID")

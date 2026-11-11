@@ -534,7 +534,7 @@ def aggregate(rows):
     safe_authority={'LEGACY_REGION_URL_WITNESS',
                     'UI_FRESH_ROUTE_REGION_VERIFIED','REGION_URL_INVALID',
                     'REGION_UI_NOT_VERIFIED','FRESH_ROUTE_NOT_VERIFIED',
-                    'ROUTE_REGION_CONFLICT','REGION_URL_RESPONSE_DISAGREEMENT',
+                    'ROUTE_REGION_METADATA_MISSING','ROUTE_REGION_CONFLICT','REGION_URL_RESPONSE_DISAGREEMENT',
                     'REGION_OMISSION_WITHOUT_UI_SELECTION'}
 
     for row in rows:
@@ -574,6 +574,11 @@ def aggregate(rows):
         safe_route={k:(raw_route[k] if type(raw_route.get(k)) is int
                       and 0<=raw_route[k]<=20 else -1) for k in counter_keys}
         safe_route.update({k:raw_route.get(k) is True for k in flag_keys})
+        for key in ('last_route_search_region_state',
+                    'last_route_filter_region_state'):
+            value=raw_route.get(key)
+            safe_route[key]=(value if type(value) is str and value in
+                ('EXPECTED','MISSING','OTHER') else 'UNKNOWN')
         bycontext.append({'context':row.get('context'),
            'region_route_observation':safe_route,
            'capture_failure_code':failure_code,

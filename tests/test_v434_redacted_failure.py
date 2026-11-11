@@ -219,6 +219,56 @@ class RedactedCaptureFailureTests(unittest.TestCase):
         self.assertEqual(result["REGION_PICKER_VISIBLE_REGION_BUTTON"], "YES")
         self.assertNotIn(secret, str(result))
 
+    def test_route_region_field_missing_or_other_is_redacted(self):
+        secret = "github_pat_this_value_is_private_keep_out"
+        for search_state, filter_state in (
+            ("MISSING", "MISSING"), ("EXPECTED", "OTHER"),
+            ("OTHER", "EXPECTED"), ("MISSING", "OTHER")):
+            with self.subTest(search_state=search_state,
+                              filter_state=filter_state):
+                self.put("v423_public_controls_results.json", {
+                    "evaluation": {"contexts": [{
+                        "context": "cheonan_a",
+                        "capture_failure_code": "FRESH_REGION_PROOF_MISSING",
+                        "fresh_region_authority_status":
+                            "ROUTE_REGION_METADATA_MISSING",
+                        "region_route_observation": {
+                            "last_route_search_region_state": search_state,
+                            "last_route_filter_region_state": filter_state,
+                            "raw_search_region_id": secret,
+                            "raw_filter_region_id": secret,
+                            "parsed_route_models": 1,
+                        },
+                    }]}
+                })
+                output = classify(self.folder)
+                self.assertEqual(output["ROUTE_SEARCH_REGION_FIELD"],
+                                 search_state)
+                self.assertEqual(output["ROUTE_FILTER_REGION_FIELD"],
+                                 filter_state)
+                self.assertEqual(
+                    output["FRESH_REGION_AUTHORITY_STATUS"],
+                    "ROUTE_REGION_METADATA_MISSING")
+                self.assertNotIn(secret, str(output))
+
+    def test_untrusted_region_state_is_not_echoed(self):
+        secret = "github_pat_injected_as_region_status"
+        self.put("v423_public_controls_results.json", {
+            "evaluation": {"contexts": [{
+                "context": "cheonan_a",
+                "region_route_observation": {
+                    "last_route_search_region_state": secret,
+                    "last_route_filter_region_state": secret,
+                },
+                "fresh_region_authority_status": secret,
+            }]}
+        })
+        output = classify(self.folder)
+        self.assertEqual(output["ROUTE_SEARCH_REGION_FIELD"], "UNKNOWN")
+        self.assertEqual(output["ROUTE_FILTER_REGION_FIELD"], "UNKNOWN")
+        self.assertEqual(output["FRESH_REGION_AUTHORITY_STATUS"], "UNKNOWN")
+        self.assertNotIn(secret, str(output))
+
     def test_missing_files_are_reported_without_failure(self):
         result = classify(self.folder)
         self.assertEqual(result["PUBLIC_SUMMARY_PRESENT"], "NO")
