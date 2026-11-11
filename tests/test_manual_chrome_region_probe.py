@@ -309,7 +309,7 @@ class IsolatedChromeCliTests(unittest.TestCase):
             marker=root/"DevToolsActivePort"
             marker.write_text("51234\n/devtools/browser/uuid", encoding="ascii")
             self.assertEqual(read_debug_port(root), 51234)
-            for value in ("0", "65536", "abcdef", "22\n", ""):
+            for value in ("0", "65536", "abcdef", "22x\n", ""):
                 marker.write_text(value, encoding="ascii")
                 self.assertIsNone(read_debug_port(root))
             self.assertIsNone(find_chrome("/private/nonexistent/chrome.exe"))
