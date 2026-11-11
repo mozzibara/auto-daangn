@@ -392,6 +392,8 @@ async def capture(browser,name,region,options,salt):
         result['filter_proof_status']=filter_evidence.get('status','UNVERIFIED')
         result['fresh_region_authority_status']=stage.get(
             'region_authority_status','UNKNOWN')
+        result['region_route_observation']=stage.get(
+            'region_route_observation') or {}
         result['fresh_region_ui_source']=(stage.get('region_authority') or {}).get(
             'ui_source','NONE')
         result['fresh_region_route_ids_match']=(stage.get('region_authority') or {}).get(
