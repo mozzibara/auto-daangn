@@ -148,9 +148,27 @@ class StubPage:
         return None
 
 
+class StubRequest:
+    def __init__(self, browser):
+        self.browser = browser
+
+    async def get(self, url, *, timeout, max_redirects):
+        if max_redirects != 0:
+            raise AssertionError("legacy data request must never auto-redirect")
+        self.browser.data_gets += 1
+        if self.browser.redirect_data:
+            response = StubResponse(url, b"", "text/plain", status=302)
+            response.headers["location"] = "/kr/search/buy-sell/?q=HDD"
+            return response
+        content = json.dumps({"allPage": {"fleamarketArticles": [
+            {"title": "DO_NOT_LEAK", "id": "private-listing-id"}]}}).encode()
+        return StubResponse(url, content, "text/plain")
+
+
 class StubContext:
     def __init__(self, browser):
         self.browser = browser
+        self.request = StubRequest(browser)
 
     async def new_page(self):
         return StubPage()
@@ -163,6 +181,8 @@ class StubBrowser:
     def __init__(self):
         self.context_count = 0
         self.closed = 0
+        self.data_gets = 0
+        self.redirect_data = False
 
     async def new_context(self, **kwargs):
         self.context_count += 1
@@ -186,11 +206,24 @@ class ProbeExecutionTests(unittest.IsolatedAsyncioTestCase):
                                                  "allowed": {name: True for name in SURFACES}})
         self.assertEqual(browser.context_count, 3)
         self.assertEqual(browser.closed, 3)
+        self.assertEqual(browser.data_gets, 1)
         self.assertEqual(result["surfaces"]["legacy_all_data"]["shape"], "FLEAMARKET_API")
         self.assertEqual(result["surfaces"]["legacy_all_data"]["article_count"], 1)
         self.assertFalse(result["authorization"])
         self.assertNotIn("private-listing-id", str(result))
         self.assertNotIn("DO_NOT_LEAK", str(result))
+
+    async def test_legacy_data_redirect_is_reported_without_following(self):
+        browser = StubBrowser()
+        browser.redirect_data = True
+        result = await run_surface_probe(browser, BY_KEY["cheonan"],
+            settle_ms=0, checker=lambda region: {"state": "CHECKED",
+                "allowed": {name: name == "legacy_all_data" for name in SURFACES}})
+        self.assertEqual(browser.data_gets, 1)
+        self.assertEqual(result["surfaces"]["legacy_all_data"]["status"], "HTTP_REDIRECT")
+        self.assertEqual(result["surfaces"]["legacy_all_data"]["path"], "OTHER")
+        self.assertEqual(result["surfaces"]["legacy_all_data"]["region"], "MISSING")
+        self.assertFalse(result["authorization"])
 
 
 if __name__ == "__main__":

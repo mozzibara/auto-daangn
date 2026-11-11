@@ -12,7 +12,7 @@ import json
 import re
 import urllib.request
 import urllib.robotparser
-from urllib.parse import parse_qs, urlencode, urlsplit
+from urllib.parse import parse_qs, urlencode, urlsplit, urljoin
 
 from daangn_v4_1_core import BASE, BLOCK_STATUS
 
@@ -103,7 +103,8 @@ def classify_surface_body(raw: bytes, content_type: str, region: dict) -> dict:
                "server_region": "MISSING", "filter_region": "MISSING"}
     if type(raw) is not bytes or len(raw) > BODY_LIMIT:
         return {**unknown, "shape": "BODY_LIMIT"}
-    if "json" in content_type.lower():
+    # Legacy Remix JSON can be labeled text/plain by some edge responses.
+    if "json" in content_type.lower() or raw.lstrip().startswith(b"{"):
         if len(raw) > DATA_LIMIT:
             return {**unknown, "shape": "BODY_LIMIT"}
         try:
@@ -142,7 +143,7 @@ def sanitize_surface_probe(value) -> dict:
     obj = value if type(value) is dict else {}
     states = {"ROBOTS_UNAVAILABLE", "CHECKED", "NOT_ATTEMPTED"}
     statuses = {"NOT_RUN", "ROBOTS_DENIED", "HTTP_OK", "HTTP_NON_200",
-                "ACCESS_BLOCKED", "REQUEST_ERROR", "BODY_ERROR"}
+                "HTTP_REDIRECT", "ACCESS_BLOCKED", "REQUEST_ERROR", "BODY_ERROR"}
     shapes = {"UNRECOGNIZED", "BODY_LIMIT", "MODERN_ROUTE", "FLEAMARKET_API",
               "CHALLENGE", "SSR_ITEMLIST", "HTML_NO_ITEMLIST"}
     result = {"robots": obj.get("robots") if obj.get("robots") in states else "NOT_ATTEMPTED",
@@ -200,6 +201,39 @@ async def run_surface_probe(browser, region: dict, *, timeout_ms: int = 16000,
         context = None
         try:
             context = await browser.new_context(locale="ko-KR")
+            if name == "legacy_all_data":
+                # k-skill uses a regular JSON GET, not document navigation.
+                # A Chromium navigation can abort on non-HTML/download content.
+                # max_redirects=0 prevents any unapproved redirected request.
+                response = await context.request.get(
+                    surface_url(name, region), timeout=timeout_ms, max_redirects=0)
+                final = classify_final_url(response.url, name, region)
+                if response.status in BLOCK_STATUS:
+                    outcome["blocked"] = True
+                    outcome["surfaces"][name] = {"status": "ACCESS_BLOCKED", **final}
+                    continue
+                if 300 <= response.status < 400:
+                    location = response.headers.get("location")
+                    if isinstance(location, str) and len(location) < 2048:
+                        final = classify_final_url(
+                            urljoin(response.url, location), name, region)
+                    outcome["surfaces"][name] = {"status": "HTTP_REDIRECT", **final}
+                    continue
+                if response.status != 200:
+                    outcome["surfaces"][name] = {"status": "HTTP_NON_200", **final}
+                    continue
+                try:
+                    raw = await asyncio.wait_for(response.body(), timeout=10)
+                    detail = classify_surface_body(
+                        raw, response.headers.get("content-type", ""), region)
+                    if detail["shape"] == "CHALLENGE":
+                        outcome["blocked"] = True
+                    outcome["surfaces"][name] = {
+                        **final, **detail, "api_emitted": 0,
+                        "status": "ACCESS_BLOCKED" if outcome["blocked"] else "HTTP_OK"}
+                except Exception:
+                    outcome["surfaces"][name] = {"status": "BODY_ERROR", **final}
+                continue
             page = await context.new_page()
             observed = []
             tasks = set()
