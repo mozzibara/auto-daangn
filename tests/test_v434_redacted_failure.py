@@ -269,6 +269,46 @@ class RedactedCaptureFailureTests(unittest.TestCase):
         self.assertEqual(output["FRESH_REGION_AUTHORITY_STATUS"], "UNKNOWN")
         self.assertNotIn(secret, str(output))
 
+    def test_region_name_and_id_agreement_export_only_bounded_values(self):
+        secret = "github_pat_never_print_untrusted_region_name"
+        self.put("v423_public_controls_results.json", {
+            "evaluation": {"contexts": [{
+                "context": "cheonan_a",
+                "region_route_observation": {
+                    "server_region_name_state": "EXACT",
+                    "server_region_ids_agree": "YES",
+                    "historical_id_drift_candidate": True,
+                    "region_name_raw": secret,
+                    "raw_region_ids": [secret, secret],
+                },
+            }]}
+        })
+        result = classify(self.folder)
+        self.assertEqual(result["ROUTE_SERVER_REGION_NAME"], "EXACT")
+        self.assertEqual(result["ROUTE_SERVER_REGION_IDS_AGREE"], "YES")
+        self.assertEqual(result[
+            "ROUTE_HISTORICAL_REGION_ID_DRIFT_CANDIDATE"], "YES")
+        self.assertNotIn(secret, str(result))
+
+    def test_untrusted_region_name_status_never_printed(self):
+        secret = "github_pat_this_is_not_an_allowlisted_enum"
+        self.put("v423_public_controls_results.json", {
+            "evaluation": {"contexts": [{
+                "context": "cheonan_a",
+                "region_route_observation": {
+                    "server_region_name_state": secret,
+                    "server_region_ids_agree": secret,
+                    "historical_id_drift_candidate": secret,
+                },
+            }]}
+        })
+        result = classify(self.folder)
+        self.assertEqual(result["ROUTE_SERVER_REGION_NAME"], "UNKNOWN")
+        self.assertEqual(result["ROUTE_SERVER_REGION_IDS_AGREE"], "UNKNOWN")
+        self.assertEqual(result[
+            "ROUTE_HISTORICAL_REGION_ID_DRIFT_CANDIDATE"], "UNKNOWN")
+        self.assertNotIn(secret, str(result))
+
     def test_missing_files_are_reported_without_failure(self):
         result = classify(self.folder)
         self.assertEqual(result["PUBLIC_SUMMARY_PRESENT"], "NO")
