@@ -562,7 +562,20 @@ def aggregate(rows):
         source=(source if type(source) is str and source in (
             'VISIBLE_REGION_CONTROL','UNIQUE_REGION_OPTION','NONE')
             else 'UNKNOWN')
+        raw_route=row.get('region_route_observation')
+        raw_route=raw_route if type(raw_route) is dict else {}
+        counter_keys=('search_fetch_responses','legacy_data_responses',
+            'other_search_json_responses','unparsed_search_json_responses',
+            'parsed_route_models','matched_filter_routes')
+        flag_keys=('last_request_keyword_matches','last_request_category_matches',
+            'last_request_availability_matches','last_request_price_matches',
+            'last_route_search_region_matches','last_route_filter_region_matches',
+            'last_request_region_missing')
+        safe_route={k:(raw_route[k] if type(raw_route.get(k)) is int
+                      and 0<=raw_route[k]<=20 else -1) for k in counter_keys}
+        safe_route.update({k:raw_route.get(k) is True for k in flag_keys})
         bycontext.append({'context':row.get('context'),
+           'region_route_observation':safe_route,
            'capture_failure_code':failure_code,
            'fresh_region_authority_status':authority,
            'fresh_region_ui_source':source,
