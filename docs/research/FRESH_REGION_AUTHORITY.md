@@ -137,6 +137,29 @@ Do not run the same capture unchanged. After Linux and Windows offline CI
 pass, request a new owner-approved, robots-first *single live capture*. CI and
 this diagnostic itself cannot justify editing the historical region preset.
 
+## Approved capture #14: wrong locality already after the picker click
+
+Owner-approved [capture #14](https://github.com/mozzibara/auto-daangn/actions/runs/42992274891)
+after PR #18 found a unique, visible region candidate with a Cheonan city
+hint. The click completed, the candidate disappeared, and **one actual
+first-party search JSON response immediately after the click** was parsed.
+Its two region IDs agreed with each other but were both `OTHER` relative to
+historic Cheonan 2292, and its region name was `OTHER` rather than 불당동.
+The later Filter Apply response had the same categorical mismatch.
+Therefore this failure predates Filter Apply; do not classify it as
+`REGION_LOST_AT_FILTER_APPLY`. Detail visits and OCI writes were zero.
+
+A third-party public notifier reports that invalid region codes can lead to
+a default locality. This is a **hypothesis**, not verified current service
+behavior. The next independent test observes the *real UI-emitted* bounded
+region suggestion API JSON while the operator types the locality in the
+already robots-approved picker. It classifies only candidates whose
+administrative city and exact dong name match, comparing the candidate ID
+in RAM with the historical preset and with both current server search IDs.
+No unknown ID, response JSON or locality free text is ever exported. Zero,
+multiple or malformed API responses remain inconclusive, and the result
+does not bypass `verified_region` or justify automatic ID migration.
+
 ## Important limits
 
 The original v4.15 post-reload strict filter persistence check is *not*
