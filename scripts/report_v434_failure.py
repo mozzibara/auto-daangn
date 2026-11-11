@@ -53,7 +53,7 @@ def classify(folder: Path) -> dict[str, str]:
     study = _read(folder, "v429_public_status_results.json")
 
     raw_outer = outer.get("status")
-    if raw_outer in OUTER_STATUSES:
+    if type(raw_outer) is str and raw_outer in OUTER_STATUSES:
         outer_code = raw_outer
     elif type(raw_outer) is str and raw_outer.startswith("STOP_ROBOTS_"):
         outer_code = "STOP_ROBOTS"
@@ -63,17 +63,17 @@ def classify(folder: Path) -> dict[str, str]:
         outer_code = "UNAVAILABLE_OR_UNKNOWN"
 
     raw_reason = robots.get("reason")
-    robots_reason = raw_reason if raw_reason in ROBOTS_REASONS else "UNKNOWN"
+    robots_reason = (raw_reason if type(raw_reason) is str\n                     and raw_reason in ROBOTS_REASONS else "UNKNOWN")
     if (type(raw_reason) is str
             and raw_reason.startswith("ROBOTS_UNAVAILABLE_")
             and robots_reason == "UNKNOWN"):
         robots_reason = "ROBOTS_UNAVAILABLE_OTHER"
 
     raw_inner = inner.get("status")
-    inner_code = raw_inner if raw_inner in INNER_STATUSES else "UNAVAILABLE_OR_UNKNOWN"
+    inner_code = (raw_inner if type(raw_inner) is str\n                  and raw_inner in INNER_STATUSES else "UNAVAILABLE_OR_UNKNOWN")
     status = study.get("evaluation")
     survey = status.get("status") if type(status) is dict else None
-    survey_code = survey if survey in INNER_STATUSES else "UNAVAILABLE_OR_UNKNOWN"
+    survey_code = (survey if type(survey) is str\n                   and survey in INNER_STATUSES else "UNAVAILABLE_OR_UNKNOWN")
 
     http_status = robots.get("http_status")
     safe_http = (str(http_status) if type(http_status) is int
