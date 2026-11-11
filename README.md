@@ -13,6 +13,20 @@ This repository contains source code, synthetic tests, and opt-in GitHub Actions
 
 Current status: **public source and synthetic CI only**. Live signing, OCI cloud-readback restoration, real Telegram messages and ChatGPT–OCI direct access are **not activated**.
 
+## Manual normal-Chrome locality comparison
+
+For a **user-operated** Chrome comparison of the unresolved public
+region-selection issue, run `python -m scripts.manual_chrome_region_probe`
+on your own PC. The tool starts an ordinary Chrome process with an
+isolated temporary profile; you personally select the target district.
+It observes only fixed locality/DOM classes and fresh first-party
+region response agreement, and never approves listings. No account
+cookies, raw listing details or user profile are exported.
+
+See [Manual Chrome region probe](docs/research/MANUAL_CHROME_REGION_PROBE.md)
+for Windows PowerShell setup, interactive steps, result interpretation,
+loopback CDP security and cleanup requirements.
+
 ## Safety and scope
 
 - Public pages only; respect robots.txt and access restrictions; do not bypass authentication or anti-bot controls.
