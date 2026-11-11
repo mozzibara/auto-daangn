@@ -35,6 +35,7 @@ from app_v5.region_navigation import (
 from app_v5.region_option_events import RegionOptionEventWitness
 from app_v5.region_button_inventory import RegionButtonInventory
 from app_v5.region_readiness import RegionReadinessWitness
+from app_v5.region_second_choice import attempt_second_choice
 from app_v5.region_suggestion import (RegionSuggestionObserver,
                                        classify_suggestion_identity)
 from app_v5.search_surface_probe import run_surface_probe, sanitize_surface_probe
@@ -338,6 +339,9 @@ async def capture(browser,name,region,options,salt):
                 raise RuntimeError('ACCESS_RESTRICTION')
             result['region_picker']['attempted']=True
             picker_net=v46.Network()
+            second_net=v46.Network()
+            second_result={'state':'NOT_ATTEMPTED','guard':'UNOBSERVABLE',
+                           'click_attempted':False,'click_completed':False}
             nav_trace=RegionNavigationTrace(core.BY_KEY[region])
             option_events=RegionOptionEventWitness(core.BY_KEY[region])
             button_inventory=RegionButtonInventory(core.BY_KEY[region])
@@ -362,10 +366,23 @@ async def capture(browser,name,region,options,salt):
                 arm_post_click_route()
                 nav_trace.arm(page)
                 await nav_trace.checkpoint(page,'BEFORE_CLICK')
+            second_listener_armed=False
+            async def before_second_click():
+                nonlocal second_listener_armed
+                if not second_listener_armed:
+                    page.on('response',second_net.hook)
+                    second_listener_armed=True
+            async def after_second_click():
+                await nav_trace.checkpoint(page,'AFTER_FOLLOWUP_CLICK')
+                await button_inventory.checkpoint(page,'AFTER_FOLLOWUP_CLICK')
             async def after_exact_option_click():
                 await nav_trace.checkpoint(page,'AFTER_CLICK')
                 await option_events.checkpoint(page,'AFTER_CLICK')
                 await button_inventory.checkpoint(page,'AFTER_CLICK')
+                second_result.update(await attempt_second_choice(
+                    page,core.BY_KEY[region],button_inventory,
+                    on_before_click=before_second_click,
+                    on_after_click=after_second_click))
             try:
                 steps=await core.ui_select_region(
                     page,core.BY_KEY[region],
@@ -380,6 +397,8 @@ async def capture(browser,name,region,options,salt):
                 await button_inventory.checkpoint(page,'AFTER_SETTLE')
                 await resolver.drain()
                 await picker_net.drain()
+                if second_listener_armed:
+                    await second_net.drain()
             finally:
                 # Always detach page-injected, read-only DOM listeners,
                 # including on a missing/ambiguous or failed option click.
@@ -390,14 +409,20 @@ async def capture(browser,name,region,options,salt):
                     page.remove_listener('response',resolver.on_response)
                 if picker_listener_armed:
                     page.remove_listener('response',picker_net.hook)
+                if second_listener_armed:
+                    page.remove_listener('response',second_net.hook)
             if resolver.blocked:
                 raise RuntimeError('ACCESS_RESTRICTION')
+            # If a guarded second target click was performed, only the
+            # subsequent fresh Route response may support region authority.
+            selected_network=(second_net if second_result.get(
+                'click_completed') is True else picker_net)
             result['region_picker']['transition']=classify_picker_transition(
-                core.BY_KEY[region],steps,picker_net.events,
-                fetch_count=picker_net.search_fetch_responses)
+                core.BY_KEY[region],steps,selected_network.events,
+                fetch_count=selected_network.search_fetch_responses)
             result['region_picker']['transition']['suggestion']=(
                 classify_suggestion_identity(core.BY_KEY[region],
-                                            resolver.events,picker_net.events))
+                                            resolver.events,selected_network.events))
             region_state=result['region_picker']['transition'].get(
                 'search_region_state','MISSING')
             nav_export=nav_trace.export(post_click_region=region_state)
@@ -410,6 +435,7 @@ async def capture(browser,name,region,options,salt):
                 nav_export)
             nav_export['button_inventory']=button_inventory.export()
             nav_export['pre_click_readiness']=readiness.export()
+            nav_export['second_choice']=second_result
             result['region_picker']['navigation_trace']=sanitize_navigation_trace(
                 nav_export)
             result['region_picker']['button_clicked']=steps.get(

@@ -13,8 +13,9 @@ from daangn_v4_1_core import SEARCH_PATH
 from app_v5.region_option_events import sanitize_option_event
 from app_v5.region_button_inventory import sanitize_button_inventory
 from app_v5.region_readiness import sanitize_readiness
+from app_v5.region_second_choice import sanitize_second_choice
 
-_CHECKPOINTS = ("BEFORE_CLICK", "AFTER_CLICK", "AFTER_SETTLE")
+_CHECKPOINTS = ("BEFORE_CLICK", "AFTER_CLICK", "AFTER_FOLLOWUP_CLICK", "AFTER_SETTLE")
 _URL_VALUES = frozenset(("EXPECTED", "OTHER", "MISSING", "INVALID"))
 _CONTROL = frozenset(("TARGET_VISIBLE", "OTHER_VISIBLE", "NOT_VISIBLE",
                      "AMBIGUOUS", "UNOBSERVABLE"))
@@ -382,6 +383,7 @@ def sanitize_navigation_trace(value) -> dict:
         "option_event": sanitize_option_event(source.get("option_event")),
         "button_inventory": sanitize_button_inventory(source.get("button_inventory")),
         "pre_click_readiness": sanitize_readiness(source.get("pre_click_readiness")),
+        "second_choice": sanitize_second_choice(source.get("second_choice")),
         "dialog_transition": (
             source.get("dialog_transition")
             if type(source.get("dialog_transition")) is str
