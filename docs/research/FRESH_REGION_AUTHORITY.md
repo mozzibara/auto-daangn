@@ -280,3 +280,58 @@ Outcome:
 
 See [issue #11](https://github.com/mozzibara/auto-daangn/issues/11)
 for the two live-run outcome summaries.
+
+## Region option click -> visible UI -> navigation commitment trace
+
+After the two legacy surface probes [#17](https://github.com/mozzibara/auto-daangn/actions/runs/43000868603)
+and [#18](https://github.com/mozzibara/auto-daangn/actions/runs/43001567600)
+confirmed redirects/default region, the next discriminating evidence is
+the browser's **actual region-picker commitment**, not another request to
+the legacy URLs.
+
+`app_v5.region_navigation.RegionNavigationTrace` observes **only** the
+already robots-approved picker action, from immediately before the unique
+visible option is clicked through settlement. It reads the following
+categorical checkpoints:
+
+1. `BEFORE_CLICK`: target region-option dialog state, scoped region-control
+   visibility, typed target-term state, actual browser URL category.
+2. `AFTER_CLICK`: the same state **immediately after the actual option click**,
+   before the existing 300 ms UI wait.
+3. `AFTER_SETTLE`: the same state after the existing public capture settle
+   delay, before Filter Apply.
+
+During the same window, Playwright passively observes **only** the existing
+first-party `/kr/search/buy-sell/` XHR/fetch requests, document requests and
+main-frame navigation events. All URLs are transformed immediately to
+fixed `EXPECTED/OTHER/MISSING/INVALID` host/path/query/region indicators;
+at most 12 event categories are kept, with a separate overflow flag.
+No raw URL, cookies, history.state, localStorage, React state, headers,
+HTML or listing content is read/exported; no additional network request is
+sent. Listeners are detached in a `finally` block.
+
+A diagnostic comparison classifies e.g.:
+- `NO_VISIBLE_COMMIT_SERVER_OTHER`: post-settle UI has no visible
+  selected-region control, while the fresh post-click server Region ID
+  was OTHER; neither click success nor a suggestion response promoted it.
+- `UI_OTHER_AND_SERVER_OTHER`: a visible region control still points
+  elsewhere and the server did too.
+- `UI_TARGET_SERVER_OTHER`: UI displays requested term, but the
+  independent server Route still reports another region; look for a
+  state propagation/redirect problem rather than blindly retrying clicks.
+- `VISIBLE_TARGET_REVERTED_TO_OTHER` / `VISIBLE_TARGET_LOST`:
+  immediately after the click the target was visible, but disappeared
+  after settling; investigate SPA navigation or state reset.
+
+These are **hypotheses**, not a direct assertion of root cause.
+The pre-existing `verified_region()` and the strict Route digest,
+category/price/availability and status gates remain untouched. Every
+snapshot and event is re-allowlisted at the v4.23 public report boundary
+and the v4.34 failure log boundary, including a fixed-enum event sequence.
+If no unique visible option exists, the click is not attempted and the
+trace cannot be used as locality proof.
+
+The only permitted live test is the existing one-shot owner-approved
+robots-first GitHub workflow. Do not repeat unchanged runs or attempt the
+robots-denied `/kr/buy-sell/s/` route. No direct OCI access, login,
+session cookies or detail-page visits are required.
