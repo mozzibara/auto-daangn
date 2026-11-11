@@ -363,6 +363,76 @@ def classify(folder: Path) -> dict[str, str]:
         and option["arm_state"] in {"ARMED","NOT_OBSERVABLE"} else "UNKNOWN")
     option_fields["OPTION_EVENT_AUTHORIZES_LISTINGS"] = "NO"
 
+    # Independent public boundary: never print DOM text, listing links, IDs or
+    # unknown labels. Cap every count and permit only fixed enum sample fields.
+    inventory = navigation.get("button_inventory")
+    inventory = inventory if type(inventory) is dict else {}
+    inventory_stages = inventory.get("checkpoints")
+    inventory_stages = inventory_stages if type(inventory_stages) is dict else {}
+    inv_fields = {}
+    class_sets = {
+        "role": ("NATIVE_BUTTON", "ARIA_OPTION", "ARIA_BUTTON", "OTHER"),
+        "candidate": ("TARGET_WITH_CITY", "TARGET_ONLY", "CITY_ONLY",
+                      "OTHER_REGION_LIKE", "NOT_REGION_LIKE"),
+        "area": ("HEADER", "FOOTER", "LISTBOX", "NEAR_INPUT", "BODY", "OTHER"),
+        "vertical": ("TOP", "MIDDLE", "BOTTOM", "UNKNOWN"),
+        "action": ("BACK", "CONFIRM", "CLOSE", "SEARCH", "OTHER"),
+        "origin": ("ORIGINAL_DIALOG", "OTHER_DIALOG"),
+        "freshness": ("PRESENT_AT_ARM", "NEW_DOM_NODE"),
+    }
+    safe_scope = {"ORIGINAL_AND_OTHER", "ORIGINAL_ONLY", "OTHER_ONLY",
+                  "NO_VISIBLE_DIALOG", "UNOBSERVABLE"}
+    count_keys = ("visible_buttons", "new_dom_buttons", "new_target_buttons",
+                  "new_region_like_buttons", "visible_target_buttons",
+                  "region_like_buttons", "active_dialogs")
+    for stage in ("BASELINE", "AFTER_CLICK", "AFTER_SETTLE"):
+        snap = (inventory.get("baseline") if stage == "BASELINE"
+                else inventory_stages.get(stage))
+        snap = snap if type(snap) is dict else {}
+        prefix = f"BUTTONS_{stage}"
+        scope = snap.get("scope")
+        inv_fields[f"{prefix}_SCOPE"] = (
+            scope if type(scope) is str and scope in safe_scope else "UNKNOWN")
+        inv_fields[f"{prefix}_OVERFLOW"] = "YES" if snap.get("overflow") is True else "NO"
+        for key in count_keys:
+            value = snap.get(key)
+            inv_fields[f"{prefix}_{key.upper()}"] = (
+                str(value) if type(value) is int and 0 <= value <= 100 else "UNKNOWN")
+        groups = snap.get("groups")
+        groups = groups if type(groups) is dict else {}
+        for field, allowed in class_sets.items():
+            group = groups.get(field)
+            group = group if type(group) is dict else {}
+            for value in allowed:
+                raw = group.get(value)
+                inv_fields[f"{prefix}_{field.upper()}_{value}"] = (
+                    str(raw) if type(raw) is int and 0 <= raw <= 100 else "UNKNOWN")
+        raw_samples = snap.get("samples")
+        raw_samples = raw_samples if type(raw_samples) is list else []
+        samples = []
+        for obj in raw_samples[:8]:
+            if type(obj) is not dict:
+                continue
+            if any(type(obj.get(key)) is not str or
+                   obj[key] not in allowed for key,allowed in class_sets.items()):
+                continue
+            samples.append(":".join(obj[k] for k in class_sets))
+        inv_fields[f"{prefix}_CATEGORICAL_SAMPLES"] = (
+            "|".join(samples) if samples else "NONE")
+    states = {
+        "NOT_OBSERVABLE", "TARGET_MATCHING_NEW_DOM_NODES",
+        "REGION_LIKE_NEW_DOM_NODES", "GENERIC_DOM_REPLACEMENTS_ONLY",
+        "NO_NEW_BUTTON_NODES", "DIALOG_SCOPE_UNRESOLVED",
+    }
+    interpretation = inventory.get("interpretation")
+    inv_fields["BUTTONS_INTERPRETATION"] = (
+        interpretation if type(interpretation) is str
+        and interpretation in states else "UNKNOWN")
+    inv_fields["BUTTONS_ARMED"] = (
+        inventory.get("armed") if inventory.get("armed") in
+        ("ARMED","NOT_OBSERVABLE") else "UNKNOWN")
+    inv_fields["BUTTONS_AUTHORIZES_LISTINGS"] = "NO"
+
     raw_outer = outer.get("status")
     if type(raw_outer) is str and raw_outer in OUTER_STATUSES:
         outer_code = raw_outer
@@ -568,6 +638,7 @@ def classify(folder: Path) -> dict[str, str]:
         "NAV_TRACE_AUTHORIZES_LISTINGS": "NO",
         **nav_fields,
         **option_fields,
+        **inv_fields,
         **surface_fields,
     }
 

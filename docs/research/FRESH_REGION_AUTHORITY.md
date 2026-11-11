@@ -538,3 +538,47 @@ a click or promotes locality.
 **The live #25 logs remain valid for clicking, DOM replacement and
 lack of region commit, but its dialog-internal zero counts are not
 valid evidence that a separate stage lacks any controls.**
+
+## Candidate-button inventory after region dialog click
+
+Owner-approved [run #26](https://github.com/mozzibara/auto-daangn/actions/runs/43027575134)
+proved that the clicked candidate's actual dialog contained **3 visible
+buttons BEFORE_CLICK**, but at least **20 visible buttons immediately
+AFTER_CLICK**, including one text-matching the expected district and
+one region-search input. The original dialog was later removed, and
+the region still was not committed. These counts alone cannot
+distinguish a second selection stage from suggestions added by a
+concurrent asynchronous response or a React remount.
+
+`app_v5.region_button_inventory.RegionButtonInventory` now adds
+**one read-only witness attached to the same single, uniquely visible
+candidate before its existing click**. In the browser, it captures
+visible button DOM identity in a `WeakSet` as baseline, then compares
+the current DOM at the immediate AFTER_CLICK and AFTER_SETTLE checkpoints.
+A `NEW_DOM_NODE` means the node did **not exist at arm time**, not
+that a new logical action or second step has been proven.
+
+For at most 160 observed dialog nodes, with public counts saturated
+at 100 and a bounded sample of at most eight, each relevant button is
+classified into fixed categories:
+- Element role: native button, ARIA button or option, other.
+- Position: header, footer, listbox, adjacent to region input, body;
+  and top/middle/bottom viewport band.
+- Region relationship: target plus city, target only, city only,
+  other administrative-area-like, or non-region.
+- Action type: exact-label back, confirm, close, search, other.
+- DOM provenance: the original clicked option's dialog versus another
+  dialog, and present-at-arm versus a new DOM node.
+
+The browser never returns button strings, attributes, locations,
+numeric IDs, coordinates, HTML, cookies, URLs or React internals.
+The allowed data is sanitized at both the `navigation_trace` public
+capture boundary and the v4.34 failure-log boundary. No actual
+additional button is clicked; no listing, region or availability
+proof is promoted by this research. If a candidate category appears
+after the click, the status is explicitly **unverified** until a
+separate authorized, observable UI-to-server transition can prove it.
+
+The next one-shot owner-approved run may determine which kind of
+20+ buttons appeared and their relative location, but must not
+automate a hypothesized follow-up click or bypass region verification.

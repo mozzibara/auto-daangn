@@ -33,6 +33,7 @@ from app_v5.region_navigation import (
     classify_dialog_stage_transition,
 )
 from app_v5.region_option_events import RegionOptionEventWitness
+from app_v5.region_button_inventory import RegionButtonInventory
 from app_v5.region_suggestion import (RegionSuggestionObserver,
                                        classify_suggestion_identity)
 from app_v5.search_surface_probe import run_surface_probe, sanitize_surface_probe
@@ -338,6 +339,7 @@ async def capture(browser,name,region,options,salt):
             picker_net=v46.Network()
             nav_trace=RegionNavigationTrace(core.BY_KEY[region])
             option_events=RegionOptionEventWitness(core.BY_KEY[region])
+            button_inventory=RegionButtonInventory(core.BY_KEY[region])
             resolver=RegionSuggestionObserver(core.BY_KEY[region])
             resolver_listener_armed=False
             def arm_region_suggestion():
@@ -351,6 +353,9 @@ async def capture(browser,name,region,options,salt):
                 if not picker_listener_armed:
                     page.on('response',picker_net.hook)
                     picker_listener_armed=True
+            async def arm_option_witnesses(locator):
+                await option_events.arm(locator)
+                await button_inventory.arm(locator)
             async def before_exact_option_click():
                 arm_post_click_route()
                 nav_trace.arm(page)
@@ -358,22 +363,25 @@ async def capture(browser,name,region,options,salt):
             async def after_exact_option_click():
                 await nav_trace.checkpoint(page,'AFTER_CLICK')
                 await option_events.checkpoint(page,'AFTER_CLICK')
+                await button_inventory.checkpoint(page,'AFTER_CLICK')
             try:
                 steps=await core.ui_select_region(
                     page,core.BY_KEY[region],
                     on_before_search=arm_region_suggestion,
                     on_before_select=before_exact_option_click,
                     on_after_select=after_exact_option_click,
-                    on_option_witness=option_events.arm)
+                    on_option_witness=arm_option_witnesses)
                 await page.wait_for_timeout(options.settle_ms)
                 await nav_trace.checkpoint(page,'AFTER_SETTLE')
                 await option_events.checkpoint(page,'AFTER_SETTLE')
+                await button_inventory.checkpoint(page,'AFTER_SETTLE')
                 await resolver.drain()
                 await picker_net.drain()
             finally:
                 # Always detach page-injected, read-only DOM listeners,
                 # including on a missing/ambiguous or failed option click.
                 await option_events.stop(page)
+                await button_inventory.stop(page)
                 nav_trace.stop()
                 if resolver_listener_armed:
                     page.remove_listener('response',resolver.on_response)
@@ -397,6 +405,7 @@ async def capture(browser,name,region,options,salt):
                 visible_control=selected_ui.get('control','UNOBSERVABLE'))
             nav_export['dialog_transition']=classify_dialog_stage_transition(
                 nav_export)
+            nav_export['button_inventory']=button_inventory.export()
             result['region_picker']['navigation_trace']=sanitize_navigation_trace(
                 nav_export)
             result['region_picker']['button_clicked']=steps.get(
