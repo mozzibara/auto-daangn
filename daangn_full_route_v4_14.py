@@ -27,6 +27,7 @@ import daangn_price_bands_v4_8 as bands
 import daangn_network_flow_v4_11 as network
 import daangn_render_gap_v4_12 as render
 import daangn_route_structure_v4_10 as shape
+from app_v5.region_transition import classify_picker_transition, classify_filter_transition
 
 
 def now():
@@ -326,14 +327,30 @@ async def capture(browser,name,region,options,salt):
                 result['region_picker']['outcome']='ROBOTS_DENIED'
                 raise RuntimeError('ACCESS_RESTRICTION')
             result['region_picker']['attempted']=True
-            steps=await core.ui_select_region(page,core.BY_KEY[region])
+            picker_net=v46.Network()
+            picker_listener_armed=False
+            def arm_post_click_route():
+                nonlocal picker_listener_armed
+                if not picker_listener_armed:
+                    page.on('response',picker_net.hook)
+                    picker_listener_armed=True
+            try:
+                steps=await core.ui_select_region(
+                    page,core.BY_KEY[region],on_before_select=arm_post_click_route)
+                await page.wait_for_timeout(options.settle_ms)
+                await picker_net.drain()
+            finally:
+                if picker_listener_armed:
+                    page.remove_listener('response',picker_net.hook)
+            result['region_picker']['transition']=classify_picker_transition(
+                core.BY_KEY[region],steps,picker_net.events,
+                fetch_count=picker_net.search_fetch_responses)
             result['region_picker']['button_clicked']=steps.get(
                 'clicked_region_button') is True
             result['region_picker']['suggestion_selected']=steps.get(
                 'selected_suggestion') is True
             result['region_picker']['unique_region_option']=steps.get(
                 'unique_region_option') is True
-            await page.wait_for_timeout(options.settle_ms)
             await passive.drain()
             now_proof=classify_baseline_region_urls(
                 baseline_requested,baseline_response_url,page.url,expected_region_id)
@@ -394,6 +411,10 @@ async def capture(browser,name,region,options,salt):
             'region_authority_status','UNKNOWN')
         result['region_route_observation']=stage.get(
             'region_route_observation') or {}
+        transition=result.get('region_picker',{}).get('transition')
+        if isinstance(transition,dict):
+            transition['filter_apply_relation']=classify_filter_transition(
+                transition,result['region_route_observation'])
         result['fresh_region_ui_source']=(stage.get('region_authority') or {}).get(
             'ui_source','NONE')
         result['fresh_region_route_ids_match']=(stage.get('region_authority') or {}).get(
