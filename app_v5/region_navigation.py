@@ -12,6 +12,7 @@ from urllib.parse import parse_qs, urlsplit
 from daangn_v4_1_core import SEARCH_PATH
 from app_v5.region_option_events import sanitize_option_event
 from app_v5.region_button_inventory import sanitize_button_inventory
+from app_v5.region_readiness import sanitize_readiness
 
 _CHECKPOINTS = ("BEFORE_CLICK", "AFTER_CLICK", "AFTER_SETTLE")
 _URL_VALUES = frozenset(("EXPECTED", "OTHER", "MISSING", "INVALID"))
@@ -380,6 +381,7 @@ def sanitize_navigation_trace(value) -> dict:
                         else "NOT_OBSERVABLE",
         "option_event": sanitize_option_event(source.get("option_event")),
         "button_inventory": sanitize_button_inventory(source.get("button_inventory")),
+        "pre_click_readiness": sanitize_readiness(source.get("pre_click_readiness")),
         "dialog_transition": (
             source.get("dialog_transition")
             if type(source.get("dialog_transition")) is str

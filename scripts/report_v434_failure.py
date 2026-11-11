@@ -433,6 +433,42 @@ def classify(folder: Path) -> dict[str, str]:
         ("ARMED","NOT_OBSERVABLE") else "UNKNOWN")
     inv_fields["BUTTONS_AUTHORIZES_LISTINGS"] = "NO"
 
+    # API completion and visible DOM stability before the existing single
+    # region candidate click. Fixed enums/counts only, independent of approval.
+    ready = navigation.get("pre_click_readiness")
+    ready = ready if type(ready) is dict else {}
+    readiness_fields = {}
+    ready_states = {
+        "NOT_RUN", "READY", "API_TIMEOUT", "API_BLOCKED",
+        "API_NOT_UNIQUE", "API_ID_MISMATCH", "API_SCHEMA_UNKNOWN",
+        "DOM_NOT_FOUND", "DOM_NOT_STABLE", "DOM_AMBIGUOUS",
+        "DOM_PROBE_ERROR",
+    }
+    state = ready.get("state")
+    readiness_fields["READINESS_STATE"] = (
+        state if type(state) is str and state in ready_states else "UNKNOWN")
+    for flag in ("api_unique_candidate", "api_expected_id", "dom_stable"):
+        val = ready.get(flag)
+        readiness_fields[f"READINESS_{flag.upper()}"] = (
+            "YES" if val is True else "NO" if val is False else "UNKNOWN")
+    for key, upper, cap in (
+        ("api_response_count", "API_RESPONSE_COUNT", 20),
+        ("stable_samples", "STABLE_SAMPLES", 10)):
+        raw = ready.get(key)
+        readiness_fields[f"READINESS_{upper}"] = (
+            str(raw) if type(raw) is int and 0 <= raw <= cap else "UNKNOWN")
+    snap_stages = ready.get("snapshots")
+    snap_stages = snap_stages if type(snap_stages) is dict else {}
+    for stage in ("INITIAL", "FINAL"):
+        snap = snap_stages.get(stage)
+        snap = snap if type(snap) is dict else {}
+        for key in ("candidate_buttons", "target_buttons",
+                    "target_city_buttons", "dom_mutations"):
+            raw = snap.get(key)
+            readiness_fields[f"READINESS_{stage}_{key.upper()}"] = (
+                str(raw) if type(raw) is int and 0 <= raw <= 100 else "UNKNOWN")
+    readiness_fields["READINESS_AUTHORIZES_LISTINGS"] = "NO"
+
     raw_outer = outer.get("status")
     if type(raw_outer) is str and raw_outer in OUTER_STATUSES:
         outer_code = raw_outer
@@ -639,6 +675,7 @@ def classify(folder: Path) -> dict[str, str]:
         **nav_fields,
         **option_fields,
         **inv_fields,
+        **readiness_fields,
         **surface_fields,
     }
 
