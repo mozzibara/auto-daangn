@@ -245,3 +245,38 @@ the legacy `_data` direct-document navigation failed with `REQUEST_ERROR`
 path was denied by robots.txt. Only the `_data` transport is corrected in
 the follow-up; previously denied paths must remain unvisited. This finding
 does not authorize using the old SSR result for listing admission.
+
+## Approved capture #18: nonredirecting legacy JSON GET confirms redirect
+
+The follow-up [capture #18](https://github.com/mozzibara/auto-daangn/actions/runs/43001567600)
+ran after PR #21 corrected the legacy data probe to match the original
+k-skill **HTTP GET**, not a browser document navigation. The public
+`/kr/buy-sell/all/?...&_data=...` response was **HTTP_REDIRECT**,
+not JSON. The redirect Location still contained the expected configured
+region slug and keyword, but pointed to a **different path**. The probe
+deliberately set `max_redirects=0` and did not follow it, so it cannot
+make claims about that target's eventual server locality.
+
+Independently, the old SSR browser page still returned HTTP 200 with
+`ItemList` HTML after the final URL lost `in` and changed path. The
+new `/kr/buy-sell/s/` surface remained **robots-denied**; zero requests
+were issued to that path. The actual public UI picker continued to
+receive an exact candidate for the historical ID but produced
+a post-click search response with `OTHER` IDs and region name.
+
+Outcome:
+- The three known third-party patterns are integrated as bounded
+  compatibility diagnostics; **none** is a verified replacement for
+  the current canonical search collector.
+- The older route cannot be trusted just because it returns an
+  `ItemList` or preserves `in` on an intermediate redirect.
+- The first failure remains `FRESH_REGION_PROOF_MISSING`;
+  no listing details were visited and OCI intake remained unchanged.
+- Do not repeat the same tests without a new discriminating change.
+  Next assess the actual region-picker **commit state**, URL/navigation
+  sequence, and visible selected control, preferably comparing a
+  domestic owner-controlled browser with the GitHub runner. Any new
+  test remains read-only, robots-first, categorical-only and owner-approved.
+
+See [issue #11](https://github.com/mozzibara/auto-daangn/issues/11)
+for the two live-run outcome summaries.
