@@ -13,7 +13,9 @@ import json
 import os
 from pathlib import Path
 
-from app_v5.precollection_filter_gate import verify_filter_before_collection
+from app_v5.precollection_filter_gate import (
+    verify_filter_before_collection, sanitize_precollection,
+)
 from scripts.chrome_stable_input_compare import (
     check_public_robots, one_public_region,
 )
@@ -45,7 +47,7 @@ def isolated_execution_directory(path=None, *, home=None):
 def final_report(region_row):
     result = region_row if type(region_row) is dict else {}
     details = result.get("precollection")
-    details = details if type(details) is dict else {}
+    details = sanitize_precollection(details) if type(details) is dict else {}
     region_ok = result.get("status") == "TARGET_REGION_CONFIRMED_DIAGNOSTIC"
     filters_ok = details.get("status") == "PRECOLLECTION_READY_REVIEW"
     if region_ok and filters_ok and details.get("strict_filter_evidence") is True:
