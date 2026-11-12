@@ -26,7 +26,12 @@ _SAMPLES = ("BEFORE", "AT_CLICK", "AFTER_200MS",
 _RUN_STATUS = frozenset((
     "MANUAL_CLICK_OBSERVED", "NO_TARGET_CLICK", "MULTIPLE_TARGET_CLICKS",
     "UNTRUSTED_CLICK", "UNEXPECTED_PAGE", "BROWSER_DISCONNECTED",
-    "ACCESS_BLOCKED", "OBSERVATION_ERROR",
+    "ACCESS_BLOCKED", "OBSERVATION_ERROR", "OBSERVER_LOST",
+))
+_OBSERVATION = frozenset((
+    "TARGET_CLICK_OBSERVED", "NO_DOCUMENT_ACTIVITY",
+    "DOCUMENT_ACTIVITY_NO_DIALOG_CLICK", "DIALOG_CLICK_WITHOUT_TARGET",
+    "TARGET_CLICK_OUTSIDE_DIALOG", "OBSERVER_LOST", "INCONCLUSIVE",
 ))
 _ROUTE_STATUS = frozenset((
     "NO_POSTCLICK_ROUTE", "UNIQUE_POSTCLICK_ROUTE", "MULTIPLE_POSTCLICK_ROUTES",
@@ -49,36 +54,71 @@ _API_STATES = frozenset((
 _CLICK_JS = r"""meta => {
   const key=Symbol.for('auto_daangn_manual_chrome_v1');
   try { document[key]?.stop?.(); } catch (_) {}
-  const state={count:0,trusted:0,unique:false,city:false,at_ms:0};
+  const cap=n=>Math.min(30,n);
+  const state={
+    count:0,trusted:0,unique:false,city:false,at_ms:0,
+    document_clicks:0,dialog_clicks:0,button_clicks:0,
+    target_outside_dialog:0,input_events:0,
+    region_input_events:0,observed_input_focus:false
+  };
   const visible=e=>{
     if(!e?.isConnected)return false;
     try {
       const style=getComputedStyle(e);
       return !!e.getClientRects().length && style.display!=='none' &&
              style.visibility!=='hidden';
-    } catch(_){ return false; }
+    } catch(_){return false;}
+  };
+  const elementPath=e=>{
+    try{return e.composedPath().filter(x=>x instanceof Element);}
+    catch(_){return [];}
   };
   const onClick=e=>{
-    const el=e.target?.closest?.('button,[role="button"],[role="option"]');
-    const dialog=el?.closest?.('[role="dialog"]');
-    if(!dialog || !visible(el))return;
-    const name=(el.textContent||'').replace(/\s+/g,' ').trim().slice(0,200);
+    state.document_clicks=cap(state.document_clicks+1);
+    const path=elementPath(e);
+    const el=path.find(x=>x.matches?.('button,[role="button"],[role="option"]'));
+    if(path.some(x=>x.matches?.('[role="dialog"]')))
+      state.dialog_clicks=cap(state.dialog_clicks+1);
+    if(!el || !visible(el))return;
+    state.button_clicks=cap(state.button_clicks+1);
+    const name=((el.innerText||el.textContent||'')+' '+
+      (el.getAttribute('aria-label')||'')).replace(/\s+/g,' ').trim().slice(0,250);
     if(!name.includes(meta.term))return;
+    const dialog=path.find(x=>x.matches?.('[role="dialog"]'))||
+      el.closest('[role="dialog"]');
+    if(!dialog) {
+      state.target_outside_dialog=cap(state.target_outside_dialog+1);
+      return;
+    }
     const matches=[...dialog.querySelectorAll('button,[role="button"],[role="option"]')]
-      .filter(x=>visible(x) && (x.textContent||'').includes(meta.term));
-    state.count=Math.min(10,state.count+1);
-    if(e.isTrusted)state.trusted=Math.min(10,state.trusted+1);
+      .filter(x=>visible(x)&&((x.innerText||x.textContent||'')+' '+
+        (x.getAttribute('aria-label')||'')).includes(meta.term)).slice(0,100);
+    state.count=cap(state.count+1);
+    if(e.isTrusted)state.trusted=cap(state.trusted+1);
     if(state.count===1){
       state.unique=matches.length===1 && matches[0]===el;
       state.city=name.includes(meta.city);
       state.at_ms=Date.now();
     }
   };
+  const onInput=e=>{
+    state.input_events=cap(state.input_events+1);
+    const path=elementPath(e);
+    const target=path.find(x=>x.matches?.('input,[role="combobox"]'));
+    if(!target)return;
+    const p=target.getAttribute('placeholder')||'';
+    if(/지역|동네|검색/.test(p)||target.type==='search')
+      state.region_input_events=cap(state.region_input_events+1);
+  };
   document.addEventListener('click',onClick,{capture:true,passive:true});
+  document.addEventListener('input',onInput,{capture:true,passive:true});
   document[key]={
-    get(){return {...state};},
-    stop(){document.removeEventListener('click',onClick,true);
-           delete document[key];}
+    get(){return {...state,focused:document.hasFocus()===true};},
+    stop(){
+      document.removeEventListener('click',onClick,true);
+      document.removeEventListener('input',onInput,true);
+      delete document[key];
+    }
   };
   return true;
 }"""
@@ -264,6 +304,29 @@ def _count(value, maximum=20):
     return value if type(value) is int and 0 <= value <= maximum else -1
 
 
+def classify_manual_observation(status, click) -> str:
+    """Explain absent target receipts without inferring a website failure."""
+    click = click if type(click) is dict else {}
+    if status == "OBSERVER_LOST":
+        return "OBSERVER_LOST"
+    if type(click.get("count")) is int and click["count"] > 0:
+        return "TARGET_CLICK_OBSERVED"
+    if type(click.get("target_outside_dialog")) is int and click["target_outside_dialog"] > 0:
+        return "TARGET_CLICK_OUTSIDE_DIALOG"
+    if type(click.get("dialog_clicks")) is int and click["dialog_clicks"] > 0:
+        return "DIALOG_CLICK_WITHOUT_TARGET"
+    if (type(click.get("document_clicks")) is int
+            and click["document_clicks"] > 0):
+        return "DOCUMENT_ACTIVITY_NO_DIALOG_CLICK"
+    if (type(click.get("input_events")) is int
+            and click["input_events"] > 0):
+        return "DOCUMENT_ACTIVITY_NO_DIALOG_CLICK"
+    if (click.get("document_clicks") == 0
+            and click.get("input_events") == 0):
+        return "NO_DOCUMENT_ACTIVITY"
+    return "INCONCLUSIVE"
+
+
 def sanitize_manual_report(value) -> dict:
     """Strict allowlist for stdout and optional local JSON; idempotent."""
     src = value if type(value) is dict else {}
@@ -271,6 +334,8 @@ def sanitize_manual_report(value) -> dict:
     api = src.get("region_api") if type(src.get("region_api")) is dict else {}
     route = src.get("route") if type(src.get("route")) is dict else {}
     stages = src.get("stages") if type(src.get("stages")) is dict else {}
+    obs = (src.get("observer_diagnostics")
+           if type(src.get("observer_diagnostics")) is dict else {})
     safe = {
         "schema": "manual_chrome_region_v1",
         "status": _enum(src.get("status"), _RUN_STATUS, "OBSERVATION_ERROR"),
@@ -279,6 +344,20 @@ def sanitize_manual_report(value) -> dict:
             "trusted_count": _count(click.get("trusted_count"), 10),
             "unique_candidate": click.get("unique_candidate") is True,
             "city_hint": click.get("city_hint") is True,
+        },
+        "observer_diagnostics": {
+            "classification": _enum(
+                obs.get("classification"), _OBSERVATION, "INCONCLUSIVE"),
+            **{k: _count(obs.get(k), 30)
+                for k in (
+                    "document_clicks", "dialog_clicks", "button_clicks",
+                    "target_outside_dialog", "input_events",
+                    "region_input_events")},
+            "tracked_tab_focused": (
+                "YES" if obs.get("tracked_tab_focused") == "YES"
+                else "NO" if obs.get("tracked_tab_focused") == "NO"
+                else "UNKNOWN"),
+            "open_tab_count": _count(obs.get("open_tab_count"), 20),
         },
         "region_api": {
             "response_count": _count(api.get("response_count")),
@@ -333,7 +412,7 @@ async def _stage(page, region):
 
 
 def make_manual_report(region, *, status, click, resolver, routes,
-                       page_url, stages):
+                       page_url, stages, open_tab_count=-1):
     """Pure, fail-closed comparison of already-observed manual browser data."""
     click = click if type(click) is dict else {}
     epoch = click.get("at_ms")
@@ -400,6 +479,18 @@ def make_manual_report(region, *, status, click, resolver, routes,
             "unique_candidate": click.get("unique"),
             "city_hint": click.get("city"),
         },
+        "observer_diagnostics": {
+            "classification": classify_manual_observation(actual_status, click),
+            **{k: click.get(k) for k in (
+                "document_clicks", "dialog_clicks", "button_clicks",
+                "target_outside_dialog", "input_events",
+                "region_input_events")},
+            "tracked_tab_focused": (
+                "YES" if click.get("focused") is True
+                else "NO" if click.get("focused") is False
+                else "UNKNOWN"),
+            "open_tab_count": open_tab_count,
+        },
         "region_api": {
             "response_count": resolver.responses,
             "state": api_state,
@@ -420,7 +511,8 @@ def make_manual_report(region, *, status, click, resolver, routes,
     })
 
 
-async def observe_manual_page(page, region, *, timeout_sec=120):
+async def observe_manual_page(page, region, *, timeout_sec=120,
+                              on_armed=None):
     """Observe a user interaction only. NO Playwright click/fill/goto methods."""
     resolver = RegionSuggestionObserver(region)
     routes = ManualSearchResponses(region)
@@ -437,6 +529,10 @@ async def observe_manual_page(page, region, *, timeout_sec=120):
             status = "OBSERVATION_ERROR"
         else:
             stage["BEFORE"] = await _stage(page, region)
+            # UI instructions are published only AFTER the passive click
+            # witness and browser request listeners are installed.
+            if on_armed is not None:
+                on_armed()
             deadline = asyncio.get_running_loop().time() + timeout_sec
             while asyncio.get_running_loop().time() < deadline:
                 if not is_public_search(page.url):
@@ -447,7 +543,7 @@ async def observe_manual_page(page, region, *, timeout_sec=120):
                     break
                 click = await _read_click(page)
                 if click is None:
-                    status = "BROWSER_DISCONNECTED"
+                    status = "OBSERVER_LOST"
                     break
                 if click.get("count", 0) > 0:
                     status = ("MANUAL_CLICK_OBSERVED" if click.get("count") == 1
@@ -479,7 +575,8 @@ async def observe_manual_page(page, region, *, timeout_sec=120):
         await routes.drain()
         return make_manual_report(
             region, status=status, click=click, resolver=resolver,
-            routes=routes, page_url=page.url, stages=stage)
+            routes=routes, page_url=page.url, stages=stage,
+            open_tab_count=len(page.context.pages))
     finally:
         try:
             await page.evaluate(_STOP_CLICK_JS)

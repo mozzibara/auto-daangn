@@ -128,13 +128,15 @@ async def run(chrome: Path, *, timeout_sec: int,
                     f"http://127.0.0.1:{port}", timeout=12000)
                 try:
                     page = await find_search_tab(browser)
-                    print("관찰 준비 완료: Chrome에서 지역 선택을 수동으로 실행하세요.")
-                    print("1. 지역 선택을 열고 목표 지역을 검색하세요.")
-                    print("2. 검색된 목표 지역을 마우스로 한 번 선택하세요.")
-                    print("3. 이후 별도 조작 없이 화면의 결과를 관찰합니다.")
-                    print("로그인하거나 다른 개인 정보를 입력하지 마세요.")
+                    def announce_armed():
+                        print("관찰 준비 완료: 연결된 새 임시 Chrome 창에서 직접 조작하세요.", flush=True)
+                        print("1. 지역 선택을 열고 불당동을 검색합니다.", flush=True)
+                        print("2. '천안시 불당동' 목표 지역을 한 번 클릭합니다.", flush=True)
+                        print("3. 추가 클릭 없이 화면 변화를 관찰합니다.", flush=True)
+                        print("개인 프로필·기존 Chrome 창이 아닌 새 임시 창을 사용하세요.", flush=True)
                     result = await observe_manual_page(
-                        page, BY_KEY["cheonan"], timeout_sec=timeout_sec)
+                        page, BY_KEY["cheonan"], timeout_sec=timeout_sec,
+                        on_armed=announce_armed)
                 finally:
                     try:
                         await browser.close()
