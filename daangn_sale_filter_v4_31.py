@@ -17,7 +17,7 @@ from collections import Counter
 
 from daangn_listing_state_v4_24 import clean_record
 from app_v5.buy_now_policy import (
-    classify_source_buy_now, assess_local_buy_now,
+    classify_source_buy_now, assess_configured_district,
     HOLD as LOCALITY_HOLD, OUTSIDE as LOCALITY_OUTSIDE,
     UNVERIFIED as BUY_NOW_UNVERIFIED,
 )
@@ -40,15 +40,15 @@ def _out(code, canonical='NOT_VERIFIED'):
         'sale_filter_basis':('DIRECT_FOR_SALE_PRIMARY_UI' if code==PASS_DIRECT
             else 'IN_STOCK_AND_NO_PRIMARY_SOLD_RESERVED_UI' if code==PASS
             else 'EXPLICIT_SOLD_OR_RESERVED_UI' if code==BLOCK
-            else 'VERIFIED_OUT_OF_TARGET_CITY' if code==BLOCK_OUTSIDE
-            else 'BUY_NOW_LOCATION_UNVERIFIED' if code==HOLD_LOCALITY
+            else 'VERIFIED_OUTSIDE_CONFIGURED_DISTRICTS' if code==BLOCK_OUTSIDE
+            else 'ITEM_DISTRICT_OR_BUY_NOW_PROOF_UNVERIFIED' if code==HOLD_LOCALITY
             else 'IN_STOCK_NOT_CONFIRMED' if code==STOCK_CONTRADICTION
             else 'INSUFFICIENT_EVIDENCE'),
         'display_status':('판매중 직접 확인' if code==PASS_DIRECT else
             '판매 가능 추정' if code==PASS else
             '판매완료·예약중 제외' if code==BLOCK else
             '지역 밖 매물 제외' if code==BLOCK_OUTSIDE else
-            '바로구매 지역 확인 필요' if code==HOLD_LOCALITY else '판매 상태 미확인'),
+            '매물 동·읍·면 확인 필요' if code==HOLD_LOCALITY else '판매 상태 미확인'),
         'is_inferred_available':code==PASS,
         'direct_for_sale_ui_required':False,
         'direct_for_sale_ui_observed':code==PASS_DIRECT,
@@ -150,17 +150,18 @@ def assess_source(record, *, diagnostic=None, survey=None):
         return _out(STOCK_CONTRADICTION,txn)
     if txn not in ('NOT_OBSERVABLE','FOR_SALE'):
         return _out(UNKNOWN,txn)
-    # A delivery option is not a location. Only the *same item's* Route
-    # locality proof can exclude out-of-area items or retain local Buy Now.
-    # Without locality proof, do not delete or recommend a Buy Now item.
-    if diagnostic is not None:
-        buy_now = classify_source_buy_now(diagnostic)['status']
-        local = assess_local_buy_now(
-            buy_now, diagnostic.get('item_locality_status'))
-        if local['decision'] == LOCALITY_OUTSIDE:
-            return _out(BLOCK_OUTSIDE, txn)
-        if local['decision'] == LOCALITY_HOLD:
-            return _out(HOLD_LOCALITY, txn)
+    # No blanket city acceptance and no blanket Buy Now exclusion. A
+    # deliberately configured dong/eup/myeon in the exact source Route item
+    # must be verified before an item is a local meetup candidate.
+    # Unknowns stay held; searchRegion can never substitute for this proof.
+    diag = diagnostic if type(diagnostic) is dict else {}
+    buy_now = classify_source_buy_now(diag)['status']
+    local = assess_configured_district(
+        buy_now, diag.get('item_area_status'), diag.get('item_area_key'))
+    if local['decision'] == LOCALITY_OUTSIDE:
+        return _out(BLOCK_OUTSIDE, txn)
+    if local['decision'] == LOCALITY_HOLD:
+        return _out(HOLD_LOCALITY, txn)
     if diagnostic is not None and not _valid_diag(
             diagnostic,allow_explicit_for_sale=(txn=='FOR_SALE')):
         return _out(UNKNOWN,txn)
@@ -265,7 +266,7 @@ def report(e):
         '- InStock + no same-item SOLD/RESERVED UI is a practical CANDIDATE policy, not direct transaction verification.',
         '- Primary canonical transaction status remains independent and unchanged.',
         '- Buy Now is a shipping option, NOT proof of remote location or inability to meet in person.',
-        '- Local Buy Now is retained after item-specific locality evidence; unknown locality is held, not deleted.',
+        '- Local Buy Now is retained only with its own configured dong/eup/myeon proof; unknown locality is held, not deleted.',
         '- A generic purchase CTA alone is not a verified Buy Now flag.',
         '- No Buy Now classification repairs a mismatched search Route locality.',
         '- Existing server-price, category, regional scope and route proof gates are NOT bypassed.',
