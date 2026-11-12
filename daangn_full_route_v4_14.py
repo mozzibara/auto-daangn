@@ -44,6 +44,7 @@ from app_v5.region_route_chronology import RegionPostclickRequests
 from app_v5.region_suggestion import (RegionSuggestionObserver,
                                        classify_suggestion_identity)
 from app_v5.search_surface_probe import run_surface_probe, sanitize_surface_probe
+from app_v5.listing_locality import classify_item_region, UNVERIFIED as ITEM_REGION_UNKNOWN
 
 
 def now():
@@ -52,8 +53,9 @@ def now():
 
 class RouteBodies:
     """Bounded, passive in-memory collector; models must match known UI responses."""
-    def __init__(self,field_probe=None):
+    def __init__(self,field_probe=None,expected_region=None):
         self.field_probe=field_probe
+        self.expected_region=expected_region
         self.events=[]
         self.tasks=set()
         self.errors=0
@@ -96,7 +98,8 @@ class RouteBodies:
                     if len(model.get('articles',[]))!=count:
                         self.errors+=1
                         return
-                    model,field_shape=enhance_observed_fields(raw,model)
+                    model,field_shape=enhance_observed_fields(
+                        raw,model,expected_region=self.expected_region)
                     if model is None:
                         self.errors+=1
                         return
@@ -142,7 +145,7 @@ class RouteBodies:
 
 
 
-def enhance_observed_fields(raw, model):
+def enhance_observed_fields(raw, model, *, expected_region=None):
     """Fill nested category.id only when explicitly present in matched response."""
     try:
         value=json.loads(raw)
@@ -173,6 +176,7 @@ def enhance_observed_fields(raw, model):
         return None,{'status':'MODEL_RAW_ARRAY_MISMATCH'}
     cats=Counter()
     sales=Counter()
+    localities=Counter()
     for observed,row in zip(original,model['articles']):
         if not isinstance(observed,dict):
             return None,{'status':'NON_OBJECT_ARTICLE'}
@@ -189,8 +193,15 @@ def enhance_observed_fields(raw, model):
             else:
                 cats['missing']+=1
         sales['flat' if row.get('isSoldOut') is not None else 'missing']+=1
+        # Item's own region (not searchRegion) is read only from the
+        # identity- and order-matched first-party Route row. Export enums.
+        locality=(classify_item_region(observed.get('region'),expected_region)
+                  if expected_region is not None else ITEM_REGION_UNKNOWN)
+        row['item_locality_status']=locality
+        localities[locality]+=1
     return model,{'status':'OBSERVED_ITEM_FIELD_SHAPE',
-                  'category_sources':dict(cats),'availability_sources':dict(sales)}
+                  'category_sources':dict(cats),'availability_sources':dict(sales),
+                  'item_locality_counts':dict(sorted(localities.items()))}
 
 
 def classify_article(article):
@@ -533,7 +544,7 @@ async def capture(browser,name,region,options,salt):
         args=SimpleNamespace(keyword='HDD',regions={'target':dict(core.BY_KEY[region])},
             category_id=1,category_name=v46.CATALOG[1],available_only=True,
             min_price=0,max_price=50000,settle_ms=options.settle_ms,timeout=options.timeout)
-        bodies=RouteBodies()
+        bodies=RouteBodies(expected_region=core.BY_KEY[region])
         passive.phase='FILTER_APPLY'
         page.on('response',bodies.on_response)
         try:

@@ -480,9 +480,15 @@ def project_v428_diagnosis(probe, kind='SOURCE'):
             'primary_exact_tokens':sc.get('PRIMARY')
                 if type(sc.get('PRIMARY')) is int and 0<=sc['PRIMARY']<=3500 else None}
     outcome=diag.get('outcome')
+    from app_v5.listing_locality import sanitize_item_locality, UNVERIFIED as LOCATION_UNKNOWN
+    item_locality=(sanitize_item_locality(src.get('v435_route_item_locality_status'))
+        if kind=='SOURCE' and src.get('same_listing_identity') is True and
+        src.get('page_status')=='HTTP_200_IDENTITY_MATCH' and
+        src.get('v432_route_price_item_identity') is True else LOCATION_UNKNOWN)
     return {'source_rank':src.get('source_rank')
             if type(src.get('source_rank')) is int and 0<=src['source_rank']<=650 else None,
         'role':kind,'probe':safe,
+        'item_locality_status':item_locality,
         'dom_outcome':outcome if isinstance(outcome,str) and outcome in (
             'VISIBLE_STATUS_REPRODUCED','STATUS_EMERGED_AFTER_SETTLE',
             'STATUS_EMERGED_AFTER_SCROLL','STATUS_EMERGED_NARROW_VIEWPORT',

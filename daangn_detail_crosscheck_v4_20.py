@@ -209,7 +209,12 @@ def pick_samples(model,salt,limit=SAMPLES_PER_CONTEXT):
             seen.add(stable)
             # In-memory token helps detect accidental duplicate rows, never exported.
             tok=hmac.new(salt,stable.encode('ascii'),hashlib.sha256).hexdigest()[:20]
-            out.append({'rank':index,'url':link,'token':tok,'price':price})
+            # The class came from the exact same correlated search Route row.
+            # It is a finite enum, never an address or seller region string.
+            from app_v5.listing_locality import sanitize_item_locality
+            out.append({'rank':index,'url':link,'token':tok,'price':price,
+                        'item_locality_status':sanitize_item_locality(
+                            row.get('item_locality_status'))})
             break
     return out
 
@@ -341,6 +346,7 @@ async def audit_sample(page,model,name,region,options,salt,ui_diag,*,checker=rob
             # Never export its URL, title, stable ID or ephemeral token.
             entry['v432_route_price_krw']=sample['price']
             entry['v432_route_price_item_identity']=True
+            entry['v435_route_item_locality_status']=sample['item_locality_status']
             # v4.33: keyed same-run article identity, never a raw URL or stable ID.
             # One ephemeral salt covers all three contexts of this capture.
             entry['v433_listing_run_hmac']=sample['token']
