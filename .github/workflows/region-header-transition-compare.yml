@@ -1,0 +1,106 @@
+name: Owner-approved region header state transition contrast
+
+on:
+  issue_comment:
+  workflow_dispatch:
+    inputs:
+      approval:
+        description: Exact owner approval for bounded hosted Chrome region transition and coarse egress check
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: daangn-header-transition-owner-approved
+  cancel-in-progress: false
+
+jobs:
+  region-header-transition:
+    if: >-
+      (github.event_name == 'issue_comment' &&
+       github.event.issue.number == 11 &&
+       github.event.comment.user.login == github.repository_owner &&
+       github.event.comment.body == '/run-daangn-region-transition-v1') ||
+      (github.event_name == 'workflow_dispatch' &&
+       github.actor == github.repository_owner &&
+       inputs.approval == 'I_APPROVE_REGION_TRANSITION_V1')
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 16
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-2025]
+    env:
+      PYTHONUTF8: "1"
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - name: Checkout reviewed main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: false
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt
+
+      - name: Verify Chrome Stable and Xvfb (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          command -v google-chrome
+          command -v xvfb-run
+
+      - name: Offline input + region fixture (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          xvfb-run -a python -m scripts.chrome_stable_input_compare --headed
+
+      - name: Bounded public A/B with initial and postclick header witness (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        timeout-minutes: 8
+        run: |
+          xvfb-run -a python -m scripts.chrome_stable_input_compare \
+            --live --headed --egress-context \
+            --owner-approval I_APPROVE_CHROME_INPUT_COMPARISON_V1
+
+      - name: Verify Chrome Stable (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $chrome = Join-Path $env:PROGRAMFILES 'Google\Chrome\Application\chrome.exe'
+          if (-not (Test-Path -LiteralPath $chrome -PathType Leaf)) {
+            throw 'GOOGLE_CHROME_STABLE_MISSING'
+          }
+
+      - name: Offline input + region fixture (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          python -m scripts.chrome_stable_input_compare --headed
+          if ($LASTEXITCODE -ne 0) { throw 'OFFLINE_INPUT_FIXTURE_FAILED' }
+
+      - name: Bounded public A/B with initial and postclick header witness (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        timeout-minutes: 8
+        run: |
+          python -m scripts.chrome_stable_input_compare --live --headed --egress-context --owner-approval I_APPROVE_CHROME_INPUT_COMPARISON_V1
+          if ($LASTEXITCODE -ne 0) { throw 'HOSTED_HEADER_TRANSITION_INCOMPLETE' }
+
+      - name: Research boundary
+        if: always()
+        shell: bash
+        run: |
+          echo 'At most two standard public region choices per host; original region labels stay in browser memory.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'One opt-in coarse network egress geolocation observation; no IP, exact label, seller/listing fields or credentials logged.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'No region proof/OCI import/listing authorization or access bypass.' >> "$GITHUB_STEP_SUMMARY"
