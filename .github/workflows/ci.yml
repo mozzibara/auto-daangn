@@ -87,3 +87,37 @@ jobs:
         run: command -v google-chrome
       - name: Compare fill and sequential key event types on local HTML only
         run: python -m scripts.chrome_stable_input_compare
+
+  windows-chrome-input-fixture:
+    name: Real Windows-hosted Chrome Stable fixture (offline)
+    runs-on: windows-2025
+    timeout-minutes: 12
+    permissions:
+      contents: read
+    env:
+      PYTHONUTF8: "1"
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - name: Checkout trusted code
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+      - name: Install project dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Verify Windows image includes Google Chrome Stable
+        shell: pwsh
+        run: |
+          $chrome = Join-Path $env:PROGRAMFILES "Google\Chrome\Application\chrome.exe"
+          if (-not (Test-Path -LiteralPath $chrome -PathType Leaf)) {
+            throw "GOOGLE_CHROME_STABLE_MISSING"
+          }
+      - name: Compare inputs in real headed Windows Chrome on local HTML only
+        shell: pwsh
+        run: |
+          python -m scripts.chrome_stable_input_compare --headed
+          if ($LASTEXITCODE -ne 0) { throw "OFFLINE_CHROME_FIXTURE_FAILED" }
