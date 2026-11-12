@@ -44,7 +44,8 @@ _CORE_STAGES = frozenset((
     "AFTER_OPEN_CALLBACK", "AFTER_INPUT_DISCOVERY",
     "AFTER_BEFORE_SEARCH_CALLBACK", "AFTER_INPUT_ENTRY",
     "AFTER_API_READINESS", "BEFORE_SUGGESTION_CLICK",
-    "AFTER_SUGGESTION_CLICK", "AFTER_REGION_BUTTON_CLICK_VERIFIED",
+    "AFTER_SUGGESTION_CLICK", "AFTER_SUGGESTION_CLICK_VERIFIED",
+    "AFTER_REGION_BUTTON_CLICK_VERIFIED",
     "UNOBSERVABLE",
 ))
 
@@ -151,6 +152,12 @@ def sanitize_picker_phases(value):
             src.get("header_click_exception_kind"),
             ("NONE", "PLAYWRIGHT_TIMEOUT", "OTHER_EXCEPTION"), "NONE"),
         "header_activation": sanitize_header_activation(src.get("header_activation")),
+        "option_click_returned": src.get("option_click_returned") is True,
+        "option_click_verified_after_timeout": (
+            src.get("option_click_verified_after_timeout") is True),
+        "option_click_exception_kind": _known(
+            src.get("option_click_exception_kind"),
+            ("NONE", "PLAYWRIGHT_TIMEOUT", "OTHER_EXCEPTION"), "NONE"),
         "api": {
             **{name: _count(api.get(name)) for name in _REQUEST_COUNTS},
             "state": state,
@@ -223,7 +230,10 @@ class RegionPickerPhaseWitness:
     def export(self, *, error=None, readiness=None,
                core_progress_stage=None, core_header_click_returned=None,
                header_activation=None, header_click_verified_after_timeout=None,
-               header_click_exception_kind=None):
+               header_click_exception_kind=None,
+               option_click_returned=None,
+               option_click_verified_after_timeout=None,
+               option_click_exception_kind=None):
         api = self.counts.copy()
         if api["target_responses_blocked"]:
             state = "ACCESS_RESTRICTED"
@@ -254,6 +264,9 @@ class RegionPickerPhaseWitness:
             "header_click_verified_after_timeout": header_click_verified_after_timeout,
             "header_click_exception_kind": header_click_exception_kind,
             "header_activation": header_activation,
+            "option_click_returned": option_click_returned,
+            "option_click_verified_after_timeout": option_click_verified_after_timeout,
+            "option_click_exception_kind": option_click_exception_kind,
             "api": {**api, "state": state},
             "delayed_input_observed": delayed,
         })
