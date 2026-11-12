@@ -37,7 +37,9 @@ from app_v5.region_picker_phases import (
 from app_v5.region_header_activation import (
     HeaderActivationWitness, verify_header_click_timeout_without_reclick,
 )
-from app_v5.region_option_events import RegionOptionEventWitness
+from app_v5.region_option_events import (
+    RegionOptionEventWitness, verify_single_target_click_after_timeout,
+)
 from app_v5.region_readiness import RegionReadinessWitness
 from app_v5.region_suggestion import RegionSuggestionObserver
 from scripts.run_live_checked import (
@@ -53,7 +55,8 @@ _APPROVAL = "I_APPROVE_CHROME_INPUT_COMPARISON_V1"
 _DECISIONS = frozenset((
     "FIXTURE_COMPLETE", "API_OR_DOM_NOT_READY", "CLICK_NOT_TRUSTED",
     "TARGET_REGION_CONFIRMED_DIAGNOSTIC", "REGION_NOT_COMMITTED",
-    "REGION_HEADER_ACTION_EXCEPTION", "INCONCLUSIVE", "ACCESS_RESTRICTED", "BASELINE_INVALID",
+    "REGION_HEADER_ACTION_EXCEPTION", "REGION_OPTION_ACTION_EXCEPTION",
+    "INCONCLUSIVE", "ACCESS_RESTRICTED", "BASELINE_INVALID",
     "UNEXPECTED_EXCEPTION",
 ))
 _REGION = frozenset(("EXPECTED", "OTHER", "MISSING", "UNOBSERVABLE"))
@@ -305,6 +308,15 @@ async def one_public_region(browser, mode, *, timezone_id=None):
                 page.on("response", network.on_response)
                 response_armed = True
 
+        async def after_option_timeout():
+            # The target candidate was already checked for unique visible
+            # exact city term by core. Only prove the one *existing* browser
+            # click. No second click, force, input change, or network request.
+            if not is_public_search(page.url):
+                return False
+            return await verify_single_target_click_after_timeout(
+                page, option_probe)
+
         async def after_select():
             nonlocal click_epoch
             click_epoch = await option_probe.trusted_click_epoch_ms(page)
@@ -318,6 +330,7 @@ async def one_public_region(browser, mode, *, timezone_id=None):
             on_header_click_timeout=after_timeout,
             on_after_search_fill=after_search_fill,
             on_option_witness=option_probe.arm,
+            on_option_click_timeout=after_option_timeout,
             on_before_select=before_select,
             on_after_select=after_select,
             first_activation_mode="POINTER_CLICK",
@@ -373,6 +386,12 @@ async def one_public_region(browser, mode, *, timezone_id=None):
             status = "REGION_HEADER_ACTION_EXCEPTION"
         elif readiness.export()["state"] != "READY":
             status = "API_OR_DOM_NOT_READY"
+        elif (steps.get("progress_stage") == "BEFORE_SUGGESTION_CLICK"
+              and steps.get("error") is not None):
+            # A delivered option click can time out after opening a new
+            # region state; this exception must not be mistaken for a
+            # failed API or successful server region without a fresh Route.
+            status = "REGION_OPTION_ACTION_EXCEPTION"
         elif not valid_click:
             status = "CLICK_NOT_TRUSTED"
         elif (api_ok and route_status == "ONE_FRESH"
@@ -409,7 +428,12 @@ async def one_public_region(browser, mode, *, timezone_id=None):
                     "header_click_verified_after_timeout"),
                 header_click_exception_kind=steps.get(
                     "header_click_exception_kind"),
-                header_activation=header_activation_snapshot),
+                header_activation=header_activation_snapshot,
+                option_click_returned=steps.get("option_click_returned"),
+                option_click_verified_after_timeout=steps.get(
+                    "option_click_verified_after_timeout"),
+                option_click_exception_kind=steps.get(
+                    "option_click_exception_kind")),
         })
     except Exception:
         return sanitize_attempt({"mode": mode, "status": "UNEXPECTED_EXCEPTION",
