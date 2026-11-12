@@ -138,7 +138,7 @@ class ItemLocalityTests(unittest.TestCase):
         samples=pick_samples(result,b"test_secret_32_bytes_for_digest_xxxx")
         self.assertEqual(len(samples),1)
         self.assertEqual(samples[0]["item_area_key"],"asan_baebang")
-        self.assertRegex(samples[0]["item_area_token"],r'^[a-f0-9]{20}
+        self.assertRegex(samples[0]["item_area_token"],r'^[a-f0-9]{20}$')
         projected=project_v428_diagnosis({
             "source_rank":samples[0]["rank"],
             "same_listing_identity":True,
