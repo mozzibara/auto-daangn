@@ -406,6 +406,13 @@ async def capture(browser,name,region,options,salt):
                 await lifecycle.checkpoint(page,'AFTER_CORE_SETTLE')
                 await page.wait_for_timeout(options.settle_ms)
                 await lifecycle.checkpoint(page,'AFTER_SETTLE')
+                # Manual ordinary Chrome proved the selected-region control
+                # can remain OTHER at 800 ms yet become EXPECTED by 2 s.
+                # Inspect the same first-party browser passively at ~4.2 s
+                # after the first click, without any extra UI/network action.
+                # Preserve the earlier settle checkpoint for direct contrast.
+                await page.wait_for_timeout(max(0,4200-options.settle_ms))
+                await lifecycle.checkpoint(page,'AFTER_DELAYED_SETTLE')
                 await nav_trace.checkpoint(page,'AFTER_SETTLE')
                 await option_events.checkpoint(page,'AFTER_SETTLE')
                 await button_inventory.checkpoint(page,'AFTER_SETTLE')

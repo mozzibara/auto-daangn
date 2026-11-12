@@ -880,3 +880,46 @@ sets `REGION_UI_NOT_VERIFIED` when the early gate blocks.
 An offline end-to-end **raw capture -> aggregate -> public failure
 report** regression proves the class survives without leaking
 unknown strings, identifiers or listing URLs.
+
+## Ordinary Chrome manual locality *succeeded*; first Actions wait may be premature
+
+The owner-operated normal Chrome [manual witness](MANUAL_CHROME_REGION_PROBE.md)
+reported the following in a disposable, non-logged-in real Chrome session:
+
+- `MANUAL_CLICK_OBSERVED`, 1 trusted and unique target+city candidate;
+  region resolver 1 response, exactly 1 candidate matching configured ID.
+- One fresh postclick first-party search Route, search and filter region IDs
+  both `EXPECTED`, server IDs agree `YES`.
+- The target selected-region control stayed `OTHER` immediately after the
+  click and at 200ms/800ms. It transitioned to `EXPECTED` at 2000ms and
+  remained `EXPECTED` at 4000ms.
+- Navigation and response URL region query remained `MISSING`, and server
+  display-name state `OTHER`. These are diagnostic anomalies; neither
+  overrides independent matching IDs and visible eventual UI.
+- All manual data still has `authorizes_listings=false`.
+
+This proves the public selection workflow **can succeed** in normal Chrome,
+contrary to all earlier headless Actions runs. It also proves that evaluating
+the top-level UI before about 2 seconds can produce a false mismatch even
+for a successful click. It does **not yet prove** whether GitHub Actions'
+failed attempts were caused by timing alone or by a different browser or
+execution environment. Headless tests did also show other server IDs.
+
+The owner-approved v4.34 recovery path previously waited 1600ms
+(`scripts.run_secure_links_v434_checked`), then classified the visible
+region control and the fresh post-click Route. The next controlled
+experiment changes **only passive observation**: preserve the normal
+1600ms `AFTER_SETTLE` UI checkpoint, then wait long enough for
+roughly 4200ms post-click observation, and record a new fixed-category
+`AFTER_DELAYED_SETTLE` checkpoint before the final UI/Route and strict
+early mismatch gate. No extra click, synthetic event, reload, region
+request, login, or bypass. Existing signed run and robots-first checks
+remain. All server Route responses remain read-only and must be
+independently valid; multiple conflicting responses remain
+`AMBIGUOUS_FRESH_ROUTES`, not authorized.
+
+If the late UI remains OTHER **and** Route IDs OTHER, browser/session
+differences dominate the next hypothesis. If late UI becomes EXPECTED
+while a single fresh Route has matching IDs, a premature read was
+contributory. If late UI becomes EXPECTED but the Route remains OTHER,
+the missing fresh Route proof must **not** be inferred from UI alone.
