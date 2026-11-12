@@ -149,6 +149,7 @@ async def one_public_region(browser, mode):
     network = ManualSearchResponses(region)
     lifecycle = RegionLifecycleWitness(region)
     observed_input = None
+    input_matches = False
     click_epoch = None
     response_armed = False
     request_armed = False
@@ -176,8 +177,11 @@ async def one_public_region(browser, mode):
                 raise RuntimeError("INPUT_WITNESS_NOT_ARMED")
 
         async def after_search_fill():
-            nonlocal observed_input
+            nonlocal observed_input, input_matches
             observed_input = await input_probe.sample(page)
+            input_matches = (
+                await page.locator(_INPUT_SELECTOR).first.input_value()
+                == region["term"])
             return await readiness.await_ready(page)
 
         def before_select():
@@ -209,9 +213,7 @@ async def one_public_region(browser, mode):
         ui_region = ui.get("selected_control", "UNOBSERVABLE")
         if ui_region not in ("EXPECTED", "OTHER", "MISSING"):
             ui_region = "UNOBSERVABLE"
-        matches = await page.locator(_INPUT_SELECTOR).first.count()
-        # NEVER read the text input after the dialog is closed.
-        _ = matches
+        # NEVER read the search text input after the dialog closes.
         valid_click = (
             click_epoch is not None
             and steps.get("selected_suggestion") is True
@@ -256,7 +258,7 @@ async def one_public_region(browser, mode):
             status = "INCONCLUSIVE"
         return sanitize_attempt({
             "mode": mode, "status": status, "input_events": observed_input,
-            "input_value_matches_expected": readiness.export()["state"] == "READY",
+            "input_value_matches_expected": input_matches,
             "api_ready": readiness.export()["state"] == "READY",
             "api_candidate_matches_expected": api_ok,
             "api_response_count": resolver.responses,
@@ -331,7 +333,12 @@ def main(argv=None) -> int:
         return 2
     # Contents have passed explicit enum/counter sanitizers.
     print(json.dumps(result, ensure_ascii=False, sort_keys=True, indent=2))
-    if args.live and (len(result["public_site"]) != 2):
+    if (len(result["fixture"]) != 2 or
+            any(x["status"] != "FIXTURE_COMPLETE"
+                or not x["input_events"]["armed"]
+                for x in result["fixture"])):
+        return 2
+    if args.live and len(result["public_site"]) != 2:
         return 2
     return 0
 
