@@ -40,6 +40,7 @@ from app_v5.region_button_inventory import RegionButtonInventory
 from app_v5.region_readiness import RegionReadinessWitness
 from app_v5.region_second_choice import attempt_second_choice
 from app_v5.region_lifecycle import RegionLifecycleWitness
+from app_v5.region_route_chronology import RegionPostclickRequests
 from app_v5.region_suggestion import (RegionSuggestionObserver,
                                        classify_suggestion_identity)
 from app_v5.search_surface_probe import run_surface_probe, sanitize_surface_probe
@@ -342,7 +343,7 @@ async def capture(browser,name,region,options,salt):
                 result['region_picker']['outcome']='ROBOTS_DENIED'
                 raise RuntimeError('ACCESS_RESTRICTION')
             result['region_picker']['attempted']=True
-            picker_net=v46.Network()
+            picker_net=RegionPostclickRequests(v46.Network())
             second_net=v46.Network()
             second_result={'state':'NOT_ATTEMPTED','guard':'UNOBSERVABLE',
                            'click_attempted':False,'click_completed':False}
@@ -356,16 +357,20 @@ async def capture(browser,name,region,options,salt):
             resolver=RegionSuggestionObserver(core.BY_KEY[region])
             readiness=RegionReadinessWitness(core.BY_KEY[region],resolver)
             resolver_listener_armed=False
+            picker_request_listener_armed=False
             def arm_region_suggestion():
-                nonlocal resolver_listener_armed
+                nonlocal resolver_listener_armed,picker_request_listener_armed
                 if not resolver_listener_armed:
                     page.on('response',resolver.on_response)
                     resolver_listener_armed=True
+                if not picker_request_listener_armed:
+                    page.on('request',picker_net.on_request)
+                    picker_request_listener_armed=True
             picker_listener_armed=False
             def arm_post_click_route():
                 nonlocal picker_listener_armed
                 if not picker_listener_armed:
-                    page.on('response',picker_net.hook)
+                    page.on('response',picker_net.on_response)
                     picker_listener_armed=True
             async def arm_option_witnesses(locator):
                 await option_events.arm(locator)
@@ -384,6 +389,11 @@ async def capture(browser,name,region,options,salt):
                 await nav_trace.checkpoint(page,'AFTER_FOLLOWUP_CLICK')
                 await button_inventory.checkpoint(page,'AFTER_FOLLOWUP_CLICK')
             async def after_exact_option_click():
+                # Only a genuinely trusted in-page option click defines
+                # the causal boundary for the browser's Region GET requests.
+                # Existing responses can arrive later; those are not fresh.
+                picker_net.mark_click(
+                    await option_events.trusted_click_epoch_ms(page))
                 await nav_trace.checkpoint(page,'AFTER_CLICK')
                 await option_events.checkpoint(page,'AFTER_CLICK')
                 await button_inventory.checkpoint(page,'AFTER_CLICK')
@@ -429,9 +439,11 @@ async def capture(browser,name,region,options,salt):
                 if resolver_listener_armed:
                     page.remove_listener('response',resolver.on_response)
                 if picker_listener_armed:
-                    page.remove_listener('response',picker_net.hook)
+                    page.remove_listener('response',picker_net.on_response)
                 if second_listener_armed:
                     page.remove_listener('response',second_net.hook)
+                if picker_request_listener_armed:
+                    page.remove_listener('request',picker_net.on_request)
             if resolver.blocked:
                 raise RuntimeError('ACCESS_RESTRICTION')
             # If a guarded second target click was performed, only the
@@ -460,6 +472,7 @@ async def capture(browser,name,region,options,salt):
             nav_export['pre_click_readiness']=readiness.export()
             nav_export['second_choice']=second_result
             nav_export['region_lifecycle']=lifecycle.export()
+            nav_export['request_chronology']=picker_net.export()
             result['region_picker']['navigation_trace']=sanitize_navigation_trace(
                 nav_export)
             result['region_picker']['button_clicked']=steps.get(
