@@ -12,7 +12,14 @@ from app_v5.precollection_filter_gate import (
     PassiveFilteredRoute, verify_filter_before_collection,
 )
 from ops.oci.precollection import final_report
-from tests.test_oci_precollection_gate import TARGET_URL, BEFORE, Request, Response
+TARGET_URL=(
+    "https://www.daangn.com/kr/search/buy-sell/"
+    "?q=HDD&in=%EB%B6%88%EB%8B%B9%EB%8F%99-2292"
+    "&category_id=1&price=__50000&only_on_sale=true"
+)
+BEFORE={"complete":True,"category":True,"available":True,
+        "maximum":50000,"minimum":0}
+
 
 
 class UrlDifferenceTests(unittest.TestCase):
