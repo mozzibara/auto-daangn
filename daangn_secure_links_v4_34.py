@@ -29,6 +29,9 @@ from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 
 from daangn_v4_1_core import normalized_listing
 from daangn_v4_4_gate import stable_article_id
+from app_v5.item_area_policy import (
+    ALLOWED as ITEM_AREA_ALLOWED, configured_label,
+)
 
 VERSION='4.34'
 CONTEXTS=frozenset({'cheonan_a','cheonan_b'})
@@ -155,6 +158,12 @@ def make_private_shortlist(evaluation,sink):
             item.get('status')!='UNIQUE_RECOMMENDATION_CANDIDATE_READY_FOR_REVIEW'
             or len(group)!=item.get('observation_count') or not group):
             raise ValueError('INVALID_UNIQUE_GROUP')
+        area_token=item.get('item_area_token')
+        if area_token is not None and (
+                type(area_token) is not str or
+                HMAC_PATTERN.fullmatch(area_token) is None):
+            raise ValueError('INVALID_ITEM_AREA_TOKEN')
+        area_keys=set()
         titles=set()
         ids=set()
         urls=set()
@@ -168,6 +177,15 @@ def make_private_shortlist(evaluation,sink):
             if (x is None or x.get('listing_run_hmac')!=tag or
                 x.get('price_krw')!=item['price_krw']):
                 raise ValueError('PRIVATE_IDENTITY_PRICE_HMAC_MISMATCH')
+            if area_token is not None:
+                if (x.get('item_area_token')!=area_token or
+                        x.get('item_area_status')!=ITEM_AREA_ALLOWED or
+                        configured_label(x.get('item_area_key')) is None):
+                    raise ValueError('PRIVATE_ITEM_AREA_IDENTITY_CONFLICT')
+                area_keys.add(x['item_area_key'])
+            elif (x.get('item_area_key') is not None or
+                  x.get('item_area_token') is not None):
+                raise ValueError('PRIVATE_ITEM_AREA_UNMATCHED')
             ids.add(stable_article_id(x['url']))
             urls.add(x['url'])
             title=clean_title(x.get('title'))
@@ -179,6 +197,10 @@ def make_private_shortlist(evaluation,sink):
             raise ValueError('CROSS_CONTEXT_CANONICAL_LISTING_ID_MISMATCH')
         if len(titles)!=1:
             reason_codes.add('TITLE_UNAVAILABLE_OR_CONFLICTING_REPEATED_TITLE')
+        if area_token is not None and len(area_keys)!=1:
+            reason_codes.add('CONFLICTING_ITEM_AREA_ACROSS_REPEATS')
+        area_key=next(iter(area_keys)) if len(area_keys)==1 else None
+        area_label=configured_label(area_key) if area_key is not None else None
         article_id=next(iter(ids))
         if article_id in seen_ids:
             raise ValueError('SAME_CANONICAL_ITEM_SPLIT_ACROSS_HMAC_GROUPS')
@@ -187,7 +209,7 @@ def make_private_shortlist(evaluation,sink):
             quarantined.append({'observation_count':len(group),
                                 'reason_codes':sorted(reason_codes)})
         else:
-            approved.append({
+            entry={
                 'title':next(iter(titles)),
                 'url':next(iter(urls)),
                 'price_krw':item['price_krw'],
@@ -196,7 +218,12 @@ def make_private_shortlist(evaluation,sink):
                 'observation_count':len(group),
                 'full_recommendation_approved':False,
                 'seller_confirmed_available':False,
-                'captured_from_current_primary_h1':True})
+                'captured_from_current_primary_h1':True}
+            if area_label is not None:
+                # Only ciphertext carries this per-item district label.
+                entry.update(item_area_key=area_key,
+                             item_area_display=area_label)
+            approved.append(entry)
     if len(approved)+len(quarantined)!=len(uniques):
         raise ValueError('MISSING_UNIQUE_CANDIDATE_GROUP')
     approved.sort(key=lambda x:(x['price_krw'],x['url']))
@@ -316,14 +343,18 @@ def markdown_manifest(manifest):
         f"검증된 고유 매물: **{manifest['clickable_unique_count']}개**",
         f"제목 검증 불충분으로 보류: **{manifest['unlinked_title_quarantine_count']}개**",
         '',
-        '| 순위 | 실제 매물 제목·링크 | 관측 가격 | 관측 횟수 | 판매 상태 |',
-        '|---:|---|---:|---:|---|']
+        '| 순위 | 실제 매물 제목·링크 | 관측 가격 | 등록 동·읍·면 | 관측 횟수 | 판매 상태 |',
+        '|---:|---|---:|---|---:|---|']
     for i,item in enumerate(manifest.get('items',[]),1):
         url=item['url']
         if normalized_listing(url)!=url:
             raise ValueError('UNSAFE_URL_IN_DECRYPTED_MANIFEST')
+        area_label=item.get('item_area_display','지역 미확인')
+        if item.get('item_area_key') is not None and (
+                configured_label(item['item_area_key']) != area_label):
+            raise ValueError('ITEM_AREA_DISPLAY_CONFLICT')
         rows.append(f"| {i} | [{esc(item['title'])}]({url}) | "
-            f"{item['price_krw']:,}원 | {item['observation_count']}회 | "
+            f"{item['price_krw']:,}원 | {esc(area_label)} | {item['observation_count']}회 | "
             f"{esc(item['availability'])} |")
     rows.extend(['',
         '관측 당시 가격·상품 제목이며 판매자가 현재 거래 가능한지는 별도 확인이 필요합니다.',

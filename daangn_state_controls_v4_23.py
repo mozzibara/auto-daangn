@@ -481,14 +481,35 @@ def project_v428_diagnosis(probe, kind='SOURCE'):
                 if type(sc.get('PRIMARY')) is int and 0<=sc['PRIMARY']<=3500 else None}
     outcome=diag.get('outcome')
     from app_v5.listing_locality import sanitize_item_locality, UNVERIFIED as LOCATION_UNKNOWN
+    from app_v5.item_area_policy import (
+        sanitize_area_status, UNKNOWN as AREA_UNKNOWN,
+        ALLOWED as AREA_ALLOWED, configured_label,
+    )
+    exact=(kind=='SOURCE' and src.get('same_listing_identity') is True
+           and src.get('page_status')=='HTTP_200_IDENTITY_MATCH'
+           and src.get('v432_route_price_item_identity') is True)
     item_locality=(sanitize_item_locality(src.get('v435_route_item_locality_status'))
-        if kind=='SOURCE' and src.get('same_listing_identity') is True and
-        src.get('page_status')=='HTTP_200_IDENTITY_MATCH' and
-        src.get('v432_route_price_item_identity') is True else LOCATION_UNKNOWN)
+                   if exact else LOCATION_UNKNOWN)
+    item_area=(sanitize_area_status(src.get('item_area_status'))
+               if exact else AREA_UNKNOWN)
+    item_area_key=(src.get('item_area_key') if item_area==AREA_ALLOWED and
+                   configured_label(src.get('item_area_key')) is not None
+                   else None)
+    item_area_token=src.get('item_area_token')
+    if (not isinstance(item_area_token,str) or
+            re.fullmatch(r'[a-f0-9]{20}',item_area_token) is None):
+        item_area_token=None
+    if item_area==AREA_ALLOWED and (
+            item_area_key is None or item_area_token is None):
+        item_area=AREA_UNKNOWN
+    if item_area!=AREA_ALLOWED:
+        item_area_token=None
     return {'source_rank':src.get('source_rank')
             if type(src.get('source_rank')) is int and 0<=src['source_rank']<=650 else None,
         'role':kind,'probe':safe,
         'item_locality_status':item_locality,
+        'item_area_status':item_area,
+        'item_area_token':item_area_token,
         'dom_outcome':outcome if isinstance(outcome,str) and outcome in (
             'VISIBLE_STATUS_REPRODUCED','STATUS_EMERGED_AFTER_SETTLE',
             'STATUS_EMERGED_AFTER_SCROLL','STATUS_EMERGED_NARROW_VIEWPORT',

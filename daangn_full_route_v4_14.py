@@ -45,6 +45,9 @@ from app_v5.region_suggestion import (RegionSuggestionObserver,
                                        classify_suggestion_identity)
 from app_v5.search_surface_probe import run_surface_probe, sanitize_surface_probe
 from app_v5.listing_locality import classify_item_region, UNVERIFIED as ITEM_REGION_UNKNOWN
+from app_v5.item_area_policy import (
+    load_allowlist, classify_area, UNKNOWN as ITEM_AREA_UNKNOWN,
+)
 
 
 def now():
@@ -53,9 +56,12 @@ def now():
 
 class RouteBodies:
     """Bounded, passive in-memory collector; models must match known UI responses."""
-    def __init__(self,field_probe=None,expected_region=None):
+    def __init__(self,field_probe=None,expected_region=None,allowed_areas=None,
+                 area_secret=None):
         self.field_probe=field_probe
         self.expected_region=expected_region
+        self.allowed_areas=allowed_areas
+        self.area_secret=area_secret
         self.events=[]
         self.tasks=set()
         self.errors=0
@@ -99,7 +105,9 @@ class RouteBodies:
                         self.errors+=1
                         return
                     model,field_shape=enhance_observed_fields(
-                        raw,model,expected_region=self.expected_region)
+                        raw,model,expected_region=self.expected_region,
+                        allowed_areas=self.allowed_areas,
+                        area_secret=self.area_secret)
                     if model is None:
                         self.errors+=1
                         return
@@ -145,7 +153,8 @@ class RouteBodies:
 
 
 
-def enhance_observed_fields(raw, model, *, expected_region=None):
+def enhance_observed_fields(raw, model, *, expected_region=None,
+                            allowed_areas=None, area_secret=None):
     """Fill nested category.id only when explicitly present in matched response."""
     try:
         value=json.loads(raw)
@@ -177,6 +186,7 @@ def enhance_observed_fields(raw, model, *, expected_region=None):
     cats=Counter()
     sales=Counter()
     localities=Counter()
+    item_area_counts=Counter()
     for observed,row in zip(original,model['articles']):
         if not isinstance(observed,dict):
             return None,{'status':'NON_OBJECT_ARTICLE'}
@@ -199,9 +209,26 @@ def enhance_observed_fields(raw, model, *, expected_region=None):
                   if expected_region is not None else ITEM_REGION_UNKNOWN)
         row['item_locality_status']=locality
         localities[locality]+=1
+        # Do not use the search-region context as the seller's/item's area.
+        # An item can be in Asan even when surfaced in a Cheonan search.
+        area=(classify_area(observed.get('region'), allowed_areas)
+              if allowed_areas is not None else {
+                  'status':ITEM_AREA_UNKNOWN,'area_key':None})
+        row['item_area_status']=area['status']
+        row['item_area_key']=area['area_key']
+        # A per-capture keyed pseudonym is safe for public rank-linked
+        # diagnostics. The readable district key stays only in memory and
+        # subsequently in the owner's encrypted manifest.
+        row['item_area_token']=(
+            hmac.new(area_secret,b'v435/area/'+area['area_key'].encode('ascii'),
+                     hashlib.sha256).hexdigest()[:20]
+            if area['area_key'] is not None and type(area_secret) is bytes
+            and len(area_secret)==32 else None)
+        item_area_counts[area['status']]+=1
     return model,{'status':'OBSERVED_ITEM_FIELD_SHAPE',
                   'category_sources':dict(cats),'availability_sources':dict(sales),
-                  'item_locality_counts':dict(sorted(localities.items()))}
+                  'item_locality_counts':dict(sorted(localities.items())),
+                  'item_area_counts':dict(sorted(item_area_counts.items()))}
 
 
 def classify_article(article):
@@ -298,6 +325,8 @@ def classify_baseline_region_urls(requested_url, response_url, rendered_url, exp
 
 
 async def capture(browser,name,region,options,salt):
+    # Fail before any public navigation if the locality profile is malformed.
+    approved_item_areas=load_allowlist()
     context=await browser.new_context(locale='ko-KR',viewport={'width':1280,'height':850})
     page=await context.new_page()
     page.set_default_timeout(options.timeout*1000)
@@ -544,7 +573,9 @@ async def capture(browser,name,region,options,salt):
         args=SimpleNamespace(keyword='HDD',regions={'target':dict(core.BY_KEY[region])},
             category_id=1,category_name=v46.CATALOG[1],available_only=True,
             min_price=0,max_price=50000,settle_ms=options.settle_ms,timeout=options.timeout)
-        bodies=RouteBodies(expected_region=core.BY_KEY[region])
+        bodies=RouteBodies(expected_region=core.BY_KEY[region],
+                          allowed_areas=approved_item_areas,
+                          area_secret=salt)
         passive.phase='FILTER_APPLY'
         page.on('response',bodies.on_response)
         try:

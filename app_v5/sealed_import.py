@@ -22,6 +22,7 @@ from app_v5.attestation import job_id_for_attestation, verify_attestation
 from daangn_secure_links_v4_34 import clean_title, unseal_manifest
 from daangn_v4_1_core import normalized_listing
 from daangn_v4_4_gate import stable_article_id
+from app_v5.item_area_policy import configured_label
 
 MAX_ENVELOPE_BYTES = 512 * 1024
 MAX_CANDIDATES = 9
@@ -137,8 +138,15 @@ def validate_manifest(manifest: dict) -> tuple[list[Observation], list[SourceEvi
         "seller_confirmed_available", "captured_from_current_primary_h1"
     }
     for x in items:
-        if not isinstance(x, dict) or set(x) != expected_item_fields:
+        allowed_fields = (expected_item_fields,
+                          expected_item_fields | {"item_area_key", "item_area_display"})
+        if not isinstance(x, dict) or set(x) not in allowed_fields:
             _fail("INVALID_SOURCE_ITEM_FIELDS")
+        if "item_area_key" in x:
+            key = x["item_area_key"]
+            if (type(key) is not str or
+                    configured_label(key) != x["item_area_display"]):
+                _fail("UNTRUSTED_ITEM_AREA_DISPLAY")
         url = x["url"]
         if not isinstance(url, str) or normalized_listing(url) != url:
             _fail("INVALID_CANONICAL_URL")
