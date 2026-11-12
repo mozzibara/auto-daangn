@@ -110,3 +110,35 @@ References:
 - [Playwright Python branded Chrome support](https://playwright.dev/python/docs/browsers)
 - [GitHub Ubuntu 24.04 included software](https://github.com/actions/runner-images/blob/main/images/ubuntu/Ubuntu2404-Readme.md)
 - [Playwright Python headed Linux execution with Xvfb](https://playwright.dev/python/docs/ci)
+
+
+## Manual Chrome IME contrast: subsequent diagnostic
+
+A passive document-delegated witness now attaches **before** the owner opens
+the region selector in ordinary Chrome. The region input may be mounted
+after the dialog opens, so arming a locator on an already-existent text
+field was not sufficient for the owner/manual session.
+
+Compare the manual output \`manual_input_events.AT_CLICK\` with the two
+automated \`public_site[].input_events\` records. The exact comparison is
+on fixed event-kind counts, trusted counts, first 48 event-kind labels,
+and classified \`InputEvent.inputType\`/boolean \`isComposing\` counts only.
+The manual \`AT_CLICK\` snapshot includes any blur triggered by the user's
+click; the automated \`input_events\` snapshot is taken **before**
+candidate selection. Therefore inspect pre-click keyboard and composition
+patterns primarily, not aggregate blur-count equality.
+
+Additionally inspect \`input_focus.AT_CLICK/AFTER_4000MS\` in manual
+output against \`input_focus.BEFORE_SELECT/AFTER_CLICK/AFTER_4000MS\`
+in the automated output. These are structural classes, not element IDs
+or hidden React state.
+
+The offline Chrome fixture also creates a synthetic region dialog **after**
+arming the delegated observer and types into a local HTML input to
+verify dynamic listener attachment and teardown. This is not evidence of
+human Korean IME behavior and contacts no marketplace endpoint.
+
+Do not convert differing events into spoofed trusted events, browser
+fingerprint modifications, authentication changes, forced clicks or
+relaxed region gates. Follow the repository's existing one-shot owner
+approval for any further live comparison.
