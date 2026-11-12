@@ -17,6 +17,10 @@ import daangn_v4_1_core as core
 from app_v5.region_lifecycle import _JS as LIFECYCLE_JS, _safe_checkpoint
 from app_v5.region_navigation import classify_browser_url
 from app_v5.region_suggestion import RegionSuggestionObserver
+from app_v5.region_input_events import sample_region_focus, sanitize_region_focus
+from app_v5.manual_region_input_events import (
+    ManualRegionInputEventWitness, sanitize_manual_input_events,
+)
 
 SEARCH_URL = "https://www.daangn.com/kr/search/buy-sell/?q=HDD"
 _MAX_ROUTE_BYTES = 2_000_000
@@ -336,6 +340,10 @@ def sanitize_manual_report(value) -> dict:
     stages = src.get("stages") if type(src.get("stages")) is dict else {}
     obs = (src.get("observer_diagnostics")
            if type(src.get("observer_diagnostics")) is dict else {})
+    input_events = (src.get("manual_input_events")
+                    if type(src.get("manual_input_events")) is dict else {})
+    input_focus = (src.get("input_focus")
+                   if type(src.get("input_focus")) is dict else {})
     safe = {
         "schema": "manual_chrome_region_v1",
         "status": _enum(src.get("status"), _RUN_STATUS, "OBSERVATION_ERROR"),
@@ -390,6 +398,14 @@ def sanitize_manual_report(value) -> dict:
             stage: _safe_checkpoint(stages.get(stage))
             for stage in _SAMPLES
         },
+        "manual_input_events": {
+            checkpoint: sanitize_manual_input_events(input_events.get(checkpoint))
+            for checkpoint in ("AT_CLICK", "AFTER_4000MS")
+        },
+        "input_focus": {
+            checkpoint: sanitize_region_focus(input_focus.get(checkpoint))
+            for checkpoint in ("AT_CLICK", "AFTER_4000MS")
+        },
         "authorizes_listings": False,
     }
     return safe
@@ -412,7 +428,9 @@ async def _stage(page, region):
 
 
 def make_manual_report(region, *, status, click, resolver, routes,
-                       page_url, stages, open_tab_count=-1):
+                       page_url, stages, open_tab_count=-1,
+                       input_at_click=None, input_after=None,
+                       focus_at_click=None, focus_after=None):
     """Pure, fail-closed comparison of already-observed manual browser data."""
     click = click if type(click) is dict else {}
     epoch = click.get("at_ms")
@@ -508,6 +526,14 @@ def make_manual_report(region, *, status, click, resolver, routes,
         },
         "page_region": classify_browser_url(page_url, region)["region"],
         "comparison": comparison, "stages": safe_stages,
+        "manual_input_events": {
+            "AT_CLICK": input_at_click,
+            "AFTER_4000MS": input_after,
+        },
+        "input_focus": {
+            "AT_CLICK": focus_at_click,
+            "AFTER_4000MS": focus_after,
+        },
     })
 
 
@@ -516,7 +542,12 @@ async def observe_manual_page(page, region, *, timeout_sec=120,
     """Observe a user interaction only. NO Playwright click/fill/goto methods."""
     resolver = RegionSuggestionObserver(region)
     routes = ManualSearchResponses(region)
+    input_witness = ManualRegionInputEventWitness()
     stage = {}
+    input_at_click = None
+    input_after = None
+    focus_at_click = None
+    focus_after = None
     click = None
     status = "NO_TARGET_CLICK"
     page.on("request", routes.on_request)
@@ -525,7 +556,9 @@ async def observe_manual_page(page, region, *, timeout_sec=120,
     try:
         armed = await page.evaluate(
             _CLICK_JS, {"term": region["term"], "city": region["label"]})
-        if armed is not True:
+        # Delegated capture must be armed BEFORE the owner opens the dialog.
+        input_armed = await input_witness.arm(page) if armed is True else False
+        if armed is not True or not input_armed:
             status = "OBSERVATION_ERROR"
         else:
             stage["BEFORE"] = await _stage(page, region)
@@ -550,6 +583,8 @@ async def observe_manual_page(page, region, *, timeout_sec=120,
                               and click.get("trusted") == 1 else
                               "MULTIPLE_TARGET_CLICKS"
                               if click.get("count", 0) > 1 else "UNTRUSTED_CLICK")
+                    input_at_click = await input_witness.sample(page)
+                    focus_at_click = await sample_region_focus(page)
                     stage["AT_CLICK"] = await _stage(page, region)
                     for name, delay in (
                         ("AFTER_200MS", .2), ("AFTER_800MS", .6),
@@ -571,13 +606,18 @@ async def observe_manual_page(page, region, *, timeout_sec=120,
                 await asyncio.sleep(.2)
             if click is None:
                 click = await _read_click(page)
+        input_after = await input_witness.sample(page)
+        focus_after = await sample_region_focus(page)
         await resolver.drain()
         await routes.drain()
         return make_manual_report(
             region, status=status, click=click, resolver=resolver,
             routes=routes, page_url=page.url, stages=stage,
-            open_tab_count=len(page.context.pages))
+            open_tab_count=len(page.context.pages),
+            input_at_click=input_at_click, input_after=input_after,
+            focus_at_click=focus_at_click, focus_after=focus_after)
     finally:
+        await input_witness.stop(page)
         try:
             await page.evaluate(_STOP_CLICK_JS)
         except Exception:

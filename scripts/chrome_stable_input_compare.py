@@ -21,7 +21,10 @@ import daangn_v4_1_core as core
 from app_v5.manual_chrome_region import (
     SEARCH_URL, ManualSearchResponses, is_public_search,
 )
-from app_v5.region_input_events import RegionInputEventWitness
+from app_v5.region_input_events import (
+    RegionInputEventWitness, sample_region_focus, sanitize_region_focus,
+)
+from app_v5.manual_region_input_events import ManualRegionInputEventWitness
 from app_v5.region_lifecycle import RegionLifecycleWitness
 from app_v5.region_option_events import RegionOptionEventWitness
 from app_v5.region_readiness import RegionReadinessWitness
@@ -62,11 +65,16 @@ def sanitize_attempt(row) -> dict:
     observed = src.get("input_events")
     from app_v5.region_input_events import sanitize_input_events
     observed = sanitize_input_events(observed)
+    focus = src.get("input_focus") if type(src.get("input_focus")) is dict else {}
     return {
         "mode": _strict_enum(src.get("mode"), _INPUT_MODES, "FILL"),
         "status": _strict_enum(src.get("status"), _DECISIONS,
                                "UNEXPECTED_EXCEPTION"),
         "input_events": observed,
+        "input_focus": {
+            k: sanitize_region_focus(focus.get(k))
+            for k in ("BEFORE_SELECT", "AFTER_CLICK", "AFTER_4000MS")
+        },
         "input_value_matches_expected": src.get("input_value_matches_expected")
                                         is True,
         "api_ready": src.get("api_ready") is True,
@@ -137,6 +145,53 @@ async def one_fixture(browser, mode):
         await context.close()
 
 
+async def delegated_manual_fixture(browser):
+    """Offline DOM-only check: document witness survives later dialog creation.
+
+    This is NOT real human IME evidence. It tests delegated listener wiring
+    under real Chrome without visiting the marketplace.
+    """
+    from app_v5.manual_region_input_events import ManualRegionInputEventWitness
+    context = await browser.new_context(locale="ko-KR")
+    witness = ManualRegionInputEventWitness()
+    try:
+        page = await context.new_page()
+        await page.set_content("<!doctype html><html><body></body></html>")
+        armed = await witness.arm(page)
+        if not armed:
+            return {"armed": False, "observed_input": False,
+                    "authorizes_listings": False}
+        # The target input intentionally does NOT exist at arm time.
+        await page.evaluate("""() => {
+            const dialog=document.createElement('div');
+            dialog.setAttribute('role','dialog');
+            const field=document.createElement('input');
+            field.setAttribute('placeholder','지역 검색');
+            field.id='synthetic-region';
+            dialog.appendChild(field);
+            document.body.appendChild(dialog);
+        }""")
+        field = page.locator("#synthetic-region")
+        await field.press_sequentially("불당동", delay=10)
+        result = await witness.sample(page)
+        matched = result["observed_input"] and result["counts"]["INPUT"] >= 1
+        # Remove from DOM: witness should retain the already seen sequence.
+        await page.evaluate("""() => {
+            document.querySelector('[role="dialog"]').remove();
+        }""")
+        final = await witness.sample(page)
+        return {"armed": armed, "observed_input": matched,
+                "preserved_after_dialog_removal":
+                    final["counts"]["INPUT"] == result["counts"]["INPUT"],
+                "authorizes_listings": False}
+    finally:
+        try:
+            await witness.stop(page)
+        except Exception:
+            pass
+        await context.close()
+
+
 async def one_public_region(browser, mode):
     region = core.BY_KEY["cheonan"]
     context = await browser.new_context(
@@ -150,6 +205,7 @@ async def one_public_region(browser, mode):
     lifecycle = RegionLifecycleWitness(region)
     observed_input = None
     input_matches = False
+    input_focus = {}
     click_epoch = None
     response_armed = False
     request_armed = False
@@ -179,6 +235,7 @@ async def one_public_region(browser, mode):
         async def after_search_fill():
             nonlocal observed_input, input_matches
             observed_input = await input_probe.sample(page)
+            input_focus["BEFORE_SELECT"] = await sample_region_focus(page)
             input_matches = (
                 await page.locator(_INPUT_SELECTOR).first.input_value()
                 == region["term"])
@@ -193,6 +250,7 @@ async def one_public_region(browser, mode):
         async def after_select():
             nonlocal click_epoch
             click_epoch = await option_probe.trusted_click_epoch_ms(page)
+            input_focus["AFTER_CLICK"] = await sample_region_focus(page)
             await option_probe.checkpoint(page, "AFTER_CLICK")
 
         steps = await core.ui_select_region(
@@ -205,6 +263,7 @@ async def one_public_region(browser, mode):
             search_input_mode=mode,
         )
         await page.wait_for_timeout(4200)
+        input_focus["AFTER_4000MS"] = await sample_region_focus(page)
         await option_probe.checkpoint(page, "AFTER_SETTLE")
         await lifecycle.checkpoint(page, "AFTER_DELAYED_SETTLE")
         await resolver.drain()
@@ -258,6 +317,7 @@ async def one_public_region(browser, mode):
             status = "INCONCLUSIVE"
         return sanitize_attempt({
             "mode": mode, "status": status, "input_events": observed_input,
+            "input_focus": input_focus,
             "input_value_matches_expected": input_matches,
             "api_ready": readiness.export()["state"] == "READY",
             "api_candidate_matches_expected": api_ok,
@@ -270,6 +330,7 @@ async def one_public_region(browser, mode):
     except Exception:
         return sanitize_attempt({"mode": mode, "status": "UNEXPECTED_EXCEPTION",
                                  "input_events": observed_input,
+                                 "input_focus": input_focus,
                                  "api_response_count": resolver.responses})
     finally:
         if page is not None:
@@ -291,6 +352,7 @@ async def run(*, live=False, headed=False):
                "browser": "GOOGLE_CHROME_STABLE",
                "profile": "DISPOSABLE",
                "headless": not headed, "fixture": [], "public_site": [],
+               "delegated_manual_fixture": {},
                "authorizes_listings": False}
     if live:
         if (not check_public_robots()
@@ -305,6 +367,7 @@ async def run(*, live=False, headed=False):
         try:
             for mode in _MODES:
                 results["fixture"].append(await one_fixture(browser, mode))
+            results["delegated_manual_fixture"] = await delegated_manual_fixture(browser)
             if live:
                 for mode in _MODES:
                     row = await one_public_region(browser, mode)
@@ -339,7 +402,11 @@ def main(argv=None) -> int:
     if (len(result["fixture"]) != 2 or
             any(x["status"] != "FIXTURE_COMPLETE"
                 or not x["input_events"]["armed"]
-                for x in result["fixture"])):
+                for x in result["fixture"])
+            or result["delegated_manual_fixture"].get("armed") is not True
+            or result["delegated_manual_fixture"].get("observed_input") is not True
+            or result["delegated_manual_fixture"].get(
+                "preserved_after_dialog_removal") is not True):
         return 2
     if args.live and len(result["public_site"]) != 2:
         return 2
