@@ -516,7 +516,8 @@ def make_manual_report(region, *, status, click, resolver, routes,
     })
 
 
-async def observe_manual_page(page, region, *, timeout_sec=120):
+async def observe_manual_page(page, region, *, timeout_sec=120,
+                              on_armed=None):
     """Observe a user interaction only. NO Playwright click/fill/goto methods."""
     resolver = RegionSuggestionObserver(region)
     routes = ManualSearchResponses(region)
@@ -533,6 +534,10 @@ async def observe_manual_page(page, region, *, timeout_sec=120):
             status = "OBSERVATION_ERROR"
         else:
             stage["BEFORE"] = await _stage(page, region)
+            # UI instructions are published only AFTER the passive click
+            # witness and browser request listeners are installed.
+            if on_armed is not None:
+                on_armed()
             deadline = asyncio.get_running_loop().time() + timeout_sec
             while asyncio.get_running_loop().time() < deadline:
                 if not is_public_search(page.url):
