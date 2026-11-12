@@ -309,6 +309,9 @@ class FakePageWithMissingClick:
         self.callbacks[name].remove(cb)
 
     async def evaluate(self, script, arg=None):
+        if "auto_daangn_manual_input_events_v1" in script:
+            # Newly delegated input event observer is armed before instructions.
+            return True if "addEventListener(name,fn" in script or "stop?.()" in script else None
         if "addEventListener('click'" in script:
             self.armed = True
             return True
