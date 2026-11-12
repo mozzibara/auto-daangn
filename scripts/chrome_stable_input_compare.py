@@ -26,6 +26,10 @@ from app_v5.region_input_events import (
 )
 from app_v5.manual_region_input_events import ManualRegionInputEventWitness
 from app_v5.region_lifecycle import RegionLifecycleWitness
+from app_v5.region_baseline_contrast import (
+    capture_first_load, sanitize_baseline, optional_egress_context,
+    safe_machine_class,
+)
 from app_v5.region_option_events import RegionOptionEventWitness
 from app_v5.region_readiness import RegionReadinessWitness
 from app_v5.region_suggestion import RegionSuggestionObserver
@@ -92,6 +96,7 @@ def sanitize_attempt(row) -> dict:
                                       _REGION, "UNOBSERVABLE"),
         "selected_ui": _strict_enum(src.get("selected_ui"),
                                     _REGION, "UNOBSERVABLE"),
+        "initial_baseline":sanitize_baseline(src.get("initial_baseline")),
         "authorizes_listings": False,
     }
 
@@ -210,14 +215,24 @@ async def one_public_region(browser, mode):
     response_armed = False
     request_armed = False
     api_armed = False
+    initial_baseline = None
     try:
         page = await context.new_page()
+        # Observe the very first search navigation, not only postclick.
+        # No extra public request: the same Route witness tracks both phases.
+        page.on("request", network.on_request)
+        page.on("response", network.on_response)
+        request_armed = True
+        response_armed = True
         response = await page.goto(
             SEARCH_URL, wait_until="domcontentloaded", timeout=25000)
         if (response is None or response.status != 200
                 or not is_public_search(page.url)):
             return sanitize_attempt({"mode": mode, "status": "BASELINE_INVALID"})
         await page.wait_for_timeout(1000)
+        await network.drain()
+        initial_baseline = await capture_first_load(
+            page,region,passive_events=list(network.events))
 
         async def before_search():
             nonlocal api_armed, request_armed
@@ -326,12 +341,14 @@ async def one_public_region(browser, mode):
             "route_responses": len(post),
             "server_search": server_search,
             "server_filter": server_filter, "selected_ui": ui_region,
+            "initial_baseline": initial_baseline,
         })
     except Exception:
         return sanitize_attempt({"mode": mode, "status": "UNEXPECTED_EXCEPTION",
                                  "input_events": observed_input,
                                  "input_focus": input_focus,
-                                 "api_response_count": resolver.responses})
+                                 "api_response_count": resolver.responses,
+                                 "initial_baseline":initial_baseline})
     finally:
         if page is not None:
             await input_probe.stop(page)
@@ -345,7 +362,7 @@ async def one_public_region(browser, mode):
         await context.close()
 
 
-async def run(*, live=False, headed=False):
+async def run(*, live=False, headed=False, egress_context=False):
     from playwright.async_api import async_playwright
 
     results = {"schema": "chrome_stable_input_comparison_v1",
@@ -353,6 +370,8 @@ async def run(*, live=False, headed=False):
                "profile": "DISPOSABLE",
                "headless": not headed, "fixture": [], "public_site": [],
                "delegated_manual_fixture": {},
+               "machine":safe_machine_class(),
+               "egress":optional_egress_context(enabled=False),
                "authorizes_listings": False}
     if live:
         if (not check_public_robots()
@@ -361,6 +380,9 @@ async def run(*, live=False, headed=False):
             results["public_site"] = [{"status": "ACCESS_RESTRICTED",
                                        "authorizes_listings": False}]
             return results
+    if live and egress_context:
+        results["egress"] = await asyncio.to_thread(
+            optional_egress_context,enabled=True)
     async with async_playwright() as pw:
         browser = await pw.chromium.launch(
             channel="chrome", headless=not headed)
@@ -388,12 +410,18 @@ def main(argv=None) -> int:
     parser.add_argument("--headed", action="store_true",
                         help="Run Chrome Stable in a headed virtual display")
     parser.add_argument("--owner-approval", default="")
+    parser.add_argument("--egress-context",action="store_true",
+        help="Opt-in third-party egress country/provider estimate (no raw IP output)")
     args = parser.parse_args(argv)
+    if args.egress_context and not args.live:
+        print("EGRESS_CONTEXT_REQUIRES_LIVE_OPT_IN")
+        return 2
     if args.live and args.owner_approval != _APPROVAL:
         print("MISSING_EXACT_OWNER_APPROVAL")
         return 2
     try:
-        result = asyncio.run(run(live=args.live, headed=args.headed))
+        result = asyncio.run(run(live=args.live, headed=args.headed,
+                                 egress_context=args.egress_context))
     except Exception:
         print("CHROME_STABLE_COMPARISON_FAILED")
         return 2
