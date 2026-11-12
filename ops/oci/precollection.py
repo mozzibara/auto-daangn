@@ -49,8 +49,19 @@ def final_report(region_row):
     details = result.get("precollection")
     details = sanitize_precollection(details) if type(details) is dict else {}
     region_ok = result.get("status") == "TARGET_REGION_CONFIRMED_DIAGNOSTIC"
-    filters_ok = details.get("status") == "PRECOLLECTION_READY_REVIEW"
-    if region_ok and filters_ok and details.get("strict_filter_evidence") is True:
+    filters_ok = (
+        details.get("status") == "PRECOLLECTION_READY_REVIEW"
+        and details.get("strict_filter_evidence") is True
+        and details.get("region_gate_confirmed") is True
+        and details.get("ui_selected_before_apply") is True
+        and details.get("ui_selected_after_apply") is True
+        and details.get("filter_apply_returned") is True
+        and details.get("filtered_url_matches") is True
+        and details.get("filtered_route_count") == 1
+        and all(details.get("server_filters", {}).get(key) == "EXPECTED"
+                for key in ("region", "category", "price_max", "available"))
+    )
+    if region_ok and filters_ok:
         status = "PRECOLLECTION_EVIDENCE_COMPLETE"
     elif not region_ok:
         status = "STOP_REGION_NOT_VERIFIED"
