@@ -34,7 +34,9 @@ from app_v5.region_baseline_contrast import (
 from app_v5.region_picker_phases import (
     RegionPickerPhaseWitness, sanitize_picker_phases,
 )
-from app_v5.region_header_activation import HeaderActivationWitness
+from app_v5.region_header_activation import (
+    HeaderActivationWitness, verify_header_click_timeout_without_reclick,
+)
 from app_v5.region_option_events import RegionOptionEventWitness
 from app_v5.region_readiness import RegionReadinessWitness
 from app_v5.region_suggestion import RegionSuggestionObserver
@@ -261,6 +263,16 @@ async def one_public_region(browser, mode, *, timezone_id=None):
         page.on("requestfailed", picker_phase.on_requestfailed)
         picker_phase_armed = True
 
+        async def after_timeout():
+            # The original click may have dispatched successfully even when
+            # Playwright's action promise timed out. Never issue a second click.
+            # Check same-origin public search and independent trusted events,
+            # plus one visible empty enabled region input inside the dialog.
+            if not is_public_search(page.url):
+                return False
+            return await verify_header_click_timeout_without_reclick(
+                page, header_activation)
+
         async def after_open():
             picker_phase.picker_opened = True
             await picker_phase.sample(page,"AFTER_PICKER_OPEN_500MS")
@@ -303,6 +315,7 @@ async def one_public_region(browser, mode, *, timezone_id=None):
         steps = await core.ui_select_region(
             page, region, on_before_search=before_search,
             on_after_open=after_open,
+            on_header_click_timeout=after_timeout,
             on_after_search_fill=after_search_fill,
             on_option_witness=option_probe.arm,
             on_before_select=before_select,
@@ -392,6 +405,10 @@ async def one_public_region(browser, mode, *, timezone_id=None):
                 readiness=readiness.export()["state"],
                 core_progress_stage=steps.get("progress_stage"),
                 core_header_click_returned=steps.get("clicked_region_button"),
+                header_click_verified_after_timeout=steps.get(
+                    "header_click_verified_after_timeout"),
+                header_click_exception_kind=steps.get(
+                    "header_click_exception_kind"),
                 header_activation=header_activation_snapshot),
         })
     except Exception:
