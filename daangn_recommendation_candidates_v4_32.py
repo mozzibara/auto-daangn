@@ -68,7 +68,7 @@ def candidate(record,stage,availability,*,context,route_correlated):
           'requires_external_link_review':True,
           # v4.33: run-scoped keyed HMAC, never a raw article identifier.
           'listing_run_hmac':None,
-          'item_area_key':None}
+          'item_area_token':None}
     model=(record or {}).get('model') if isinstance(record,dict) else None
     clean=clean_record(model)
     canonical=consume(clean,'SOURCE')
@@ -98,15 +98,15 @@ def candidate(record,stage,availability,*,context,route_correlated):
     # This token comes only from the exact-identity public Route item.
     # The independent source projection must carry the same token in v4.33.
     item['listing_run_hmac']=stage.get('listing_run_hmac')
-    from app_v5.item_area_policy import configured_label
-    proven_key=availability.get('item_area_key')
-    if type(proven_key) is str and configured_label(proven_key) is not None:
-        item['item_area_key']=proven_key
+    import re
+    area_token=availability.get('item_area_token')
+    if type(area_token) is str and re.fullmatch(r'[a-f0-9]{20}',area_token):
+        item['item_area_token']=area_token
     item['sale_filter_passed']=(availability.get('sale_filter_eligible') is True
         and availability.get('sale_filter_status') in ALLOWED_SALE_STATUSES
         and canonical['sale_filter_eligible'] is True
         and canonical['sale_filter_status']==availability['sale_filter_status']
-        and item['item_area_key'] is not None
+        and item['item_area_token'] is not None
         and availability.get('canonical_transaction_status')==
             clean['primary_transaction_status'])
     item['display_sale_status']=(
