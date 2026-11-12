@@ -138,6 +138,77 @@ response to a single failed live attempt. Keep the exact existing
 single-click condition and no-collection restriction; use the
 categorized failure to choose the next minimal code correction.
 
+### OCI first successful locality + filter URL gate failure (2026-11-13 KST)
+
+After PR #59, the owner ran ten diagnostic unit tests (10/10 pass) then a
+single approved FILL precollection test in an isolated Ubuntu session.
+**The region gate passed** (trusted header click timeout reconciled,
+first-party keyword API 200, exact region option, one fresh first-party
+search Route, both server region IDs and UI selected state EXPECTED).
+
+The subsequent filter UI setup observed `ui_selected_before_apply=true`
+for Digital Devices / maximum KRW 50,000 / available-only. The Apply
+button's Playwright action returned successfully. The gate then yielded:
+
+- `status=STOP_FILTERS_NOT_VERIFIED`
+- nested `precollection.status=BLOCKED_FILTER_URL`
+- `filtered_url_matches=false`; `filtered_route_count=0`
+- `ui_selected_after_apply=false` because the verifier returned **before
+  calling** the UI recheck, not because a mismatch was observed
+- no item collection, detail visits or DB writes
+
+**Neither a wrong resulting URL nor an absent network response can be
+concluded from these coarse fields alone.** The existing observer
+accepted only browser-generated GET fetch/xhr responses whose URL matched
+*all five exact expected query parameters*, so a legitimate browser
+request with an extra benign query parameter, a different URL encoding,
+a document navigation, a missing/mismatched filter parameter, or no
+request at all could yield a zero accepted-response count. This does NOT
+justify weakening `_unique_query` or authorizing listing collection.
+
+The diagnostic-only follow-up records these fixed, private-data-free
+fields:
+
+- `filtered_url_diagnostics.shape`: first-party search path vs other
+  origin/path vs unobservable.
+- `filtered_url_diagnostics.fields`: keyword, region, category,
+  price_max and available separately as `EXPECTED`, `MISSING`,
+  `OTHER`, `DUPLICATE` or `UNOBSERVABLE`.
+- `filtered_url_diagnostics.unexpected_keys`: small bounded number
+  of other query parameter **names** (neither names nor values exported).
+- `filter_transport_diagnostics`: bounded counts of **browser-generated,
+  first-party search requests** seen during this single filter Apply;
+  fetch/xhr vs document, exact vs different URL, 200/restricted/other
+  responses and request failures. It never reads the body of nonmatching
+  URLs and never generates its own requests.
+- `ui_after_apply_recheck_state=NOT_RUN` when the strict URL mismatch
+  prevents the existing UI recheck, instead of suggesting a false
+  observed UI mismatch.
+
+**No existing admission rule changes.** The strict URL still has to
+match all five expected parameters, the exact newly started Route and
+its server metadata must be verified, and native filter UI must be
+rechecked before reporting readiness. The result always has
+`authorizes_listings=false`.
+
+After the update is merged and offline CI passes, in the original
+non-root, isolated OCI checkout:
+
+```bash
+cd "$HOME/code/auto-daangn-region-diagnostic"
+git pull --ff-only
+source .venv/bin/activate
+python -m unittest discover -s tests -p 'test_oci_filter_apply_diagnostics.py' -v
+# Only if the public robots/access gates permit one approved test:
+set -o pipefail
+xvfb-run -a python -m ops.oci.precollection --live --headed --owner-approval I_APPROVE_OCI_PRECOLLECTION_FILL_V1 | tee "$HOME/daangn_oci_precollection_filter_diag.json"
+```
+
+Do **not** use generic Playwright HAR, screenshots, raw URL logs or
+response-body dumps for this investigation; the new fixed enums and
+counters suffice to decide the next scoped change. Do not rerun if
+access is restricted.
+
 ### Outcome interpretation
 
 | Status | Operational interpretation |
