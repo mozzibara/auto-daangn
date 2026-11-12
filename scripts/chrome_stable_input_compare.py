@@ -284,13 +284,13 @@ async def one_public_region(browser, mode):
         await context.close()
 
 
-async def run(*, live=False):
+async def run(*, live=False, headed=False):
     from playwright.async_api import async_playwright
 
     results = {"schema": "chrome_stable_input_comparison_v1",
                "browser": "GOOGLE_CHROME_STABLE",
                "profile": "DISPOSABLE",
-               "headless": True, "fixture": [], "public_site": [],
+               "headless": not headed, "fixture": [], "public_site": [],
                "authorizes_listings": False}
     if live:
         if (not check_public_robots()
@@ -300,7 +300,8 @@ async def run(*, live=False):
                                        "authorizes_listings": False}]
             return results
     async with async_playwright() as pw:
-        browser = await pw.chromium.launch(channel="chrome", headless=True)
+        browser = await pw.chromium.launch(
+            channel="chrome", headless=not headed)
         try:
             for mode in _MODES:
                 results["fixture"].append(await one_fixture(browser, mode))
@@ -321,13 +322,15 @@ def main(argv=None) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--live", action="store_true",
                         help="One owner-approved, robots-checked comparison")
+    parser.add_argument("--headed", action="store_true",
+                        help="Run Chrome Stable in a headed virtual display")
     parser.add_argument("--owner-approval", default="")
     args = parser.parse_args(argv)
     if args.live and args.owner_approval != _APPROVAL:
         print("MISSING_EXACT_OWNER_APPROVAL")
         return 2
     try:
-        result = asyncio.run(run(live=args.live))
+        result = asyncio.run(run(live=args.live, headed=args.headed))
     except Exception:
         print("CHROME_STABLE_COMPARISON_FAILED")
         return 2
