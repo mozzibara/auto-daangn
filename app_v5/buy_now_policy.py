@@ -88,3 +88,40 @@ def assess_local_buy_now(buy_now_status, item_locality_status) -> dict:
         "search_region_gate_overridden": False,
         "authorizes_listings": False,
     }
+
+
+def assess_configured_district(buy_now_status, item_area_status, area_key) -> dict:
+    """District-specific admission; legacy city-wide status never suffices.
+
+    Search locality and shipping toggle are independent. Unknown regions and
+    malformed allowlist keys stay review-hold rather than deleted or promoted.
+    """
+    from app_v5.item_area_policy import (
+        ALLOWED as DISTRICT_ALLOWED, OUTSIDE as DISTRICT_OUTSIDE,
+        sanitize_area_status, configured_label,
+    )
+    area = sanitize_area_status(item_area_status)
+    valid_key = (
+        type(area_key) is str and configured_label(area_key) is not None
+    )
+    if area == DISTRICT_OUTSIDE:
+        decision = OUTSIDE
+    elif area != DISTRICT_ALLOWED or not valid_key:
+        decision = HOLD
+    elif buy_now_status == UNVERIFIED:
+        decision = HOLD
+    elif buy_now_status == PRESENT:
+        decision = LOCAL_RETAIN
+    elif buy_now_status == NO_MARKER:
+        decision = ORDINARY
+    else:
+        decision = HOLD
+    return {
+        "decision": decision,
+        "item_area_status": area,
+        "area_key": area_key if decision in (LOCAL_RETAIN, ORDINARY) else None,
+        "retain_for_review": decision in (LOCAL_RETAIN, ORDINARY),
+        "direct_trade_confirmed": False,
+        "search_region_gate_overridden": False,
+        "authorizes_listings": False,
+    }
