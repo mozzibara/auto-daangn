@@ -27,7 +27,18 @@ See [Manual Chrome region probe](docs/research/MANUAL_CHROME_REGION_PROBE.md)
 for Windows PowerShell setup, interactive steps, result interpretation,
 loopback CDP security and cleanup requirements.
 
-## Configurable local item districts\n\nAllowed Cheonan/Asan dong/eup/myeon neighborhoods are configured in\n[`config/item_area_allowlist.json`](config/item_area_allowlist.json), not inferred\nfrom the query region or from a Buy Now shipping button. The initial allowlist\ncontains only Buldang-dong and Baebang-eup. Validate edits offline with\n`python -m scripts.check_item_area_config`. Verified per-item locality is\nlinked to the exact Route+detail item, and the owner-only encrypted shortlist\nmay include its configured district label. See\n[Item district allowlist](docs/research/ITEM_DISTRICT_ALLOWLIST.md).\nThe unresolved `REGION_MISMATCH` gate is not bypassed.\n\n## Safety and scope
+## Configurable local item districts\n\nAllowed Cheonan/Asan dong/eup/myeon neighborhoods are configured in\n[`config/item_area_allowlist.json`](config/item_area_allowlist.json), not inferred\nfrom the query region or from a Buy Now shipping button. The initial allowlist\ncontains only Buldang-dong and Baebang-eup. Validate edits offline with\n`python -m scripts.check_item_area_config`. Verified per-item locality is\nlinked to the exact Route+detail item, and the owner-only encrypted shortlist\nmay include its configured district label. See\n[Item district allowlist](docs/research/ITEM_DISTRICT_ALLOWLIST.md).\nThe unresolved `REGION_MISMATCH` gate is not bypassed.\n\n## OCI FILL precollection operator gate (no listing capture)
+
+A separately owner-approved, manually launched OCI Chrome Stable precollection
+experiment now exists at `python -m ops.oci.precollection`. It verifies the
+public FILL region picker and fixed filter UI/Route metadata **without** reading
+or storing listing fields, changing `ops/oci/runtime.py`, enabling a daemon,
+or starting capture. Review the exact approval and non-root isolated checkout
+requirements in [OCI precollection gate](docs/research/OCI_FILL_PRECOLLECTION_GATE.md).
+Missing server price/category/availability evidence remains blocked; the
+experiment never authorizes listing import or collection.
+
+## Safety and scope
 
 - Public pages only; respect robots.txt and access restrictions; do not bypass authentication or anti-bot controls.
 - Live collection is manual and owner-approved. CI and OCI validation are offline and synthetic.
