@@ -80,7 +80,9 @@ def sanitize_input_events(raw) -> dict:
             for name in EVENTS
         },
         "sequence": [x for x in seq[:_MAX_SEQ] if type(x) is str and x in EVENTS],
-        "truncated": src.get("overflow") is True or len(seq) > _MAX_SEQ,
+        "truncated": src.get("overflow") is True
+                     or src.get("truncated") is True
+                     or len(seq) > _MAX_SEQ,
         "authorizes_listings": False,
     }
 
