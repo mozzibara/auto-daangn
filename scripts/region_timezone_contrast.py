@@ -17,7 +17,7 @@ from app_v5.region_baseline_contrast import (
     safe_machine_class, optional_egress_context, sanitize_egress,
 )
 from scripts.chrome_stable_input_compare import (
-    one_public_region, check_public_robots, _APPROVAL as INPUT_APPROVAL,
+    one_public_region, check_public_robots,
 )
 from scripts.run_live_checked import check_region_picker_robots
 import daangn_v4_1_core as core
@@ -71,6 +71,7 @@ async def run(*, live=False, headed=False, egress=False):
         "egress":sanitize_egress(None),
         "status":"OFFLINE_FIXTURE",
         "fixture_ok":False,
+        "timezone_fixture_ok":False,
         "attempts":[],
         "hypothesis":classify_arms([]),
         "network_location_is_only_context":True,
@@ -102,6 +103,21 @@ async def run(*, live=False, headed=False, egress=False):
                 and manual.get("preserved_after_dialog_removal") is True)
             if not report["fixture_ok"]:
                 report["status"]="OFFLINE_FIXTURE_FAILED"
+                return report
+            # Verify timezone_id actually changes Intl.DateTimeFormat() on a
+            # local blank page. No Daangn navigation for this fixture.
+            tz_context=await browser.new_context(locale="ko-KR",
+                timezone_id="Asia/Seoul")
+            try:
+                tz_page=await tz_context.new_page()
+                await tz_page.set_content("<!doctype html><html><body></body></html>")
+                tz_name=await tz_page.evaluate(
+                    "() => Intl.DateTimeFormat().resolvedOptions().timeZone")
+                report["timezone_fixture_ok"]=(tz_name=="Asia/Seoul")
+            finally:
+                await tz_context.close()
+            if not report["timezone_fixture_ok"]:
+                report["status"]="TIMEZONE_FIXTURE_FAILED"
                 return report
             if not live:
                 return report
@@ -139,7 +155,7 @@ def main(argv=None):
         print("TIMEZONE_CONTRAST_FAILED")
         return 2
     print(json.dumps(result,ensure_ascii=False,sort_keys=True,indent=2))
-    return 0 if result["fixture_ok"] and result["status"] in (
+    return 0 if result["fixture_ok"] and result["timezone_fixture_ok"] and result["status"] in (
         "OFFLINE_FIXTURE","LIVE_DIAGNOSTIC") else 2
 
 
