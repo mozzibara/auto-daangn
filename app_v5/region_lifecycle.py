@@ -7,7 +7,8 @@ evidence of listing authority, not a selector for any additional click.
 from __future__ import annotations
 
 _STAGES = ("AFTER_FIRST", "AFTER_FOLLOWUP_GATE",
-           "AFTER_CORE_SETTLE", "AFTER_SETTLE")
+           "AFTER_CORE_SETTLE", "AFTER_SETTLE",
+           "AFTER_DELAYED_SETTLE")
 _STATE = frozenset((
     "TARGET_DIALOG_CHOICE", "OTHER_DIALOG_CHOICES", "REGION_INPUT_ONLY",
     "POSSIBLE_LOGIN_GATE", "DIALOG_WITHOUT_CONTROLS", "NO_DIALOG",
