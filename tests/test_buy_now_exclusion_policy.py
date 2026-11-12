@@ -10,6 +10,9 @@ from app_v5.buy_now_policy import (
 from app_v5.listing_locality import (
     classify_item_region, LOCAL_EXACT, LOCAL_CITY, OUTSIDE_CITY,
     UNVERIFIED as LOCATION_UNVERIFIED)
+from app_v5.item_area_policy import (
+    ALLOWED as AREA_ALLOWED, OUTSIDE as AREA_OUTSIDE, UNKNOWN as AREA_UNKNOWN,
+)
 from daangn_for_sale_ui_v4_28 import COUNTERS, sanitize, UI_JS
 from daangn_full_route_v4_14 import enhance_observed_fields
 from daangn_state_controls_v4_23 import project_v428_diagnosis
@@ -18,15 +21,19 @@ from daangn_sale_filter_v4_31 import (
     UNKNOWN, PHASES)
 
 
-def diag(*, labels=0, ctas=0, locality=LOCATION_UNVERIFIED,
+def diag(*, labels=0, ctas=0, locality=LOCAL_EXACT,
          complete=True, status="NO_DIRECT_FOR_SALE_UI"):
     probe = {name: 0 for name in COUNTERS}
     probe.update(scan_complete=complete, primary_valid=True,
                  status=status, primary_buy_now_label=labels,
                  primary_purchase_cta=ctas)
+    area=(AREA_ALLOWED if locality in (LOCAL_EXACT,LOCAL_CITY) else
+          AREA_OUTSIDE if locality==OUTSIDE_CITY else AREA_UNKNOWN)
     return {
         "role": "SOURCE", "dom_capture_status": "CAPTURED",
         "probe": probe, "item_locality_status": locality,
+        "item_area_status":area,
+        "item_area_key":"cheonan_buldang" if area==AREA_ALLOWED else None,
         "phases": {name: {
             "same_document_url": True,
             "scan_complete": True,
