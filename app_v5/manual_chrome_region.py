@@ -334,6 +334,8 @@ def sanitize_manual_report(value) -> dict:
     api = src.get("region_api") if type(src.get("region_api")) is dict else {}
     route = src.get("route") if type(src.get("route")) is dict else {}
     stages = src.get("stages") if type(src.get("stages")) is dict else {}
+    obs = (src.get("observer_diagnostics")
+           if type(src.get("observer_diagnostics")) is dict else {})
     safe = {
         "schema": "manual_chrome_region_v1",
         "status": _enum(src.get("status"), _RUN_STATUS, "OBSERVATION_ERROR"),
@@ -345,24 +347,17 @@ def sanitize_manual_report(value) -> dict:
         },
         "observer_diagnostics": {
             "classification": _enum(
-                (src.get("observer_diagnostics") or {}).get("classification")
-                if type(src.get("observer_diagnostics")) is dict else None,
-                _OBSERVATION, "INCONCLUSIVE"),
-            **{k: _count(
-                (src.get("observer_diagnostics") or {}).get(k), 30)
+                obs.get("classification"), _OBSERVATION, "INCONCLUSIVE"),
+            **{k: _count(obs.get(k), 30)
                 for k in (
                     "document_clicks", "dialog_clicks", "button_clicks",
                     "target_outside_dialog", "input_events",
                     "region_input_events")},
             "tracked_tab_focused": (
-                "YES" if type(src.get("observer_diagnostics")) is dict
-                and src["observer_diagnostics"].get("tracked_tab_focused") == "YES"
-                else "NO" if type(src.get("observer_diagnostics")) is dict
-                and src["observer_diagnostics"].get("tracked_tab_focused") == "NO"
+                "YES" if obs.get("tracked_tab_focused") == "YES"
+                else "NO" if obs.get("tracked_tab_focused") == "NO"
                 else "UNKNOWN"),
-            "open_tab_count": _count(
-                (src.get("observer_diagnostics") or {}).get("open_tab_count")
-                if type(src.get("observer_diagnostics")) is dict else None, 20),
+            "open_tab_count": _count(obs.get("open_tab_count"), 20),
         },
         "region_api": {
             "response_count": _count(api.get("response_count")),
