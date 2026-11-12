@@ -29,6 +29,7 @@ UI_JS=r"""() => {
     other_scope_positive_status:0,
     primary_chat_cta:0,
     primary_purchase_cta:0,
+    primary_buy_now_label:0,
     primary_price_offer_cta:0
   };
   if(!primary)return out;
@@ -94,11 +95,19 @@ UI_JS=r"""() => {
       continue;
     }
     if(!primary.contains(e)||excluded(e)||linked(e)||!visibility(e))continue;
+    // Only the current exact detail's visible leaf-sized buy-now label.
+    // Do not treat the words in a description, hidden nodes or related cards
+    // as an item-scoped marker. No raw label text leaves this observer.
+    if(e.childElementCount===0 && e.matches('span,div,strong,b,small,p,button,a,[role="button"]')){
+      const text=norm(direct(e)||e.getAttribute('aria-label'));
+      if(['바로구매','바로 구매','바로구매하기','바로 구매하기'].includes(text))
+        inc('primary_buy_now_label');
+    }
     if(!e.matches('button,a,[role="button"]'))continue;
     const label=norm(e.getAttribute('aria-label')||direct(e));
     // The CTA is purely contextual. It can appear on non-for-sale controls.
     if(['채팅하기','채팅','판매자와 채팅하기'].includes(label))inc('primary_chat_cta');
-    if(['구매하기','바로 구매하기'].includes(label))inc('primary_purchase_cta');
+    if(['구매하기','바로 구매하기','바로구매','바로 구매','바로구매하기'].includes(label))inc('primary_purchase_cta');
     if(['가격 제안하기','가격제안하기'].includes(label))inc('primary_price_offer_cta');
   }
   return out;
@@ -109,7 +118,8 @@ COUNTERS=(
     'primary_visible_sold_status','primary_visible_reserved_status',
     'primary_visible_unmarked_available_text','primary_hidden_positive_status',
     'related_positive_status','other_scope_positive_status',
-    'primary_chat_cta','primary_purchase_cta','primary_price_offer_cta')
+    'primary_chat_cta','primary_purchase_cta','primary_buy_now_label',
+    'primary_price_offer_cta')
 
 
 def sanitize(raw):
