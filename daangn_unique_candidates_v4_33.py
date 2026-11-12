@@ -165,6 +165,15 @@ def deduplicate(v423,v432):
             reasons.append('PRICE_NOT_VERIFIED_IN_ALL_OBSERVATIONS')
         if len({x.get('display_sale_status') for x in grouped})!=1:
             reasons.append('CONFLICTING_DISPLAYED_SALE_STATE')
+        # No joining an item observed under contradictory subdistricts.
+        area_keys={x.get('item_area_key') for x in grouped}
+        if len(area_keys)!=1:
+            reasons.append('CONFLICTING_ITEM_AREA')
+        area_key=next(iter(area_keys)) if len(area_keys)==1 else None
+        if area_key is not None:
+            from app_v5.item_area_policy import configured_label
+            if configured_label(area_key) is None:
+                reasons.append('UNKNOWN_ITEM_AREA_KEY')
         if len(prices)==1 and all(type(p) is int for p in prices):
             price=next(iter(prices))
             if price<0 or price>prior.PRICE_LIMIT_KRW:
@@ -176,6 +185,7 @@ def deduplicate(v423,v432):
                        all(type(p) is int for p in prices) else None,
             'category':'디지털기기',
             'display_sale_status':grouped[0].get('display_sale_status'),
+            'item_area_key':area_key,
             'full_recommendation_approved':False,
             'requires_current_listing_link_recheck':True}
         if reasons:
