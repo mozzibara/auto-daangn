@@ -80,7 +80,7 @@ def sanitize_attempt(row) -> dict:
     from app_v5.region_input_events import sanitize_input_events
     observed = sanitize_input_events(observed)
     focus = src.get("input_focus") if type(src.get("input_focus")) is dict else {}
-    return {
+    safe = {
         "mode": _strict_enum(src.get("mode"), _INPUT_MODES, "FILL"),
         "status": _strict_enum(src.get("status"), _DECISIONS,
                                "UNEXPECTED_EXCEPTION"),
@@ -112,6 +112,10 @@ def sanitize_attempt(row) -> dict:
             src.get("picker_phase_diagnostics")),
         "authorizes_listings": False,
     }
+    if "precollection" in src:
+        from app_v5.precollection_filter_gate import sanitize_precollection
+        safe["precollection"] = sanitize_precollection(src.get("precollection"))
+    return safe
 
 
 def check_public_robots(*, getter=None):
@@ -210,7 +214,8 @@ async def delegated_manual_fixture(browser):
         await context.close()
 
 
-async def one_public_region(browser, mode, *, timezone_id=None):
+async def one_public_region(browser, mode, *, timezone_id=None,
+                            on_region_confirmed=None):
     region = core.BY_KEY["cheonan"]
     if timezone_id not in (None, "Asia/Seoul"):
         raise ValueError("ONLY_EXPLICIT_SEOUL_TIMEZONE_CONTROL_ALLOWED")
@@ -406,7 +411,7 @@ async def one_public_region(browser, mode, *, timezone_id=None):
             status = "REGION_NOT_COMMITTED"
         else:
             status = "INCONCLUSIVE"
-        return sanitize_attempt({
+        row = {
             "mode": mode, "status": status, "input_events": observed_input,
             "input_focus": input_focus,
             "input_value_matches_expected": input_matches,
@@ -434,7 +439,17 @@ async def one_public_region(browser, mode, *, timezone_id=None):
                     "option_click_verified_after_timeout"),
                 option_click_exception_kind=steps.get(
                     "option_click_exception_kind")),
-        })
+        }
+        # Only a fully authenticated one-fresh-Route region success can enter
+        # an optional, separately approved precollection filter gate. Never
+        # interpret picker/URL/UI alone as authorization to inspect listings.
+        if on_region_confirmed is not None and (
+                status == "TARGET_REGION_CONFIRMED_DIAGNOSTIC"):
+            candidate = on_region_confirmed(page, region)
+            if asyncio.iscoroutine(candidate):
+                candidate = await candidate
+            row["precollection"] = candidate
+        return sanitize_attempt(row)
     except Exception:
         return sanitize_attempt({"mode": mode, "status": "UNEXPECTED_EXCEPTION",
                                  "input_events": observed_input,
