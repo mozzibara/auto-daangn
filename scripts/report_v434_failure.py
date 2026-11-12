@@ -715,6 +715,9 @@ def classify(folder: Path) -> dict[str, str]:
         "PICKER_FIRST_ACTIVATION_MODE": transition_enum(
             "first_activation_mode", {"POINTER_CLICK","KEYBOARD_ENTER",
                                       "UNOBSERVABLE"}),
+        "PICKER_SEARCH_INPUT_MODE": transition_enum(
+            "search_input_mode", {"FILL","SEQUENTIAL_KEYS",
+                                  "UNOBSERVABLE"}),
         "PICKER_OPTION_SEMANTICS": transition_enum(
             "option_metadata", {"OBSERVED","UNAVAILABLE"}),
         "PICKER_OPTION_CITY_HINT": transition_flag("option_city_hint"),

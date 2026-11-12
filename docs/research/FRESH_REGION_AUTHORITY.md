@@ -972,3 +972,56 @@ OTHER and UI remains OTHER, the automation-vs-manual behavior
 difference is confirmed with stronger evidence. Either outcome
 remains fail-closed; no API injection, new HTTP requests,
 additional clicks, login or stealth browser modifications.
+
+## Live #43: *genuinely* postclick headless Route still OTHER
+
+[Owner-approved #43](https://github.com/mozzibara/auto-daangn/actions/runs/43133005161)
+matched the stronger manual Chrome request-start semantics.
+`CHRONOLOGY_REQUESTS_STARTED_BEFORE=0`,
+`CHRONOLOGY_REQUESTS_STARTED_AFTER=1`,
+`CHRONOLOGY_ELIGIBLE_RESPONSE_COUNT=1`,
+`CHRONOLOGY_STATE=POSTCLICK_REQUEST_OBSERVED`. That one
+**genuinely new first-party search request started after the
+trusted option click**, yet returned search/filter region IDs
+both OTHER. The visible selected-region control remained OTHER
+at both ~1600ms and ~4200ms. The collector stopped with
+`EARLY_REGION_UNCOMMITTED`/`REGION_MISMATCH`; source
+detail visits 0.
+
+This rules out stale response attribution as a sufficient
+explanation and distinguishes the original headless automated
+workflow from the owner's successful ordinary Chrome manual
+workflow. Root cause may still involve browser or input event
+behavior; the logs do not prove the site is inaccessible
+without login or require fingerprint workarounds.
+
+### Controlled ordinary typing + mouse input comparison
+
+The successful owner manual Chrome session observed **29 input
+events** (not the contents), a real pointer click, a unique
+target+city API suggestion, a postclick search Route with
+expected region IDs, and the selected region becoming
+EXPECTED after about 2 seconds. The automated workflow
+previously called Playwright `fill(region["term"])` followed by
+`press('Enter')`; older direct pointer click experiments also
+failed but used `fill()`. A possible remaining variable is
+input event composition/ordering, including onKeyUp and focus
+events, rather than raw API schema or UI readiness alone.
+
+The next bounded owner-approved comparison replaces the *single*
+region keyword `fill()` with standard Playwright
+`press_sequentially(term, delay=80)` **only if the public
+search box is initially empty** and activates the same
+independently verified, unique first candidate with exactly
+one normal pointer `click()`. The transient second option
+is never clicked. It retains API uniqueness, DOM stability,
+request-start chronology, ~4.2s late passive UI observation,
+robots-first and all independent freshness/filter gates.
+`SEQUENTIAL_KEYS` is exposed as a fixed diagnostic enum
+only. This is ordinary browser interaction, not force-click,
+synthetic event dispatch, stealth fingerprinting, proxy,
+private API or authentication bypass.
+
+A success would support input event sequencing as a cause;
+a failure leaves different browser/headless environment
+or UI state as possibilities, not a license to bypass.

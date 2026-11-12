@@ -164,6 +164,8 @@ class CoreCallbackTests(unittest.IsolatedAsyncioTestCase):
             self.clicks = 0
             self.presses = 0
             self.fills = 0
+            self.sequential = 0
+            self.value = ""
 
         @property
         def first(self):
@@ -180,6 +182,14 @@ class CoreCallbackTests(unittest.IsolatedAsyncioTestCase):
 
         async def fill(self, val, **kwargs):
             self.fills += 1
+            self.value = val
+
+        async def input_value(self):
+            return self.value
+
+        async def press_sequentially(self, value, **kwargs):
+            self.sequential += 1
+            self.value += value
 
         async def click(self, **kwargs):
             self.clicks += 1
@@ -224,6 +234,46 @@ class CoreCallbackTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(r["selected_suggestion"])
         self.assertEqual(steps, [(1, 0)])
         self.assertEqual(page.option.clicks, 1)
+
+    async def test_manual_style_sequential_input_and_first_pointer_click(self):
+        page = self.Page()
+        steps = []
+        async def ready():
+            steps.append((page.input.value, page.input.sequential,
+                          page.input.fills, page.option.clicks))
+            return {"state": "READY"}
+        result = await ui_select_region(
+            page, REGION, search_input_mode="SEQUENTIAL_KEYS",
+            first_activation_mode="POINTER_CLICK",
+            on_after_search_fill=ready)
+        self.assertTrue(result["selected_suggestion"])
+        self.assertEqual(result["search_input_mode"], "SEQUENTIAL_KEYS")
+        self.assertEqual(result["first_activation_mode"], "POINTER_CLICK")
+        self.assertEqual(page.input.value, REGION["term"])
+        self.assertEqual(page.input.sequential, 1)
+        self.assertEqual(page.input.fills, 0)
+        self.assertEqual(page.option.clicks, 1)
+        self.assertEqual(steps, [(REGION["term"], 1, 0, 0)])
+
+    async def test_sequential_input_rejects_nonempty_existing_text(self):
+        page = self.Page()
+        page.input.value = "PRIVATE"
+        result = await ui_select_region(
+            page, REGION, search_input_mode="SEQUENTIAL_KEYS")
+        self.assertEqual(result["error"], "region_input_not_empty_for_keys")
+        self.assertFalse(result["selected_suggestion"])
+        self.assertEqual(page.input.sequential, 0)
+        self.assertEqual(page.option.clicks, 0)
+
+    async def test_unsupported_input_mode_never_triggers_selector(self):
+        page = self.Page()
+        result = await ui_select_region(
+            page, REGION, search_input_mode="DIRECT_API")
+        self.assertEqual(result["error"], "unsupported_search_input_mode")
+        self.assertFalse(result["selected_suggestion"])
+        self.assertEqual(page.input.sequential, 0)
+        self.assertEqual(page.input.fills, 0)
+        self.assertEqual(page.option.clicks, 0)
 
     async def test_initial_native_enter_avoids_pointer_activation(self):
         page = self.Page()

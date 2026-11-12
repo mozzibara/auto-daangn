@@ -460,7 +460,8 @@ async def stable_page_snapshot(page, expected_term: str, settle_ms: int) -> dict
 async def ui_select_region(page, region: dict, *, on_before_select=None,
                            on_before_search=None, on_after_select=None,
                            on_option_witness=None, on_after_search_fill=None,
-                           first_activation_mode="POINTER_CLICK") -> dict:
+                           first_activation_mode="POINTER_CLICK",
+                           search_input_mode="FILL") -> dict:
     steps = {"target": region["term"], "clicked_region_button": False,
              "selected_suggestion": False, "unique_region_option": False,
              "error": None, "start_url": sanitized_url(page.url),
@@ -472,7 +473,10 @@ async def ui_select_region(page, region: dict, *, on_before_select=None,
              "option_still_visible": False,
              "first_activation_mode": (
                  first_activation_mode if first_activation_mode in
-                 ("POINTER_CLICK", "KEYBOARD_ENTER") else "UNOBSERVABLE")}
+                 ("POINTER_CLICK", "KEYBOARD_ENTER") else "UNOBSERVABLE"),
+             "search_input_mode": (
+                 search_input_mode if search_input_mode in
+                 ("FILL", "SEQUENTIAL_KEYS") else "UNOBSERVABLE")}
     try:
         selector = page.get_by_role("button", name=re.compile(r"지역 선택"))
         await selector.first.click(timeout=5000)
@@ -484,7 +488,20 @@ async def ui_select_region(page, region: dict, *, on_before_select=None,
             return steps
         if on_before_search is not None:
             on_before_search()  # Observe the UI-generated suggestion API only.
-        await inputs.first.fill(region["term"], timeout=4000)
+        if search_input_mode == "SEQUENTIAL_KEYS":
+            # Use ordinary Playwright keyboard sequences; this is a
+            # controlled comparison with a user-typed Chrome input, not
+            # a force click, hidden action or anti-bot workaround.
+            if await inputs.first.input_value():
+                steps["error"] = "region_input_not_empty_for_keys"
+                return steps
+            await inputs.first.press_sequentially(
+                region["term"], delay=80, timeout=4000)
+        elif search_input_mode == "FILL":
+            await inputs.first.fill(region["term"], timeout=4000)
+        else:
+            steps["error"] = "unsupported_search_input_mode"
+            return steps
         if on_after_search_fill is not None:
             # v4.34 research: require the *browser-observed* first-party API
             # response and a stable unique visible choice before any click.
