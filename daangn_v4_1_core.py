@@ -460,6 +460,7 @@ async def stable_page_snapshot(page, expected_term: str, settle_ms: int) -> dict
 async def ui_select_region(page, region: dict, *, on_before_select=None,
                            on_before_search=None, on_after_select=None,
                            on_after_open=None,
+                           on_header_click_timeout=None,
                            on_option_witness=None, on_after_search_fill=None,
                            first_activation_mode="POINTER_CLICK",
                            search_input_mode="FILL") -> dict:
@@ -478,13 +479,40 @@ async def ui_select_region(page, region: dict, *, on_before_select=None,
              "search_input_mode": (
                  search_input_mode if search_input_mode in
                  ("FILL", "SEQUENTIAL_KEYS") else "UNOBSERVABLE"),
-             "progress_stage": "CORE_ENTERED"}
+             "progress_stage": "CORE_ENTERED",
+             "header_click_verified_after_timeout": False,
+             "header_click_exception_kind": "NONE"}
     try:
         selector = page.get_by_role("button", name=re.compile(r"지역 선택"))
         steps["progress_stage"] = "BEFORE_REGION_BUTTON_CLICK"
-        await selector.first.click(timeout=5000)
-        steps["clicked_region_button"] = True
-        steps["progress_stage"] = "AFTER_REGION_BUTTON_CLICK"
+        try:
+            await selector.first.click(timeout=5000)
+            steps["clicked_region_button"] = True
+        except Exception as click_error:
+            # Only an actual Playwright click timeout may be reconciled,
+            # and only with an explicit owner-diagnostic callback. Runtime
+            # collection call sites retain historical fail-closed behavior.
+            from playwright.async_api import TimeoutError as PlaywrightTimeoutError
+            is_timeout = isinstance(click_error, PlaywrightTimeoutError)
+            steps["header_click_exception_kind"] = (
+                "PLAYWRIGHT_TIMEOUT" if is_timeout else "OTHER_EXCEPTION")
+            if not is_timeout or on_header_click_timeout is None:
+                raise
+            confirmed = False
+            try:
+                confirmed = on_header_click_timeout()
+                if inspect.isawaitable(confirmed):
+                    confirmed = await confirmed
+            except Exception:
+                confirmed = False
+            if confirmed is not True:
+                raise
+            # Do not replay an already-dispatched browser click.
+            steps["header_click_verified_after_timeout"] = True
+        steps["progress_stage"] = (
+            "AFTER_REGION_BUTTON_CLICK_VERIFIED"
+            if steps["header_click_verified_after_timeout"]
+            else "AFTER_REGION_BUTTON_CLICK")
         await page.wait_for_timeout(500)
         steps["progress_stage"] = "AFTER_500MS_WAIT"
         # Optional passive witness at the exact point used for input discovery.
