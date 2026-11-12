@@ -1,0 +1,127 @@
+# OCI FILL-only precollection readiness gate
+
+## Purpose and boundary
+
+This one-shot **operator-run** command carries the already proven OCI
+`FILL` region-selection method into a separate **precollection** gate.
+It is NOT an implementation of live listing capture or a replacement
+for `ops/oci/runtime.py`, which continues to perform only signed
+artifact import, local key/DB operations and status.
+
+This phase performs, in a single disposable Chrome context:
+1. **Explicit exact owner approval** and unprivileged isolated checkout
+   (the dedicated `~/code/auto-daangn-region-diagnostic`, NOT any
+   `/opt/auto-daangn*` or `/var/lib/auto-daangn` state).
+2. **Robots-first** public-search and exact region-keyword endpoint
+   checks; stop if absent/denied.
+3. **One** Chrome region picker selection using the previously proven
+   `FILL` mode, its stringent delivered-once click-timeout proof,
+   the exact candidate API ID and **one new search Route** with
+   expected server search/filter region plus selected UI.
+4. Only if step 3 returns `TARGET_REGION_CONFIRMED_DIAGNOSTIC`,
+   set the **visible public filter UI**: HDD / Cheonan Buldang-dong,
+   Digital Devices (`category_id=1`), max KRW 50,000, available-only.
+5. Make **one visible Apply** interaction, never force or replay a click.
+   Observe newly started first-party filtered search Route requests and
+   responses. Check the resulting public search URL, reopen the filter
+   panel if needed, and independently re-read native selected controls.
+6. Parse **only** allowlisted server `searchRegion`/`currentFilters`
+   metadata from transient in-memory response bytes. Never iterate,
+   return, serialize or save any listing array or product/article field.
+7. Report `PRECOLLECTION_EVIDENCE_COMPLETE` **only** if exact region,
+   visible filter controls before/after apply, exact filtered URL,
+   exactly one fresh first-party route, category/available/max price
+   server metadata and region IDs are all present and matching. If
+   the current server omits max-price metadata, return
+   `BLOCKED_FILTER_ROUTE_METADATA`. Frontend `price=__50000`
+   alone is **not authoritative** server price enforcement evidence.
+
+Even if every gate passes, the report always includes:
+`collection_started=false`,
+`listing_detail_visited=false`,
+`listing_data_exported=false`,
+`database_written=false`,
+`authorizes_listings=false`,
+`next_action_requires_separate_owner_approval=true`.
+
+No raw listing URLs/titles/seller identifiers, full HTML/response bodies,
+cookies, exact IP, raw request URLs, browser traces or screenshots are
+ever printed or saved. We do not run the legacy v4.6 capture entrypoint,
+v4.34 encrypted capture, or OCI private import, and do not configure a
+new daemon, systemd service, network listener, SSH key, scheduling,
+screenshot upload or automated retry.
+
+### Fixed approved profile
+
+| Field | Required |
+|---|---|
+| Region | Cheonan Buldang-dong, preset ID 2292 |
+| Keyword | `HDD` |
+| Category | Digital Devices, `category_id=1` |
+| Max price | KRW 50,000 |
+| Available-only | True |
+| Input mode | `FILL` **only** |
+| Browser | Chrome Stable via Xvfb, no login/session reuse |
+| Number of live attempts | At most **one** approved public search/region context |
+| Listing/detail visits | **Zero** |
+
+## OCI operator steps (without touching production state)
+
+Check the new PR's **four offline CI jobs** are successful and the code
+has been merged to `main` first. In an existing, unprivileged Ubuntu
+shell with the separately installed Chrome and Playwright:
+
+```bash
+cd "$HOME/code/auto-daangn-region-diagnostic"
+git pull --ff-only
+source .venv/bin/activate
+
+# Zero marketplace calls:
+python -m unittest discover -s tests -p 'test_oci_precollection_gate.py' -v
+
+# Only if current robots/site access rules permit, manual one-shot approval:
+set -o pipefail
+xvfb-run -a python -m ops.oci.precollection --live --headed --owner-approval I_APPROVE_OCI_PRECOLLECTION_FILL_V1 | tee "$HOME/daangn_oci_precollection_gate.json"
+```
+
+This command **does interact with the public search filter UI**, but
+does not start listing capture. The shell may exit with status 2
+because the gate correctly fails closed (for example if the server
+does not expose the max-price field). Treat `status` and
+`precollection.server_filters` as evidence, not permission to import
+listing data.
+
+### Outcome interpretation
+
+| Status | Operational interpretation |
+|---|---|
+| `PRECOLLECTION_EVIDENCE_COMPLETE` | All fixed filter metadata and UI corroborated; still no collection permission |
+| `STOP_REGION_NOT_VERIFIED` | FILL region failed the fresh Route/selected UI proof; no filter actions executed |
+| `STOP_FILTERS_NOT_VERIFIED` | Locality succeeded but some filter evidence failed or was omitted |
+| nested `BLOCKED_FILTER_CONTROL` | Filter controls missing/ambiguous or selected UI does not match |
+| nested `BLOCKED_APPLY_ACTION` | Apply click failed; no duplicate click/retry |
+| nested `BLOCKED_FILTER_URL` | Resulting URL missing/wrong/ambiguous target fields |
+| nested `BLOCKED_FILTER_ROUTE_MISSING` | No fresh exact filtered response observed |
+| nested `BLOCKED_FILTER_ROUTE_AMBIGUOUS` | Multiple candidate responses, cannot attribute |
+| nested `BLOCKED_FILTER_ROUTE_METADATA` | Server filter category, region, price or availability fields absent/different |
+| nested `BLOCKED_UI_RECHECK` | Native visible controls could not be verified after Apply |
+| `ROBOTS_NOT_ALLOWED` | Do not continue; site's public access gate rejected/unavailable |
+
+### Evidence limits
+
+Precollection proof does NOT demonstrate actual listing prices, category
+or sold/reserved state by item, complete pagination, deduplication,
+listing locality in the item itself, security of seller URLs or the
+v4.34 signing/encryption pipeline. Those require independent,
+separately approved tests and must not be inferred from a successful
+filter UI or URL.
+
+The `currentFilters` server metadata may have missing price fields.
+In that case the gate intentionally blocks rather than weaken the
+historically required consistency proof.
+
+The old `ARCHITECTURE.md` assigns OCI an import-only role. This
+owner-run experimental precollection Chrome checkout is an
+**explicitly separate research lane**. It is not installed as an
+OCI service or enabled by the production intake timer. A production
+role/architecture change would require a separate decision.
