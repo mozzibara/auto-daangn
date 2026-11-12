@@ -158,10 +158,12 @@ def make_private_shortlist(evaluation,sink):
             item.get('status')!='UNIQUE_RECOMMENDATION_CANDIDATE_READY_FOR_REVIEW'
             or len(group)!=item.get('observation_count') or not group):
             raise ValueError('INVALID_UNIQUE_GROUP')
-        area_key=item.get('item_area_key')
-        area_label=(configured_label(area_key) if area_key is not None else None)
-        if area_key is not None and area_label is None:
-            raise ValueError('INVALID_ALLOWLIST_ITEM_AREA')
+        area_token=item.get('item_area_token')
+        if area_token is not None and (
+                type(area_token) is not str or
+                HMAC_PATTERN.fullmatch(area_token) is None):
+            raise ValueError('INVALID_ITEM_AREA_TOKEN')
+        area_keys=set()
         titles=set()
         ids=set()
         urls=set()
@@ -175,11 +177,14 @@ def make_private_shortlist(evaluation,sink):
             if (x is None or x.get('listing_run_hmac')!=tag or
                 x.get('price_krw')!=item['price_krw']):
                 raise ValueError('PRIVATE_IDENTITY_PRICE_HMAC_MISMATCH')
-            if area_key is not None and (
-                    x.get('item_area_key')!=area_key or
-                    x.get('item_area_status')!=ITEM_AREA_ALLOWED):
-                raise ValueError('PRIVATE_ITEM_AREA_IDENTITY_CONFLICT')
-            if area_key is None and x.get('item_area_key') is not None:
+            if area_token is not None:
+                if (x.get('item_area_token')!=area_token or
+                        x.get('item_area_status')!=ITEM_AREA_ALLOWED or
+                        configured_label(x.get('item_area_key')) is None):
+                    raise ValueError('PRIVATE_ITEM_AREA_IDENTITY_CONFLICT')
+                area_keys.add(x['item_area_key'])
+            elif (x.get('item_area_key') is not None or
+                  x.get('item_area_token') is not None):
                 raise ValueError('PRIVATE_ITEM_AREA_UNMATCHED')
             ids.add(stable_article_id(x['url']))
             urls.add(x['url'])
@@ -192,6 +197,10 @@ def make_private_shortlist(evaluation,sink):
             raise ValueError('CROSS_CONTEXT_CANONICAL_LISTING_ID_MISMATCH')
         if len(titles)!=1:
             reason_codes.add('TITLE_UNAVAILABLE_OR_CONFLICTING_REPEATED_TITLE')
+        if area_token is not None and len(area_keys)!=1:
+            reason_codes.add('CONFLICTING_ITEM_AREA_ACROSS_REPEATS')
+        area_key=next(iter(area_keys)) if len(area_keys)==1 else None
+        area_label=configured_label(area_key) if area_key is not None else None
         article_id=next(iter(ids))
         if article_id in seen_ids:
             raise ValueError('SAME_CANONICAL_ITEM_SPLIT_ACROSS_HMAC_GROUPS')
