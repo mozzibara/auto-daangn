@@ -477,26 +477,33 @@ async def ui_select_region(page, region: dict, *, on_before_select=None,
                  ("POINTER_CLICK", "KEYBOARD_ENTER") else "UNOBSERVABLE"),
              "search_input_mode": (
                  search_input_mode if search_input_mode in
-                 ("FILL", "SEQUENTIAL_KEYS") else "UNOBSERVABLE")}
+                 ("FILL", "SEQUENTIAL_KEYS") else "UNOBSERVABLE"),
+             "progress_stage": "CORE_ENTERED"}
     try:
         selector = page.get_by_role("button", name=re.compile(r"지역 선택"))
+        steps["progress_stage"] = "BEFORE_REGION_BUTTON_CLICK"
         await selector.first.click(timeout=5000)
         steps["clicked_region_button"] = True
+        steps["progress_stage"] = "AFTER_REGION_BUTTON_CLICK"
         await page.wait_for_timeout(500)
+        steps["progress_stage"] = "AFTER_500MS_WAIT"
         # Optional passive witness at the exact point used for input discovery.
         # No extra click, sleep or network operation from the core flow.
         if on_after_open is not None:
             observed = on_after_open()
             if inspect.isawaitable(observed):
                 await observed
+        steps["progress_stage"] = "AFTER_OPEN_CALLBACK"
         inputs = page.locator('input[placeholder*="지역"], input[placeholder*="동네"], [role="dialog"] input, [role="combobox"]')
         if await inputs.count() == 0:
             steps["error"] = "region_input_not_found"
             return steps
+        steps["progress_stage"] = "AFTER_INPUT_DISCOVERY"
         if on_before_search is not None:
             callback = on_before_search()
             if inspect.isawaitable(callback):
                 await callback  # Arm passive input/network witnesses BEFORE typing.
+        steps["progress_stage"] = "AFTER_BEFORE_SEARCH_CALLBACK"
         if search_input_mode == "SEQUENTIAL_KEYS":
             # Use ordinary Playwright keyboard sequences; this is a
             # controlled comparison with a user-typed Chrome input, not
@@ -511,6 +518,7 @@ async def ui_select_region(page, region: dict, *, on_before_select=None,
         else:
             steps["error"] = "unsupported_search_input_mode"
             return steps
+        steps["progress_stage"] = "AFTER_INPUT_ENTRY"
         if on_after_search_fill is not None:
             # v4.34 research: require the *browser-observed* first-party API
             # response and a stable unique visible choice before any click.
@@ -524,6 +532,7 @@ async def ui_select_region(page, region: dict, *, on_before_select=None,
                 return steps
         else:
             await page.wait_for_timeout(850)
+        steps["progress_stage"] = "AFTER_API_READINESS"
         choices = page.locator('[role="option"], [role="listbox"] button, [role="dialog"] button, [role="dialog"] [role="option"]')
         matching = choices.filter(has_text=region["term"])
         count = await matching.count()
@@ -584,6 +593,7 @@ async def ui_select_region(page, region: dict, *, on_before_select=None,
             callback = on_before_select()
             if inspect.isawaitable(callback):
                 await callback  # Record immediate pre-click UI witness, then click.
+        steps["progress_stage"] = "BEFORE_SUGGESTION_CLICK"
         if first_activation_mode == "KEYBOARD_ENTER":
             # Use the ordinary accessible native button activation without
             # triggering pointerdown/blur on the region text input.
@@ -597,6 +607,7 @@ async def ui_select_region(page, region: dict, *, on_before_select=None,
             steps["error"] = "unsupported_first_activation_mode"
             return steps
         steps["selected_suggestion"] = True
+        steps["progress_stage"] = "AFTER_SUGGESTION_CLICK"
         if on_after_select is not None:
             callback = on_after_select()
             if inspect.isawaitable(callback):
