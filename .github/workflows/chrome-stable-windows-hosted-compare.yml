@@ -1,0 +1,81 @@
+name: Owner-approved Windows-hosted Chrome Stable region comparison
+
+on:
+  workflow_dispatch:
+    inputs:
+      approval:
+        description: Exact owner approval for one Windows-hosted public UI A/B comparison
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-hosted-chrome-locality-one-shot
+  cancel-in-progress: false
+
+jobs:
+  windows-region-contrast:
+    # Explicit owner dispatch only. A GitHub issue comment NEVER triggers this.
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      github.actor == github.repository_owner &&
+      inputs.approval == 'I_APPROVE_WINDOWS_HOSTED_REGION_COMPARE_V1'
+    runs-on: windows-2025
+    timeout-minutes: 15
+    env:
+      PYTHONUTF8: "1"
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - name: Checkout trusted main only
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: false
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Install project dependencies
+        run: python -m pip install -r requirements.txt
+
+      - name: Require preinstalled Google Chrome Stable
+        shell: pwsh
+        run: |
+          $chrome = Join-Path $env:PROGRAMFILES "Google\Chrome\Application\chrome.exe"
+          if (-not (Test-Path -LiteralPath $chrome -PathType Leaf)) {
+            throw "GOOGLE_CHROME_STABLE_MISSING"
+          }
+          Write-Output "GOOGLE_CHROME_STABLE_PREINSTALLED=YES"
+          Write-Output "NO_BROWSER_DOWNLOAD_OR_PROFILE_REUSE=YES"
+
+      # Offline fixture must pass in the exact same headed Windows runner
+      # before the public-site A/B check. No GUI workaround or stealth flags.
+      - name: Validate real Chrome headed offline fixture
+        shell: pwsh
+        timeout-minutes: 5
+        run: |
+          python -m scripts.chrome_stable_input_compare --headed
+          if ($LASTEXITCODE -ne 0) { throw "HEADED_CHROME_FIXTURE_FAILED" }
+
+      - name: One owner-approved robots-first public region A/B check
+        shell: pwsh
+        timeout-minutes: 8
+        run: |
+          python -m scripts.chrome_stable_input_compare --live --headed --owner-approval I_APPROVE_CHROME_INPUT_COMPARISON_V1
+          if ($LASTEXITCODE -ne 0) { throw "WINDOWS_PUBLIC_REGION_COMPARE_FAILED" }
+
+      - name: Document diagnostic boundary
+        if: always()
+        shell: pwsh
+        run: |
+          @(
+            "Windows Server 2025 GitHub-hosted Chrome Stable (headed).",
+            "Owner-authorized, robots-first, two fresh non-logged-in region selections at most.",
+            "Only sanitized diagnostics; no listing visits, artifacts, secrets, capture authorization or OCI import.",
+            "Windows-hosted results do not isolate OS independently of egress IP, runner image or session."
+          ) | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY
