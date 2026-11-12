@@ -102,6 +102,8 @@ def sanitize_baseline(value):
     route=s.get("passive_route") if type(s.get("passive_route")) is dict else {}
     return {
         "ui":_safe_checkpoint(screen),
+        "initial_header_family":_enum(s.get("initial_header_family"),
+                                      _HEADER_FAMILIES,"UNOBSERVABLE"),
         "browser":sanitize_browser_environment(env),
         "passive_route":{
             "count":_cap(route.get("count"),12),
@@ -150,8 +152,12 @@ async def capture_first_load(page, region, passive_events=None):
         url_class=classify_browser_url(page.url,region).get("region")
     except Exception:
         url_class="UNOBSERVABLE"
+    current_header=await read_region_header_volatile(page)
+    hint=classify_region_header_transition(
+        current_header,current_header,target_term=region["term"])
     return sanitize_baseline({
         "ui":ui, "browser":browser,
+        "initial_header_family":hint["before_header_family"],
         "url_region":url_class,
         "passive_route":summarize_passive_routes(passive_events),
     })
@@ -232,6 +238,7 @@ def compare_baselines(local, hosted):
     a=sanitize_baseline(local)
     b=sanitize_baseline(hosted)
     keys=(("ui","selected_control"),
+          ("initial_header_family",None),
           ("browser","loader_search_region"),
           ("browser","loader_filter_region"),
           ("browser","timezone"),("browser","language"),
