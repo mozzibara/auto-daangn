@@ -923,3 +923,52 @@ differences dominate the next hypothesis. If late UI becomes EXPECTED
 while a single fresh Route has matching IDs, a premature read was
 contributory. If late UI becomes EXPECTED but the Route remains OTHER,
 the missing fresh Route proof must **not** be inferred from UI alone.
+
+## Live #42: late-settle disconfirms a simple waiting-only repair
+
+[Owner-approved #42](https://github.com/mozzibara/auto-daangn/actions/runs/43131553082)
+is the direct Actions analogue of the successful ordinary Chrome
+manual test: initial region option API unique/expected, three DOM
+readiness samples, one native Enter on the original option,
+and an **additional passive late UI checkpoint** after about
+4.2 seconds. The result remained **OTHER at both 1600ms and
+4200ms**, with the server search/filter region IDs also OTHER,
+and one observed post-button-response search Route. No second
+button, filter or source detail was visited; strict
+`EARLY_REGION_UNCOMMITTED`/`REGION_MISMATCH` stopped safely.
+Therefore **waiting to 4 seconds alone does not repair the headless
+Actions region mismatch**. Different browser/session circumstances
+or network-causality attribution remain possible.
+
+### Stronger provenance: classify by request START, not response arrival
+
+The successful ordinary Chrome manual witness already requires a
+public search GET **started after the actual human click**. The
+legacy v4.6-based regional picker witness instead installed only
+a `response` listener immediately before clicking the option.
+A **request started before the click** could have completed
+afterward and been incorrectly classified as the fresh result.
+The old `PICKER_POST_CLICK_FETCH_COUNT=1` cannot rule out
+this stale-response attribution.
+
+The scoped `RegionPostclickRequests` wrapper now installs an
+exact-host/path/query GET Fetch/XHR **request-start listener
+before typing** and a response listener before selecting the
+option. A passive event observer records the **actual trusted
+native click's epoch timestamp in browser RAM only**. Pending
+responses are bounded in memory until the click timestamp is read;
+only requests observed starting at or after that timestamp are
+passed into the existing strict body parser. Pre-click or
+unattributed responses cannot authorize region. Neither
+timestamps, URLs, numeric IDs, request objects nor raw bodies
+survive the public report. Fixed diagnostic
+`CHRONOLOGY_*` fields show capped old/new counts only.
+
+If the next live run yields
+`NO_POSTCLICK_REQUEST` despite the old response counter,
+the previous claim of a fresh selection Route was
+misattributed. If a genuinely post-click request still returns
+OTHER and UI remains OTHER, the automation-vs-manual behavior
+difference is confirmed with stronger evidence. Either outcome
+remains fail-closed; no API injection, new HTTP requests,
+additional clicks, login or stealth browser modifications.
