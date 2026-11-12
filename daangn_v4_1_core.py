@@ -487,7 +487,9 @@ async def ui_select_region(page, region: dict, *, on_before_select=None,
             steps["error"] = "region_input_not_found"
             return steps
         if on_before_search is not None:
-            on_before_search()  # Observe the UI-generated suggestion API only.
+            callback = on_before_search()
+            if inspect.isawaitable(callback):
+                await callback  # Arm passive input/network witnesses BEFORE typing.
         if search_input_mode == "SEQUENTIAL_KEYS":
             # Use ordinary Playwright keyboard sequences; this is a
             # controlled comparison with a user-typed Chrome input, not

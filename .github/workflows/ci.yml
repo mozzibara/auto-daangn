@@ -61,3 +61,29 @@ jobs:
         shell: bash
         run: |
           echo "Offline tests passed on ${{ matrix.os }}; no browser launch, live data or network collection." >> "$GITHUB_STEP_SUMMARY"
+
+  chrome-input-fixture:
+    name: Real Chrome Stable input event fixture (offline)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    permissions:
+      contents: read
+    env:
+      PYTHONUTF8: "1"
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - name: Checkout trusted code
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+      - name: Install project dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Verify installed Google Chrome Stable
+        run: command -v google-chrome
+      - name: Compare fill and sequential key event types on local HTML only
+        run: python -m scripts.chrome_stable_input_compare
