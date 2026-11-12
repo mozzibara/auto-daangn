@@ -461,6 +461,7 @@ async def ui_select_region(page, region: dict, *, on_before_select=None,
                            on_before_search=None, on_after_select=None,
                            on_after_open=None,
                            on_header_click_timeout=None,
+                           on_option_click_timeout=None,
                            on_option_witness=None, on_after_search_fill=None,
                            first_activation_mode="POINTER_CLICK",
                            search_input_mode="FILL") -> dict:
@@ -481,7 +482,10 @@ async def ui_select_region(page, region: dict, *, on_before_select=None,
                  ("FILL", "SEQUENTIAL_KEYS") else "UNOBSERVABLE"),
              "progress_stage": "CORE_ENTERED",
              "header_click_verified_after_timeout": False,
-             "header_click_exception_kind": "NONE"}
+             "header_click_exception_kind": "NONE",
+             "option_click_returned": False,
+             "option_click_verified_after_timeout": False,
+             "option_click_exception_kind": "NONE"}
     try:
         selector = page.get_by_role("button", name=re.compile(r"지역 선택"))
         steps["progress_stage"] = "BEFORE_REGION_BUTTON_CLICK"
@@ -622,20 +626,48 @@ async def ui_select_region(page, region: dict, *, on_before_select=None,
             if inspect.isawaitable(callback):
                 await callback  # Record immediate pre-click UI witness, then click.
         steps["progress_stage"] = "BEFORE_SUGGESTION_CLICK"
-        if first_activation_mode == "KEYBOARD_ENTER":
-            # Use the ordinary accessible native button activation without
-            # triggering pointerdown/blur on the region text input.
-            if not await matching.first.is_enabled():
-                steps["error"] = "region_option_not_enabled"
+        try:
+            if first_activation_mode == "KEYBOARD_ENTER":
+                # Use ordinary accessible native button activation without
+                # triggering pointerdown/blur on the region text input.
+                if not await matching.first.is_enabled():
+                    steps["error"] = "region_option_not_enabled"
+                    return steps
+                await matching.first.press("Enter", timeout=5000)
+            elif first_activation_mode == "POINTER_CLICK":
+                await matching.first.click(timeout=5000)
+            else:
+                steps["error"] = "unsupported_first_activation_mode"
                 return steps
-            await matching.first.press("Enter", timeout=5000)
-        elif first_activation_mode == "POINTER_CLICK":
-            await matching.first.click(timeout=5000)
-        else:
-            steps["error"] = "unsupported_first_activation_mode"
-            return steps
+            steps["option_click_returned"] = True
+        except Exception as click_error:
+            # This is *only* a diagnostic opt-in for a normal pointer click
+            # already delivered to the unique visible, exact-city option.
+            # Never force, synthesize or repeat the click.
+            from playwright.async_api import TimeoutError as PlaywrightTimeoutError
+            is_timeout = isinstance(click_error, PlaywrightTimeoutError)
+            steps["option_click_exception_kind"] = (
+                "PLAYWRIGHT_TIMEOUT" if is_timeout else "OTHER_EXCEPTION")
+            if (not is_timeout or first_activation_mode != "POINTER_CLICK"
+                    or on_option_click_timeout is None
+                    or steps["unique_region_option"] is not True
+                    or steps["option_city_hint"] is not True):
+                raise
+            verified = False
+            try:
+                verified = on_option_click_timeout()
+                if inspect.isawaitable(verified):
+                    verified = await verified
+            except Exception:
+                verified = False
+            if verified is not True:
+                raise
+            steps["option_click_verified_after_timeout"] = True
         steps["selected_suggestion"] = True
-        steps["progress_stage"] = "AFTER_SUGGESTION_CLICK"
+        steps["progress_stage"] = (
+            "AFTER_SUGGESTION_CLICK_VERIFIED"
+            if steps["option_click_verified_after_timeout"]
+            else "AFTER_SUGGESTION_CLICK")
         if on_after_select is not None:
             callback = on_after_select()
             if inspect.isawaitable(callback):
