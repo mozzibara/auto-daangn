@@ -51,7 +51,7 @@ _APPROVAL = "I_APPROVE_CHROME_INPUT_COMPARISON_V1"
 _DECISIONS = frozenset((
     "FIXTURE_COMPLETE", "API_OR_DOM_NOT_READY", "CLICK_NOT_TRUSTED",
     "TARGET_REGION_CONFIRMED_DIAGNOSTIC", "REGION_NOT_COMMITTED",
-    "INCONCLUSIVE", "ACCESS_RESTRICTED", "BASELINE_INVALID",
+    "REGION_HEADER_ACTION_EXCEPTION", "INCONCLUSIVE", "ACCESS_RESTRICTED", "BASELINE_INVALID",
     "UNEXPECTED_EXCEPTION",
 ))
 _REGION = frozenset(("EXPECTED", "OTHER", "MISSING", "UNOBSERVABLE"))
@@ -351,8 +351,13 @@ async def one_public_region(browser, mode, *, timezone_id=None):
             and len(resolver.events) == 1
             and len(resolver.events[0].get("matches", [])) == 1
         )
-        if blocked:
+        if blocked or picker_phase.export()["api"]["state"] == "ACCESS_RESTRICTED":
             status = "ACCESS_RESTRICTED"
+        elif (steps.get("progress_stage") == "BEFORE_REGION_BUTTON_CLICK"
+              and steps.get("error") is not None):
+            # Playwright call did not complete; passive browser event witness
+            # separately tells whether a click event was already delivered.
+            status = "REGION_HEADER_ACTION_EXCEPTION"
         elif readiness.export()["state"] != "READY":
             status = "API_OR_DOM_NOT_READY"
         elif not valid_click:
