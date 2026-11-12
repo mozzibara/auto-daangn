@@ -137,3 +137,59 @@ macOS/Linux는 같은 Python 모듈 명령으로 실행합니다. 시스템의
 
 이 자료 및 자동화된 GH Actions 대조 실험은
 [FRESH_REGION_AUTHORITY.md](FRESH_REGION_AUTHORITY.md)에서 함께 추적합니다.
+
+
+## 진단 결과가 NO_TARGET_CLICK / API 응답 0건으로 끝나는 경우
+
+수동 Chrome 대조 실험의 첫 사용자 실행은
+\`NO_TARGET_CLICK\`, \`region_api.response_count=0\`,
+\`route.response_count=0\`, \`BEFORE.visible_dialog_buttons=0\`으로
+끝났습니다. 이 결과는 **수동 지역 선택의 실패를 증명하지
+않습니다.** Chrome 페이지 이벤트 감시기가 목표 버튼을
+관찰하지 못했을 뿐이며, 올바른 탭에서 클릭했는지, 지역 선택
+대화상자가 실제로 열렸는지, 감시기가 정상 설치됐는지도
+구분하지 못했습니다.
+
+보완된 도구는 **실제로 클릭/입력 감시기가 설치된 후에만**
+\`관찰 준비 완료\` 메시지를 표시합니다. 또한 다음처럼
+**내용이 아닌 개수와 고정 분류값**만 보고합니다.
+
+- \`observer_diagnostics.document_clicks\`: 추적한 Chrome 페이지에서
+  발생한 일반 클릭 이벤트 수 (목표 버튼 여부와 무관).
+- \`dialog_clicks\`: 대화상자에서 발생한 클릭 이벤트 수.
+- \`button_clicks\`: 실제 버튼으로 식별된 클릭 이벤트 수.
+- \`target_outside_dialog\`: 목표 지역 문구가 있지만 대화상자 바깥의
+  버튼에서 발생한 클릭 수. 자동 클릭 승인 증거가 아닙니다.
+- \`input_events\`, \`region_input_events\`: 입력 내용은
+  기록하지 않고 실제 입력 이벤트 개수만 확인합니다.
+- \`tracked_tab_focused\`: 조사 시점의 추적 대상 탭 포커스 여부.
+- \`open_tab_count\`: 임시 Chrome 프로필에서 열린 탭 수.
+- \`classification\`: \`NO_DOCUMENT_ACTIVITY\`,
+  \`DOCUMENT_ACTIVITY_NO_DIALOG_CLICK\`,
+  \`DIALOG_CLICK_WITHOUT_TARGET\`,
+  \`TARGET_CLICK_OUTSIDE_DIALOG\`,
+  \`OBSERVER_LOST\`, \`TARGET_CLICK_OBSERVED\`,
+  \`INCONCLUSIVE\` 중 하나.
+
+재실행은 **새 파일명**을 사용해야 합니다.
+
+\`\`\`powershell
+cd C:\kmj-ai-agent\auto-daangn-public
+git pull --ff-only
+.\.venv\Scripts\Activate.ps1
+
+python -m scripts.manual_chrome_region_probe --timeout-sec 150 --output "$HOME\Downloads\daangn_manual_region_result_v2.json"
+\`\`\`
+
+새로 열린 **임시 Chrome 창**에서만 작업하세요. 터미널의
+\`관찰 준비 완료\` 메시지가 표시된 뒤, 지역 선택을 열고 목표
+지역을 직접 검색·선택합니다. 종료될 때까지 Enter를 누를 필요가
+없으며, 결과에 \`NO_TARGET_CLICK\`이 나오더라도 위 분류값을
+보면 진단 대상 탭에서 일반 조작 자체가 관찰됐는지 구분할 수
+있습니다. \`tracked_tab_focused=NO\`와
+\`NO_DOCUMENT_ACTIVITY\`의 조합은 잘못된 창/탭에서 조작했을
+가능성을 높이지만, 그것만으로 확정할 수는 없습니다.
+
+**추가 진단에서도 수동 클릭·검색창 입력 내용이나 매물 원문은
+기록하지 않습니다.** 모든 결과는 \`authorizes_listings=false\`로
+유지됩니다.
