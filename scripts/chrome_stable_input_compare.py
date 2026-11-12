@@ -31,6 +31,9 @@ from app_v5.region_baseline_contrast import (
     safe_machine_class, read_region_header_volatile,
     classify_region_header_transition, sanitize_header_transition,
 )
+from app_v5.region_picker_phases import (
+    RegionPickerPhaseWitness, sanitize_picker_phases,
+)
 from app_v5.region_option_events import RegionOptionEventWitness
 from app_v5.region_readiness import RegionReadinessWitness
 from app_v5.region_suggestion import RegionSuggestionObserver
@@ -99,6 +102,8 @@ def sanitize_attempt(row) -> dict:
                                     _REGION, "UNOBSERVABLE"),
         "initial_baseline":sanitize_baseline(src.get("initial_baseline")),
         "header_transition":sanitize_header_transition(src.get("header_transition")),
+        "picker_phase_diagnostics":sanitize_picker_phases(
+            src.get("picker_phase_diagnostics")),
         "authorizes_listings": False,
     }
 
@@ -216,6 +221,8 @@ async def one_public_region(browser, mode, *, timezone_id=None):
     readiness = RegionReadinessWitness(region, resolver)
     network = ManualSearchResponses(region)
     lifecycle = RegionLifecycleWitness(region)
+    picker_phase = RegionPickerPhaseWitness(region)
+    picker_phase_armed = False
     observed_input = None
     input_matches = False
     input_focus = {}
@@ -244,6 +251,16 @@ async def one_public_region(browser, mode, *, timezone_id=None):
         initial_baseline = await capture_first_load(
             page,region,passive_events=list(network.events))
         original_header=await read_region_header_volatile(page)
+        # Attach before picker activation, so zero responses are disambiguated
+        # from no input/no request, failed request or an unexpected HTTP code.
+        page.on("request", picker_phase.on_request)
+        page.on("response", picker_phase.on_response)
+        page.on("requestfailed", picker_phase.on_requestfailed)
+        picker_phase_armed = True
+
+        async def after_open():
+            picker_phase.picker_opened = True
+            await picker_phase.sample(page,"AFTER_PICKER_OPEN_500MS")
 
         async def before_search():
             nonlocal api_armed, request_armed
@@ -281,6 +298,7 @@ async def one_public_region(browser, mode, *, timezone_id=None):
 
         steps = await core.ui_select_region(
             page, region, on_before_search=before_search,
+            on_after_open=after_open,
             on_after_search_fill=after_search_fill,
             on_option_witness=option_probe.arm,
             on_before_select=before_select,
@@ -288,7 +306,9 @@ async def one_public_region(browser, mode, *, timezone_id=None):
             first_activation_mode="POINTER_CLICK",
             search_input_mode=mode,
         )
+        await picker_phase.sample(page,"AFTER_CORE_RETURN")
         await page.wait_for_timeout(4200)
+        await picker_phase.sample(page,"AFTER_SETTLE_4200MS")
         input_focus["AFTER_4000MS"] = await sample_region_focus(page)
         header_transition=classify_region_header_transition(
             original_header,await read_region_header_volatile(page),
@@ -357,6 +377,9 @@ async def one_public_region(browser, mode, *, timezone_id=None):
             "server_filter": server_filter, "selected_ui": ui_region,
             "initial_baseline": initial_baseline,
             "header_transition":header_transition,
+            "picker_phase_diagnostics":picker_phase.export(
+                error=steps.get("error"),
+                readiness=readiness.export()["state"]),
         })
     except Exception:
         return sanitize_attempt({"mode": mode, "status": "UNEXPECTED_EXCEPTION",
@@ -364,9 +387,16 @@ async def one_public_region(browser, mode, *, timezone_id=None):
                                  "input_focus": input_focus,
                                  "api_response_count": resolver.responses,
                                  "initial_baseline":initial_baseline,
-                                 "header_transition":header_transition})
+                                 "header_transition":header_transition,
+                                 "picker_phase_diagnostics":picker_phase.export(
+                                     error="RuntimeError",
+                                     readiness=readiness.export()["state"])})
     finally:
         if page is not None:
+            if picker_phase_armed:
+                page.remove_listener("request", picker_phase.on_request)
+                page.remove_listener("response", picker_phase.on_response)
+                page.remove_listener("requestfailed", picker_phase.on_requestfailed)
             await input_probe.stop(page)
             await option_probe.stop(page)
             if api_armed:

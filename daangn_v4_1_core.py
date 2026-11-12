@@ -459,6 +459,7 @@ async def stable_page_snapshot(page, expected_term: str, settle_ms: int) -> dict
 
 async def ui_select_region(page, region: dict, *, on_before_select=None,
                            on_before_search=None, on_after_select=None,
+                           on_after_open=None,
                            on_option_witness=None, on_after_search_fill=None,
                            first_activation_mode="POINTER_CLICK",
                            search_input_mode="FILL") -> dict:
@@ -482,6 +483,12 @@ async def ui_select_region(page, region: dict, *, on_before_select=None,
         await selector.first.click(timeout=5000)
         steps["clicked_region_button"] = True
         await page.wait_for_timeout(500)
+        # Optional passive witness at the exact point used for input discovery.
+        # No extra click, sleep or network operation from the core flow.
+        if on_after_open is not None:
+            observed = on_after_open()
+            if inspect.isawaitable(observed):
+                await observed
         inputs = page.locator('input[placeholder*="지역"], input[placeholder*="동네"], [role="dialog"] input, [role="combobox"]')
         if await inputs.count() == 0:
             steps["error"] = "region_input_not_found"
