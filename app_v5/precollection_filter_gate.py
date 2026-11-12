@@ -31,6 +31,91 @@ _REPORT_STATUS = (
     "BLOCKED_UI_RECHECK", "PRECOLLECTION_READY_REVIEW",
 )
 _MAX_BODY = 2_000_000
+_URL_FIELDS = ("keyword", "region", "category", "price_max", "available")
+_URL_FIELD_STATES = ("EXPECTED", "MISSING", "OTHER", "DUPLICATE", "UNOBSERVABLE")
+_URL_SHAPES = ("FIRST_PARTY_SEARCH", "OTHER_PATH_OR_ORIGIN", "UNOBSERVABLE")
+_UI_RECHECK_STATES = (
+    "NOT_RUN", "OBSERVED_MATCH", "OBSERVED_MISMATCH",
+    "PARTIAL_OBSERVATION", "NOT_OBSERVABLE",
+)
+_TRANSPORT_COUNTS = (
+    "search_requests", "search_fetch_requests", "search_document_requests",
+    "search_other_method_requests", "search_exact_query_requests",
+    "search_different_query_requests", "search_responses",
+    "search_response_200", "search_response_restricted",
+    "search_response_other", "search_request_failures",
+)
+_DEFAULT_FILTER_FIELDS = {key: "MISSING" for key in
+                          ("region", "category", "price_max", "available")}
+
+
+def _same_public_search_path(url):
+    try:
+        u = urlsplit(url)
+        return (
+            u.scheme == "https" and u.hostname == "www.daangn.com"
+            and u.port is None and u.path == core.SEARCH_PATH
+        )
+    except (ValueError, AttributeError, TypeError):
+        return False
+
+
+def classify_filter_url(url, expected_region=REGION):
+    """Only finite comparisons; never emit a raw URL/key/value or query."""
+    result = {
+        "shape": "UNOBSERVABLE", "unexpected_keys": -1,
+        "fields": {name: "UNOBSERVABLE" for name in _URL_FIELDS},
+    }
+    if type(url) is not str or len(url) > 4096:
+        return result
+    result["shape"] = (
+        "FIRST_PARTY_SEARCH" if _same_public_search_path(url)
+        else "OTHER_PATH_OR_ORIGIN"
+    )
+    if result["shape"] != "FIRST_PARTY_SEARCH":
+        return result
+    try:
+        params = parse_qs(urlsplit(url).query, keep_blank_values=True)
+    except (ValueError, AttributeError, TypeError):
+        result["shape"] = "UNOBSERVABLE"
+        return result
+    expected = {
+        "keyword": ("q", KEYWORD),
+        "region": ("in", expected_region["slug"]),
+        "category": ("category_id", str(CATEGORY_ID)),
+        "price_max": ("price", "__" + str(MAX_PRICE)),
+        "available": ("only_on_sale", "true"),
+    }
+    known = {p for p, _ in expected.values()}
+    result["unexpected_keys"] = min(20, sum(k not in known for k in params))
+    for label, (key, value) in expected.items():
+        choices = params.get(key)
+        result["fields"][label] = (
+            "MISSING" if choices is None else
+            "DUPLICATE" if len(choices) != 1 else
+            "EXPECTED" if choices[0] == value else "OTHER"
+        )
+    return result
+
+
+def sanitize_filter_url_diagnostic(raw):
+    src = raw if type(raw) is dict else {}
+    f = src.get("fields") if type(src.get("fields")) is dict else {}
+    return {
+        "shape": _kind(src.get("shape"), _URL_SHAPES, "UNOBSERVABLE"),
+        "unexpected_keys": _bounded(src.get("unexpected_keys")),
+        "fields": {
+            k: _kind(f.get(k), _URL_FIELD_STATES, "UNOBSERVABLE")
+            for k in _URL_FIELDS
+        },
+    }
+
+
+def sanitize_filter_transport_diagnostic(raw):
+    src = raw if type(raw) is dict else {}
+    return {k: _bounded(src.get(k)) for k in _TRANSPORT_COUNTS}
+
+
 
 
 def _kind(value, allowed, default):
@@ -59,6 +144,13 @@ def sanitize_precollection(value):
         "ui_selected_after_apply": src.get("ui_selected_after_apply") is True,
         "filter_apply_returned": src.get("filter_apply_returned") is True,
         "filtered_url_matches": src.get("filtered_url_matches") is True,
+        "filtered_url_diagnostics": sanitize_filter_url_diagnostic(
+            src.get("filtered_url_diagnostics")),
+        "filter_transport_diagnostics": sanitize_filter_transport_diagnostic(
+            src.get("filter_transport_diagnostics")),
+        "ui_after_apply_recheck_state": _kind(
+            src.get("ui_after_apply_recheck_state"),
+            _UI_RECHECK_STATES, "NOT_RUN"),
         "filtered_route_count": _bounded(src.get("filtered_route_count")),
         "server_filters": {
             k: _kind(states.get(k), _ITEM_STATUS, "MISSING")
@@ -76,8 +168,7 @@ def sanitize_precollection(value):
 def _unique_query(url, expected_region=REGION):
     try:
         u = urlsplit(url)
-        if (u.scheme != "https" or u.hostname != "www.daangn.com"
-                or u.port is not None or u.path != core.SEARCH_PATH):
+        if not _same_public_search_path(url):
             return False
         q = parse_qs(u.query, keep_blank_values=True)
         if any(k not in {"q", "in", "category_id", "price",
