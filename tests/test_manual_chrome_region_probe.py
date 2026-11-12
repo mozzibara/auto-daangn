@@ -282,6 +282,11 @@ class MissingClickWitnessDiagnostics(unittest.TestCase):
         self.assertEqual(obs["tracked_tab_focused"], "YES")
         for forbidden in ("PRIVATE", "SECRET", "cookies", "raw_target"):
             self.assertNotIn(forbidden, json.dumps(once))
+        malformed = sanitize_manual_report({
+            "observer_diagnostics": "PRIVATE_SECRET_TOKEN"})
+        self.assertEqual(malformed["observer_diagnostics"]["classification"],
+                         "INCONCLUSIVE")
+        self.assertNotIn("PRIVATE", json.dumps(malformed))
 
 
 class FakePageWithMissingClick:
