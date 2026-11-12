@@ -56,10 +56,12 @@ def now():
 
 class RouteBodies:
     """Bounded, passive in-memory collector; models must match known UI responses."""
-    def __init__(self,field_probe=None,expected_region=None,allowed_areas=None):
+    def __init__(self,field_probe=None,expected_region=None,allowed_areas=None,
+                 area_secret=None):
         self.field_probe=field_probe
         self.expected_region=expected_region
         self.allowed_areas=allowed_areas
+        self.area_secret=area_secret
         self.events=[]
         self.tasks=set()
         self.errors=0
@@ -104,7 +106,8 @@ class RouteBodies:
                         return
                     model,field_shape=enhance_observed_fields(
                         raw,model,expected_region=self.expected_region,
-                        allowed_areas=self.allowed_areas)
+                        allowed_areas=self.allowed_areas,
+                        area_secret=self.area_secret)
                     if model is None:
                         self.errors+=1
                         return
@@ -151,7 +154,7 @@ class RouteBodies:
 
 
 def enhance_observed_fields(raw, model, *, expected_region=None,
-                            allowed_areas=None):
+                            allowed_areas=None, area_secret=None):
     """Fill nested category.id only when explicitly present in matched response."""
     try:
         value=json.loads(raw)
@@ -213,6 +216,14 @@ def enhance_observed_fields(raw, model, *, expected_region=None,
                   'status':ITEM_AREA_UNKNOWN,'area_key':None})
         row['item_area_status']=area['status']
         row['item_area_key']=area['area_key']
+        # A per-capture keyed pseudonym is safe for public rank-linked
+        # diagnostics. The readable district key stays only in memory and
+        # subsequently in the owner's encrypted manifest.
+        row['item_area_token']=(
+            hmac.new(area_secret,b'v435/area/'+area['area_key'].encode('ascii'),
+                     hashlib.sha256).hexdigest()[:20]
+            if area['area_key'] is not None and type(area_secret) is bytes
+            and len(area_secret)==32 else None)
         item_area_counts[area['status']]+=1
     return model,{'status':'OBSERVED_ITEM_FIELD_SHAPE',
                   'category_sources':dict(cats),'availability_sources':dict(sales),
@@ -563,7 +574,8 @@ async def capture(browser,name,region,options,salt):
             category_id=1,category_name=v46.CATALOG[1],available_only=True,
             min_price=0,max_price=50000,settle_ms=options.settle_ms,timeout=options.timeout)
         bodies=RouteBodies(expected_region=core.BY_KEY[region],
-                          allowed_areas=approved_item_areas)
+                          allowed_areas=approved_item_areas,
+                          area_secret=salt)
         passive.phase='FILTER_APPLY'
         page.on('response',bodies.on_response)
         try:
