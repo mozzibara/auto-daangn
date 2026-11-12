@@ -543,7 +543,8 @@ def classify(folder: Path) -> dict[str, str]:
         "login_dialog_signals","region_dialog_inputs","busy_signals",
     )
     for stage in ("AFTER_FIRST","AFTER_FOLLOWUP_GATE",
-                  "AFTER_CORE_SETTLE","AFTER_SETTLE"):
+                  "AFTER_CORE_SETTLE","AFTER_SETTLE",
+                  "AFTER_DELAYED_SETTLE"):
         row = lifecycle_steps.get(stage)
         row = row if type(row) is dict else {}
         pre = f"LIFECYCLE_{stage}"
