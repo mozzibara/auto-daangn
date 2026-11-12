@@ -272,6 +272,81 @@ Interpret `apply_activation.one_trusted_click=true` as
 identify the next failure boundary. Never continue collecting before
 the strict filter evidence is independently confirmed.
 
+### Region lost from filter Apply URL — OCI observation 2026-11-13
+
+After PR #61 (`101e359`), the owner ran 8/8 new offline tests and
+one approved OCI FILL precollection check:
+
+- Verified target locality as usual: one trusted header click (timeout
+  reconciled), unique target keyword API response, one **fresh** expected
+  search Route, `server_search=EXPECTED`, `server_filter=EXPECTED`,
+  selected UI EXPECTED.
+- The visible category=Digital Devices, maximum price KRW 50,000 and
+  available-only controls were selected *before* Apply.
+- The single Apply click was independently witnessed as **one trusted**
+  pointerdown/up, mousedown/up and click; Playwright returned without
+  error (`apply_action_stage=AFTER_TRANSPORT_DRAIN`,
+  `apply_action_exception_kind=NONE`).
+- During Apply exactly **one browser-generated fetch/xhr request** was
+  observed, receiving HTTP 200. It did not match the original *all-five*
+  query shape (`search_exact_query_requests=0`).
+- In the resulting public search URL the four conditions for **keyword,
+  category, price maximum and available-only are EXPECTED**; the sole
+  missing expected field is **region `in`**. There were zero additional
+  query keys.
+- Thus `filtered_url_matches=false`, `filtered_route_count=0`,
+  `status=BLOCKED_FILTER_URL`. After-Apply filter UI was never
+  rechecked (`NOT_RUN`). None of the server filters can be inferred
+  from this non-admitted response in the earlier instrumentation.
+
+This proves **the public UI Apply action produced a regionless filtered
+search URL**, not that server locality was reset. Conversely, prior
+region selection does **not** prove that the *post-Apply* search region
+survived. Repeating Apply or injecting a fabricated region query is not
+warranted.
+
+A read-only, **non-admitting** targeted observer now additionally
+classifies the **single browser-generated first-party Route response**
+whose query has precisely the four expected keyword/category/price/
+availability fields but **no `in`** and no extra/duplicate keys:
+- It may inspect at most 2 MB of the already-observed JSON response
+  **in memory**, reduce only `searchRegion.id`,
+  `currentFilters.regionId` and the known category/price/availability
+  metadata to `EXPECTED/MISSING/OTHER/AMBIGUOUS` values, and discard
+  the source body. It deliberately does not traverse `buySellArticles`
+  or serialize raw location, URL, listing, seller or other private values.
+- It reports `regionless_route_count`,
+  `regionless_route_status=NOT_OBSERVED/ONE_PARSED/ONE_UNREADABLE/
+  MULTIPLE_OBSERVED`, and `regionless_server_filters`.
+- The existing public header control is passively checked after Apply;
+  `post_apply_region_header` is one finite family: TARGET,
+  CHEONAN_OTHER, ASAN, SEOUL, OTHER or UNOBSERVABLE.
+- The original strict `_unique_query`, accepted
+  `filtered_route_count`, post-Apply UI recheck and
+  `PRECOLLECTION_EVIDENCE_COMPLETE` predicates are **unchanged**.
+  Even a regionless response that claims server region EXPECTED
+  **cannot authorize listing collection** without a separately
+  reviewed and proven URL/Route admission policy.
+
+After passing all offline CI checks, the owner may choose to run
+**one** manual, robots-permitted OCI precollection test:
+
+```bash
+cd "$HOME/code/auto-daangn-region-diagnostic"
+git pull --ff-only
+source .venv/bin/activate
+python -m unittest discover -s tests -p 'test_oci_filter_regionless_route.py' -v
+set -o pipefail
+xvfb-run -a python -m ops.oci.precollection --live --headed --owner-approval I_APPROVE_OCI_PRECOLLECTION_FILL_V1 | tee "$HOME/daangn_oci_regionless_filter_route.json"
+```
+
+If `regionless_server_filters.region=OTHER` or MISSING, the
+postfilter search locality is not confirmed; keep capture disabled.
+If `EXPECTED`, this is useful supporting evidence but still not
+authority to waive the mandatory `in` or post-Apply UI checks.
+The purpose of this test is **diagnostic attribution**, not success
+by relaxing guards.
+
 ### Outcome interpretation
 
 | Status | Operational interpretation |
