@@ -14,6 +14,9 @@ from urllib.parse import parse_qs, urlsplit
 
 import daangn_v4_1_core as core
 import daangn_browser_v4_6 as v46
+from app_v5.filter_apply_activation import (
+    FilterApplyActivationWitness, sanitize_apply_activation,
+)
 
 REGION = core.BY_KEY["cheonan"]
 CATEGORY_ID = 1
@@ -47,6 +50,14 @@ _TRANSPORT_COUNTS = (
 )
 _DEFAULT_FILTER_FIELDS = {key: "MISSING" for key in
                           ("region", "category", "price_max", "available")}
+
+_APPLY_STAGES = (
+    "NOT_STARTED", "LOCATE_FILTER_CONTROLS", "FILTER_CONTROLS_READY",
+    "BEFORE_APPLY_CLICK", "AFTER_APPLY_CLICK", "AFTER_APPLY_SETTLE",
+    "AFTER_TRANSPORT_DRAIN", "BEFORE_UI_RECHECK", "AFTER_UI_RECHECK",
+    "COMPLETE",
+)
+_APPLY_EXCEPTION_KINDS = ("NONE", "PLAYWRIGHT_TIMEOUT", "OTHER_EXCEPTION")
 
 
 def _same_public_search_path(url):
@@ -143,6 +154,13 @@ def sanitize_precollection(value):
         "ui_selected_before_apply": src.get("ui_selected_before_apply") is True,
         "ui_selected_after_apply": src.get("ui_selected_after_apply") is True,
         "filter_apply_returned": src.get("filter_apply_returned") is True,
+        "apply_action_stage": _kind(
+            src.get("apply_action_stage"), _APPLY_STAGES, "NOT_STARTED"),
+        "apply_action_exception_kind": _kind(
+            src.get("apply_action_exception_kind"),
+            _APPLY_EXCEPTION_KINDS, "NONE"),
+        "apply_activation": sanitize_apply_activation(src.get("apply_activation")),
+        "apply_request_listener_armed": src.get("apply_request_listener_armed") is True,
         "filtered_url_matches": src.get("filtered_url_matches") is True,
         "filtered_url_diagnostics": sanitize_filter_url_diagnostic(
             src.get("filtered_url_diagnostics")),
@@ -361,79 +379,128 @@ class PassiveFilteredRoute:
 
 
 async def verify_filter_before_collection(page, region=REGION):
-    """Only run on *already confirmed* same-page FILL locality.
+    """Fail-closed FILL-only public filter Apply, ending before listing collection.
 
-    Public UI filter Apply is allowed; all listing/detail collection is blocked.
-    Any missing source metadata means READY is denied, even when the URL looks
-    correctly filtered. No use of the production keyring or database.
+    After *any* exception, preserve already observed click/URL/request categories.
+    Do not replay Apply, force click, infer a server price from URL or inspect
+    listing fields. All output passes the fixed privacy sanitizer.
     """
     info = {
         "region_gate_confirmed": True, "status": "BLOCKED_PRECONDITION",
         "server_filters": {}, "filtered_route_count": 0,
         "ui_after_apply_recheck_state": "NOT_RUN",
+        "apply_action_stage": "NOT_STARTED",
+        "apply_action_exception_kind": "NONE",
     }
     if (region is not REGION and region != REGION) or not page.url.startswith(
             "https://www.daangn.com/kr/search/buy-sell/"):
         return sanitize_precollection(info)
+
     args = SimpleNamespace(
         category_name="디지털기기", category_id=CATEGORY_ID,
         available_only=True, max_price=MAX_PRICE, min_price=0)
     watcher = PassiveFilteredRoute()
+    witness = FilterApplyActivationWitness()
+    listeners = []
     try:
+        info["apply_action_stage"] = "LOCATE_FILTER_CONTROLS"
         button, selected = await v46.set_filter(page, args, [])
+        info["apply_action_stage"] = "FILTER_CONTROLS_READY"
         info["ui_selected_before_apply"] = v46.ui_ok(selected, args)
-        if not info["ui_selected_before_apply"]:
+        if not info["ui_selected_before_apply"] or not await button.is_enabled():
             info["status"] = "BLOCKED_FILTER_CONTROL"
-            return sanitize_precollection(info)
-        if not await button.is_enabled():
-            info["status"] = "BLOCKED_FILTER_CONTROL"
-            return sanitize_precollection(info)
-        page.on("request", watcher.on_request)
-        page.on("response", watcher.on_response)
-        page.on("requestfailed", watcher.on_requestfailed)
-        try:
+        else:
+            # Merely install a read-only witness on the exact, already
+            # validated Apply control. An observer failure does not authorize
+            # or force a click, or alter default Playwright action behavior.
+            await witness.arm(button)
+            for name, callback in (
+                    ("request", watcher.on_request),
+                    ("response", watcher.on_response),
+                    ("requestfailed", watcher.on_requestfailed)):
+                page.on(name, callback)
+                listeners.append((name, callback))
+            info["apply_request_listener_armed"] = True
+            info["apply_action_stage"] = "BEFORE_APPLY_CLICK"
             await button.click(timeout=6000)
             info["filter_apply_returned"] = True
+            info["apply_action_stage"] = "AFTER_APPLY_CLICK"
             await page.wait_for_timeout(1800)
+            info["apply_action_stage"] = "AFTER_APPLY_SETTLE"
             await watcher.drain()
-        finally:
-            page.remove_listener("request", watcher.on_request)
-            page.remove_listener("response", watcher.on_response)
-            page.remove_listener("requestfailed", watcher.on_requestfailed)
-        info["filtered_route_count"] = watcher.observed
-        info["filter_transport_diagnostics"] = watcher.diagnostics.copy()
-        info["filtered_url_diagnostics"] = classify_filter_url(page.url, region)
-        if watcher.restricted:
-            info["status"] = "BLOCKED_ACCESS_RESTRICTED"
-            return sanitize_precollection(info)
-        info["filtered_url_matches"] = _unique_query(page.url, region)
-        if not info["filtered_url_matches"]:
-            info["status"] = "BLOCKED_FILTER_URL"
-            return sanitize_precollection(info)
-        after = await v46.check_after(page, args)
-        info["ui_after_apply_recheck_state"] = _kind(
-            after.get("observation_status"), _UI_RECHECK_STATES,
-            "NOT_OBSERVABLE")
-        info["ui_selected_after_apply"] = (
-            after.get("observation_status") == "OBSERVED_MATCH"
-            and v46.ui_ok(after, args))
-        if not info["ui_selected_after_apply"]:
-            info["status"] = "BLOCKED_UI_RECHECK"
-            return sanitize_precollection(info)
-        if len(watcher.events) == 0:
-            info["status"] = "BLOCKED_FILTER_ROUTE_MISSING"
-            return sanitize_precollection(info)
-        if len(watcher.events) != 1 or watcher.observed != 1:
-            info["status"] = "BLOCKED_FILTER_ROUTE_AMBIGUOUS"
-            return sanitize_precollection(info)
-        info["server_filters"] = watcher.events[0]
-        info["strict_filter_evidence"] = all(
-            info["server_filters"].get(k) == "EXPECTED"
-            for k in ("region", "category", "price_max", "available"))
+            info["apply_action_stage"] = "AFTER_TRANSPORT_DRAIN"
+
+            # Freeze the Apply-attributable request window before the UI
+            # recheck, which may itself cause additional browser requests.
+            for name, callback in listeners:
+                page.remove_listener(name, callback)
+            listeners.clear()
+
+            if watcher.restricted:
+                info["status"] = "BLOCKED_ACCESS_RESTRICTED"
+            else:
+                info["filtered_url_matches"] = _unique_query(page.url, region)
+                if not info["filtered_url_matches"]:
+                    info["status"] = "BLOCKED_FILTER_URL"
+                else:
+                    info["apply_action_stage"] = "BEFORE_UI_RECHECK"
+                    after = await v46.check_after(page, args)
+                    info["apply_action_stage"] = "AFTER_UI_RECHECK"
+                    info["ui_after_apply_recheck_state"] = _kind(
+                        after.get("observation_status"), _UI_RECHECK_STATES,
+                        "NOT_OBSERVABLE")
+                    info["ui_selected_after_apply"] = (
+                        after.get("observation_status") == "OBSERVED_MATCH"
+                        and v46.ui_ok(after, args))
+                    if not info["ui_selected_after_apply"]:
+                        info["status"] = "BLOCKED_UI_RECHECK"
+                    elif not watcher.events:
+                        info["status"] = "BLOCKED_FILTER_ROUTE_MISSING"
+                    elif len(watcher.events) != 1 or watcher.observed != 1:
+                        info["status"] = "BLOCKED_FILTER_ROUTE_AMBIGUOUS"
+                    else:
+                        info["server_filters"] = watcher.events[0]
+                        info["strict_filter_evidence"] = all(
+                            info["server_filters"].get(key) == "EXPECTED"
+                            for key in ("region", "category", "price_max",
+                                        "available"))
+                        info["status"] = (
+                            "PRECOLLECTION_READY_REVIEW"
+                            if info["strict_filter_evidence"]
+                            else "BLOCKED_FILTER_ROUTE_METADATA")
+                        info["apply_action_stage"] = "COMPLETE"
+    except Exception as exc:
+        # Never export raw Playwright/website exception messages.
+        from playwright.async_api import TimeoutError as PlaywrightTimeoutError
+        info["apply_action_exception_kind"] = (
+            "PLAYWRIGHT_TIMEOUT" if isinstance(exc, PlaywrightTimeoutError)
+            else "OTHER_EXCEPTION")
         info["status"] = (
-            "PRECOLLECTION_READY_REVIEW" if info["strict_filter_evidence"]
-            else "BLOCKED_FILTER_ROUTE_METADATA")
-    except Exception:
-        info["status"] = "BLOCKED_APPLY_ACTION" if (
-            info.get("ui_selected_before_apply")) else "BLOCKED_FILTER_CONTROL"
+            "BLOCKED_APPLY_ACTION"
+            if info.get("ui_selected_before_apply") is True
+            else "BLOCKED_FILTER_CONTROL")
+    finally:
+        # The previous implementation returned all -1 counters if click()
+        # raised. Inspect the already generated browser events *regardless*
+        # of whether the Playwright action promise returned successfully.
+        if listeners:
+            try:
+                await watcher.drain()
+            except Exception:
+                pass
+        for name, callback in listeners:
+            try:
+                page.remove_listener(name, callback)
+            except Exception:
+                pass
+        if info.get("apply_request_listener_armed") is True:
+            info["filtered_route_count"] = watcher.observed
+            info["filter_transport_diagnostics"] = watcher.diagnostics.copy()
+            try:
+                info["filtered_url_diagnostics"] = classify_filter_url(
+                    page.url, region)
+            except Exception:
+                pass
+        info["apply_activation"] = await witness.sample(page)
+        await witness.stop(page)
     return sanitize_precollection(info)

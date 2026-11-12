@@ -209,6 +209,69 @@ response-body dumps for this investigation; the new fixed enums and
 counters suffice to decide the next scoped change. Do not rerun if
 access is restricted.
 
+### OCI filter Apply action stopped before diagnostics (2026-11-13)
+
+Owner updated to PR #60 main `c8fda4d` and verified **13/13**
+`test_oci_filter_apply_diagnostics.py` tests. One owner-approved OCI
+run returned:
+
+- `region_status=TARGET_REGION_CONFIRMED_DIAGNOSTIC`, header click
+  timeout independently verified, one fresh region Route with expected
+  server search/filter IDs and UI.
+- `precollection.ui_selected_before_apply=true`
+- `precollection.filter_apply_returned=false`,
+  `precollection.status=BLOCKED_APPLY_ACTION`
+- All `filter_transport_diagnostics` counts `-1`, URL
+  classification `UNOBSERVABLE`, UI recheck `NOT_RUN`
+- No listing collection, no detail visits or database writes.
+
+Unlike the previous `BLOCKED_FILTER_URL` run, this attempt stopped
+**while attempting Apply**. Previous code collected the request and
+URL diagnostic snapshots only after the Playwright Apply click promise
+returned and settled; exceptions skipped that snapshot entirely.
+Therefore `-1` means **no snapshot was exported** and does **not**
+prove zero requests, nor does it prove the button was not clicked.
+
+The next diagnostics-only revision fixes this instrumentation gap:
+
+- An exact, already verified `적용하기` BUTTON gets a passive
+  **trusted** `POINTERDOWN/POINTERUP/MOUSEDOWN/MOUSEUP/CLICK`
+  event-count witness, armed before the original `locator.click()`.
+  It records at most bounded counts, never button text/HTML or any
+  browser private data.
+- `apply_action_stage` and `apply_action_exception_kind`
+  distinguish a Playwright `TimeoutError` at Apply from errors in
+  control setup, postclick settle, network observation or UI recheck.
+- A `finally` clause exports **already observed** first-party search
+  request/response counters and the redacted filter URL classification
+  even if Apply raises; `apply_request_listener_armed` distinguishes
+  an armed observer with zero requests from a never armed observer
+  with `-1` counts.
+- This feature **does not recover from the Apply timeout, repeat the
+  click, open a second filter pane, generate extra requests or relax
+  the strict URL/Route/price+category+available-only proof**.
+  The operator result must still show `STOP_FILTERS_NOT_VERIFIED`
+  when Apply is incomplete even if one trusted click is witnessed.
+
+After successful offline CI and merge, owner may run at most one fresh
+approved precollection experiment when normal site access permits:
+
+```bash
+cd "$HOME/code/auto-daangn-region-diagnostic"
+git pull --ff-only
+source .venv/bin/activate
+python -m unittest discover -s tests -p 'test_oci_filter_apply_timeout.py' -v
+set -o pipefail
+xvfb-run -a python -m ops.oci.precollection --live --headed --owner-approval I_APPROVE_OCI_PRECOLLECTION_FILL_V1 | tee "$HOME/daangn_oci_apply_action_diagnostic.json"
+```
+
+Interpret `apply_activation.one_trusted_click=true` as
+**one dispatched browser event only**, not filter success. Compare
+`apply_action_exception_kind`, `apply_action_stage`,
+`filter_transport_diagnostics` and `filtered_url_diagnostics` to
+identify the next failure boundary. Never continue collecting before
+the strict filter evidence is independently confirmed.
+
 ### Outcome interpretation
 
 | Status | Operational interpretation |
