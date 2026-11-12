@@ -325,3 +325,30 @@ class RegionOptionEventWitness:
         raw["purpose"] = classify_option_purpose(
             raw, server_region=server_region, visible_control=visible_control)
         return sanitize_option_event(raw)
+
+
+async def verify_single_target_click_after_timeout(page, witness):
+    """Passive strict proof that the already-armed *exact* option was clicked.
+
+    A browser-emitted trusted pointerdown/up and a unique target click
+    must all be observed on the same element. No JS events or second
+    interactions are generated here. Page transition may close the dialog.
+    """
+    if witness._armed is not True:
+        return False
+    try:
+        raw = await page.evaluate(_SNAPSHOT_JS)
+        snapshot = sanitize_option_snapshot(raw)
+        epoch = await witness.trusted_click_epoch_ms(page)
+    except Exception:
+        return False
+    # No duplicate/replayed event and no userland synthetic click.
+    return (
+        snapshot["events"] == [
+            "POINTER_DOWN", "POINTER_UP", "CLICK_TARGET", "CLICK_DOCUMENT"]
+        and snapshot["click_trusted"] == "YES"
+        and snapshot["document_bubble"] == "YES"
+        and snapshot["event_target"] in ("BUTTON", "DESCENDANT")
+        and type(epoch) is int and 1_000_000_000_000 <= epoch <=
+        9_999_999_999_999
+    )
