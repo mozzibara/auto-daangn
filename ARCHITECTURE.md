@@ -43,6 +43,20 @@ OCI SECOND-INSTANCE (E2.1.Micro, ~1 GB RAM)
 | Telegram | Notifications and narrowly scoped user responses | Act as the authoritative state database or publish bot credentials |
 | Deferred backup | Google Drive / NAS are future options; no automatic backup currently runs | Enable cloud uploads without a new owner decision |
 
+### Explicit exception: isolated OCI operator-run precollection experiment
+
+A separate **manual, unprivileged, owner-approved** FILL-only Chrome diagnostic
+can run in an isolated home-directory source checkout on the OCI x86_64 host.
+It checks a single public region selection and visible public filter controls
+plus first-party Route metadata, then stops before any listing field export,
+article/detail visit, capture signing or SQLite import. This is **not** a new
+feature of the `ops/oci/runtime.py` production import daemon and is never
+started by its systemd services/timers. No production state or credentials are
+loaded. See [OCI FILL precollection gate](docs/research/OCI_FILL_PRECOLLECTION_GATE.md).
+Promoting browser work into the production OCI role requires a separate
+resource/security/scheduling decision. The import-only baseline remains
+unchanged.
+
 ## P0: public repository / trust plane (current work)
 
 - Repository: `mozzibara/auto-daangn` Public. Private development history retained
