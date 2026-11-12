@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import inspect
 import json
+import os
 from pathlib import Path
 import unittest
 from unittest.mock import patch
@@ -317,6 +318,7 @@ class OperatorGateTests(unittest.IsolatedAsyncioTestCase):
 
 
 class EnvironmentGuards(unittest.TestCase):
+    @unittest.skipUnless(os.name == "posix", "OCI path ownership is POSIX-only")
     def test_operator_cwd_must_be_own_isolated_clone(self):
         # Root execution cannot be allowed by supplying a forged cwd.
         with patch("ops.oci.precollection.os.geteuid",return_value=1000):
