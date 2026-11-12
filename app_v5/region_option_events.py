@@ -78,7 +78,9 @@ _INSTALL_JS = r"""(el, meta) => {
              label.includes(meta.city) ? 'CITY' : 'OTHER';
     })()
   };
-  const seen = {events: [], click_trusted:'UNKNOWN',
+  // In-page wall clock timestamp is used ONLY inside the current live
+  // request chronology witness; never exported in diagnostic snapshots.
+  const seen = {events: [], click_trusted:'UNKNOWN', click_epoch_ms:0,
                 default_prevented:'UNKNOWN', event_target:'UNKNOWN',
                 document_bubble:'UNKNOWN',
                 child_mutations:0, attribute_mutations:0,
@@ -96,6 +98,7 @@ _INSTALL_JS = r"""(el, meta) => {
     if (!el.contains(e.target)) return;
     emit('CLICK_TARGET');
     seen.click_trusted = e.isTrusted ? 'YES' : 'NO';
+    if(e.isTrusted && !seen.click_epoch_ms) seen.click_epoch_ms = Date.now();
     seen.event_target = e.target === el ? 'BUTTON' : 'DESCENDANT';
     seen.default_prevented = e.defaultPrevented ? 'YES' : 'NO';
     queueMicrotask(() => {
@@ -183,6 +186,15 @@ _INSTALL_JS = r"""(el, meta) => {
 _SNAPSHOT_JS = r"""() => {
   const key=Symbol.for('auto_daangn_region_option_witness_v1');
   return document[key]?.snapshot?.() || null;
+}"""
+
+_CLICK_EPOCH_JS = r"""() => {
+  const key=Symbol.for('auto_daangn_region_option_witness_v1');
+  const witness=document[key]?.snapshot?.();
+  const epoch=witness?.click_epoch_ms;
+  return witness?.click_trusted==='YES' &&
+         Number.isSafeInteger(epoch) && epoch >= 1000000000000 ?
+         epoch : null;
 }"""
 
 _STOP_JS = r"""() => {
@@ -291,6 +303,15 @@ class RegionOptionEventWitness:
         except Exception:
             raw = None
         self.checkpoints[stage] = sanitize_option_snapshot(raw)
+
+    async def trusted_click_epoch_ms(self, page):
+        """In-memory chronology only; never part of the public export."""
+        try:
+            value = await page.evaluate(_CLICK_EPOCH_JS)
+            return value if type(value) is int and (
+                1_000_000_000_000 <= value <= 9_999_999_999_999) else None
+        except Exception:
+            return None
 
     async def stop(self, page):
         try:
