@@ -58,6 +58,12 @@ class LifecycleTests(unittest.TestCase):
             "AFTER_SETTLE": snapshot(
                 state="NO_DIALOG", buttons=0, region=0,
                 target=0, city=0),
+            "AFTER_DELAYED_SETTLE": {
+                **snapshot(state="NO_DIALOG", buttons=0,
+                           region=0, target=0, city=0),
+                "selected_control": "EXPECTED",
+                "unknown_id": "SECRET_OWNER_LINK",
+            },
         }, "owner_secret": "PRIVATE_TITLE", "authorizes_listings": True}
         first = sanitize_region_lifecycle(input_row)
         second = sanitize_region_lifecycle(first)
@@ -71,6 +77,10 @@ class LifecycleTests(unittest.TestCase):
         self.assertNotIn("PRIVATE", json.dumps(first))
         self.assertNotIn("SECRET", json.dumps(first))
         self.assertNotIn("raw_DOM", json.dumps(first))
+        self.assertEqual(
+            first["checkpoints"]["AFTER_DELAYED_SETTLE"]["selected_control"],
+            "EXPECTED")
+        self.assertNotIn("SECRET_OWNER_LINK", json.dumps(first))
 
     def test_unknown_dom_data_never_exits_report_boundary(self):
         raw = {"region_lifecycle": {"checkpoints": {
@@ -130,6 +140,12 @@ class ReporterBoundaryTests(unittest.TestCase):
                         "AFTER_SETTLE":snapshot(state="POSSIBLE_LOGIN_GATE",
                                                 buttons=2,region=0,target=0,
                                                 city=0,login=1),
+                        "AFTER_DELAYED_SETTLE":{
+                            **snapshot(state="DIALOG_WITHOUT_CONTROLS",
+                                       buttons=0,region=0,target=0,city=0),
+                            "selected_control":"EXPECTED",
+                            "unknown_pii":"SECRET_PRIVATE_LINK",
+                        },
                     }, "raw_sensitive_dom":"PRIVATE_TOKEN"},
                 }},
             }]}}
@@ -144,6 +160,9 @@ class ReporterBoundaryTests(unittest.TestCase):
                              "POSSIBLE_LOGIN_GATE")
             self.assertEqual(result["LIFECYCLE_AFTER_SETTLE_LOGIN_DIALOG_SIGNALS"],"1")
             self.assertEqual(result["LIFECYCLE_AUTHORIZES_LISTINGS"],"NO")
+            self.assertEqual(
+                result["LIFECYCLE_AFTER_DELAYED_SETTLE_SELECTED_CONTROL"],
+                "EXPECTED")
             for value in ("PRIVATE_TOKEN","SECRET","raw_DOM","full_user_address"):
                 self.assertNotIn(value,str(result))
 
