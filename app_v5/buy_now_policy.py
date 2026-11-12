@@ -90,7 +90,8 @@ def assess_local_buy_now(buy_now_status, item_locality_status) -> dict:
     }
 
 
-def assess_configured_district(buy_now_status, item_area_status, area_key) -> dict:
+def assess_configured_district(buy_now_status, item_area_status, area_key=None,
+                               *, area_token=None) -> dict:
     """District-specific admission; legacy city-wide status never suffices.
 
     Search locality and shipping toggle are independent. Unknown regions and
@@ -101,12 +102,15 @@ def assess_configured_district(buy_now_status, item_area_status, area_key) -> di
         sanitize_area_status, configured_label,
     )
     area = sanitize_area_status(item_area_status)
-    valid_key = (
-        type(area_key) is str and configured_label(area_key) is not None
-    )
+    import re
+    valid_key=(type(area_key) is str and
+               configured_label(area_key) is not None)
+    valid_token=(type(area_token) is str and
+                 re.fullmatch(r'[a-f0-9]{20}',area_token) is not None)
+    valid_witness=valid_key or valid_token
     if area == DISTRICT_OUTSIDE:
         decision = OUTSIDE
-    elif area != DISTRICT_ALLOWED or not valid_key:
+    elif area != DISTRICT_ALLOWED or not valid_witness:
         decision = HOLD
     elif buy_now_status == UNVERIFIED:
         decision = HOLD
@@ -119,7 +123,10 @@ def assess_configured_district(buy_now_status, item_area_status, area_key) -> di
     return {
         "decision": decision,
         "item_area_status": area,
-        "area_key": area_key if decision in (LOCAL_RETAIN, ORDINARY) else None,
+        "area_key": area_key if valid_key and decision in
+                    (LOCAL_RETAIN, ORDINARY) else None,
+        "area_token": area_token if valid_token and decision in
+                      (LOCAL_RETAIN, ORDINARY) else None,
         "retain_for_review": decision in (LOCAL_RETAIN, ORDINARY),
         "direct_trade_confirmed": False,
         "search_region_gate_overridden": False,
