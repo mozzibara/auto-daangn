@@ -20,7 +20,7 @@ from daangn_state_controls_v4_23 import project_v428_diagnosis
 from app_v5.sealed_import import validate_manifest
 from daangn_secure_links_v4_34 import markdown_manifest
 
-URL = "https://www.daangn.com/kr/buy-sell/fake-test-AbCdEf123456/"
+URL = "https://www.daangn.com/kr/buy-sell/test-abcdefghijkl/"
 
 
 class AllowlistConfigTests(unittest.TestCase):
