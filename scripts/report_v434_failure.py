@@ -524,6 +524,25 @@ def classify(folder: Path) -> dict[str, str]:
             and 0 <= second["stability_samples"] <= 6 else "UNKNOWN"),
         "SECOND_CHOICE_AUTHORIZES_LISTINGS": "NO",
     }
+    # Request-start chronology: responses which arrive after a click may
+    # have been requested before it. Never emit raw request URLs/timestamps.
+    chronology = navigation.get("request_chronology")
+    chronology = chronology if type(chronology) is dict else {}
+    chron_states = {"NO_TRUSTED_CLICK_EPOCH","NO_POSTCLICK_REQUEST",
+                    "POSTCLICK_REQUEST_OBSERVED"}
+    chron_state = chronology.get("state")
+    chron_fields = {
+        "CHRONOLOGY_STATE": (
+            chron_state if type(chron_state) is str
+            and chron_state in chron_states else "UNKNOWN"),
+    }
+    for k in ("requests_started_before","requests_started_after",
+              "responses_without_matching_request","eligible_response_count"):
+        value = chronology.get(k)
+        chron_fields["CHRONOLOGY_"+k.upper()] = (
+            str(value) if type(value) is int and 0 <= value <= 20
+            else "UNKNOWN")
+    chron_fields["CHRONOLOGY_AUTHORIZES_LISTINGS"] = "NO"
     # Privacy-bounded UI lifecycle: no DOM text, URLs or unknown attributes.
     lifecycle = navigation.get("region_lifecycle")
     lifecycle = lifecycle if type(lifecycle) is dict else {}
@@ -778,6 +797,7 @@ def classify(folder: Path) -> dict[str, str]:
         **readiness_fields,
         **second_fields,
         **lifecycle_fields,
+        **chron_fields,
         **surface_fields,
     }
 
