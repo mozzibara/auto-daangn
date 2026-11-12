@@ -34,6 +34,7 @@ from app_v5.region_baseline_contrast import (
 from app_v5.region_picker_phases import (
     RegionPickerPhaseWitness, sanitize_picker_phases,
 )
+from app_v5.region_header_activation import HeaderActivationWitness
 from app_v5.region_option_events import RegionOptionEventWitness
 from app_v5.region_readiness import RegionReadinessWitness
 from app_v5.region_suggestion import RegionSuggestionObserver
@@ -222,6 +223,8 @@ async def one_public_region(browser, mode, *, timezone_id=None):
     network = ManualSearchResponses(region)
     lifecycle = RegionLifecycleWitness(region)
     picker_phase = RegionPickerPhaseWitness(region)
+    header_activation = HeaderActivationWitness()
+    header_activation_snapshot = None
     picker_phase_armed = False
     observed_input = None
     input_matches = False
@@ -296,6 +299,7 @@ async def one_public_region(browser, mode, *, timezone_id=None):
             input_focus["AFTER_CLICK"] = await sample_region_focus(page)
             await option_probe.checkpoint(page, "AFTER_CLICK")
 
+        await header_activation.arm(page)
         steps = await core.ui_select_region(
             page, region, on_before_search=before_search,
             on_after_open=after_open,
@@ -309,6 +313,7 @@ async def one_public_region(browser, mode, *, timezone_id=None):
         await picker_phase.sample(page,"AFTER_CORE_RETURN")
         await page.wait_for_timeout(4200)
         await picker_phase.sample(page,"AFTER_SETTLE_4200MS")
+        header_activation_snapshot = await header_activation.sample(page)
         input_focus["AFTER_4000MS"] = await sample_region_focus(page)
         header_transition=classify_region_header_transition(
             original_header,await read_region_header_volatile(page),
@@ -379,7 +384,10 @@ async def one_public_region(browser, mode, *, timezone_id=None):
             "header_transition":header_transition,
             "picker_phase_diagnostics":picker_phase.export(
                 error=steps.get("error"),
-                readiness=readiness.export()["state"]),
+                readiness=readiness.export()["state"],
+                core_progress_stage=steps.get("progress_stage"),
+                core_header_click_returned=steps.get("clicked_region_button"),
+                header_activation=header_activation_snapshot),
         })
     except Exception:
         return sanitize_attempt({"mode": mode, "status": "UNEXPECTED_EXCEPTION",
@@ -390,9 +398,11 @@ async def one_public_region(browser, mode, *, timezone_id=None):
                                  "header_transition":header_transition,
                                  "picker_phase_diagnostics":picker_phase.export(
                                      error="RuntimeError",
-                                     readiness=readiness.export()["state"])})
+                                     readiness=readiness.export()["state"],
+                                     header_activation=header_activation_snapshot)})
     finally:
         if page is not None:
+            await header_activation.stop(page)
             if picker_phase_armed:
                 page.remove_listener("request", picker_phase.on_request)
                 page.remove_listener("response", picker_phase.on_response)
