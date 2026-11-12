@@ -148,9 +148,15 @@ def main(argv=None):
     parser.add_argument("--headed", action="store_true")
     parser.add_argument("--owner-approval", default="")
     options = parser.parse_args(argv)
-    report = asyncio.run(run(
-        approve=options.owner_approval, live=options.live,
-        headed=options.headed))
+    if not (options.live and options.headed
+            and options.owner_approval == _APPROVAL):
+        # No asyncio event loop or browser/robots client is constructed
+        # without the full literal one-shot operator approval.
+        report = blocked("OWNER_APPROVAL_REQUIRED")
+    else:
+        report = asyncio.run(run(
+            approve=options.owner_approval, live=options.live,
+            headed=options.headed))
     print(json.dumps(report, ensure_ascii=False, sort_keys=True, indent=2))
     return 0 if report["status"] == "PRECOLLECTION_EVIDENCE_COMPLETE" else 2
 
