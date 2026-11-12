@@ -253,3 +253,84 @@ def compare_baselines(local, hosted):
         "proves_host_causation":False,
         "authorizes_listings":False,
     }
+
+
+_HEADER_JS = r"""() => {
+  const visible=e=>{try{const s=getComputedStyle(e);
+    return e.getClientRects().length>0 && s.display!=='none' &&
+           s.visibility!=='hidden';}catch(_){return false;}};
+  const headers=[...document.querySelectorAll('button[aria-label]')]
+    .filter(e=>visible(e) &&
+       (e.getAttribute('aria-label')||'').startsWith('지역 선택:'))
+    .slice(0,20);
+  if(headers.length!==1)return null;
+  const label=headers[0].getAttribute('aria-label');
+  // Read only the region selector, not article titles/sellers or body text.
+  return typeof label==='string'?label.slice(0,180):null;
+}"""
+
+
+async def read_region_header_volatile(page):
+    """Only Python RAM; caller must not log/serialize returned raw header."""
+    try:
+        value=await page.evaluate(_HEADER_JS)
+        if (type(value) is str and 0<len(value)<=180 and
+                value.startswith("지역 선택:")):
+            return value
+    except Exception:
+        pass
+    return None
+
+
+def classify_region_header_transition(before, after, *, target_term="불당동"):
+    """Sanitize raw header values into comparison flags and city buckets.
+
+    Raw label is deliberately discarded. City-like substrings may be a UI
+    hint only and cannot prove the server's actual search or seller location.
+    """
+    def family(value):
+        if type(value) is not str or not value.startswith("지역 선택:"):
+            return "UNOBSERVABLE"
+        suffix=value.split(":",1)[-1].strip()
+        if not suffix:
+            return "UNOBSERVABLE"
+        if type(target_term) is str and target_term and target_term in suffix:
+            return "TARGET"
+        if "천안" in suffix:
+            return "CHEONAN_OTHER"
+        if "아산" in suffix:
+            return "ASAN"
+        if "서울" in suffix:
+            return "SEOUL"
+        return "OTHER"
+    same=(type(before) is str and type(after) is str and
+          before.startswith("지역 선택:") and after.startswith("지역 선택:"))
+    status=("UNOBSERVABLE" if not same else
+            "UNCHANGED" if before==after else "CHANGED")
+    return {
+        "status":status,
+        "before_header_family":family(before),
+        "after_header_family":family(after),
+        "reveals_raw_region":False,
+        "proves_server_region_changed":False,
+        "authorizes_listings":False,
+    }
+
+
+_HEADER_FAMILIES=frozenset((
+    "TARGET","CHEONAN_OTHER","ASAN","SEOUL","OTHER","UNOBSERVABLE"))
+_HEADER_DELTA=frozenset(("CHANGED","UNCHANGED","UNOBSERVABLE"))
+
+
+def sanitize_header_transition(value):
+    src=value if type(value) is dict else {}
+    return {
+        "status":_enum(src.get("status"),_HEADER_DELTA,"UNOBSERVABLE"),
+        "before_header_family":_enum(
+            src.get("before_header_family"),_HEADER_FAMILIES,"UNOBSERVABLE"),
+        "after_header_family":_enum(
+            src.get("after_header_family"),_HEADER_FAMILIES,"UNOBSERVABLE"),
+        "reveals_raw_region":False,
+        "proves_server_region_changed":False,
+        "authorizes_listings":False,
+    }
