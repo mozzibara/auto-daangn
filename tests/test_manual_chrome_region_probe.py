@@ -13,6 +13,7 @@ from daangn_v4_1_core import BY_KEY
 from app_v5.manual_chrome_region import (
     SEARCH_URL, ManualSearchResponses, extract_route_summary,
     is_public_search, make_manual_report, sanitize_manual_report,
+    classify_manual_observation, observe_manual_page,
 )
 from scripts.manual_chrome_region_probe import (
     chrome_args, read_debug_port, save_report, find_chrome,
@@ -211,6 +212,131 @@ class ComparisonAndPrivacyTests(unittest.TestCase):
         self.assertEqual(safe["stages"]["AFTER_4000MS"]["state"], "UNOBSERVABLE")
         for substring in ("PRIVATE", "SECRET", "2292", "MY_", "http", "access_token"):
             self.assertNotIn(substring, json.dumps(safe))
+
+
+
+class MissingClickWitnessDiagnostics(unittest.TestCase):
+    def test_zero_events_are_indeterminate_not_website_failure(self):
+        x = classify_manual_observation(
+            "NO_TARGET_CLICK",
+            {"count": 0, "document_clicks": 0, "input_events": 0})
+        self.assertEqual(x, "NO_DOCUMENT_ACTIVITY")
+        r = make_manual_report(
+            REGION, status="NO_TARGET_CLICK", click={
+                "count": 0, "trusted": 0, "unique": False,
+                "city": False, "at_ms": 0,
+                "document_clicks": 0, "dialog_clicks": 0,
+                "button_clicks": 0, "target_outside_dialog": 0,
+                "input_events": 0, "region_input_events": 0,
+                "focused": False,
+            }, resolver=FakeResolver(events=[], responses=0),
+            routes=FakeRoutes(rows=[]), page_url=SEARCH_URL,
+            stages=all_stages(last="OTHER"), open_tab_count=2)
+        self.assertEqual(r["status"], "NO_TARGET_CLICK")
+        self.assertEqual(r["comparison"], "INCONCLUSIVE")
+        self.assertEqual(r["observer_diagnostics"]["classification"],
+                         "NO_DOCUMENT_ACTIVITY")
+        self.assertEqual(r["observer_diagnostics"]["open_tab_count"], 2)
+        self.assertEqual(r["observer_diagnostics"]["tracked_tab_focused"], "NO")
+        self.assertFalse(r["authorizes_listings"])
+        self.assertEqual(sanitize_manual_report(r), r)
+
+    def test_click_activity_classes_distinguish_selector_vs_wrong_window(self):
+        cases = (
+            ({"document_clicks": 3, "dialog_clicks": 1,
+              "input_events": 5}, "DIALOG_CLICK_WITHOUT_TARGET"),
+            ({"document_clicks": 3, "dialog_clicks": 0,
+              "input_events": 5}, "DOCUMENT_ACTIVITY_NO_DIALOG_CLICK"),
+            ({"document_clicks": 1, "target_outside_dialog": 1},
+             "TARGET_CLICK_OUTSIDE_DIALOG"),
+            ({"count": 1, "document_clicks": 1},
+             "TARGET_CLICK_OBSERVED"),
+        )
+        for data, expected in cases:
+            with self.subTest(expected=expected):
+                self.assertEqual(
+                    classify_manual_observation("NO_TARGET_CLICK", data),
+                    expected)
+        self.assertEqual(classify_manual_observation(
+            "OBSERVER_LOST", {"document_clicks": 2}), "OBSERVER_LOST")
+
+    def test_telemetry_sanitization_rejects_raw_strings_and_overflow(self):
+        contaminated = {
+            "status": "OBSERVER_LOST",
+            "observer_diagnostics": {
+                "classification": "DIALOG_CLICK_WITHOUT_TARGET",
+                "document_clicks": 20, "dialog_clicks": "PRIVATE",
+                "input_events": 9999, "region_input_events": 3,
+                "tracked_tab_focused": "YES", "open_tab_count": 2,
+                "cookies": "SECRET_TOKEN", "raw_target": "MY_PRIVATE_ADDRESS",
+            },
+        }
+        once = sanitize_manual_report(contaminated)
+        twice = sanitize_manual_report(once)
+        self.assertEqual(once, twice)
+        obs = once["observer_diagnostics"]
+        self.assertEqual(obs["dialog_clicks"], -1)
+        self.assertEqual(obs["input_events"], -1)
+        self.assertEqual(obs["document_clicks"], 20)
+        self.assertEqual(obs["region_input_events"], 3)
+        self.assertEqual(obs["tracked_tab_focused"], "YES")
+        for forbidden in ("PRIVATE", "SECRET", "cookies", "raw_target"):
+            self.assertNotIn(forbidden, json.dumps(once))
+
+
+class FakePageWithMissingClick:
+    url = SEARCH_URL
+
+    class Context:
+        pages = [object()]
+
+    context = Context()
+
+    def __init__(self):
+        self.callbacks = {}
+        self.armed = False
+        self.armed_at_instruction = False
+
+    def on(self, name, cb):
+        self.callbacks.setdefault(name, []).append(cb)
+
+    def remove_listener(self, name, cb):
+        self.callbacks[name].remove(cb)
+
+    async def evaluate(self, script, arg=None):
+        if "addEventListener('click'" in script:
+            self.armed = True
+            return True
+        if "removeEventListener('click'" in script:
+            self.armed = False
+            return True
+        if "auto_daangn_manual_chrome_v1" in script:
+            return None
+        return {"state": "REGION_INPUT_ONLY", "selected_control": "OTHER"}
+
+
+class ArmingOrderTests(unittest.IsolatedAsyncioTestCase):
+    async def test_ready_message_callback_only_after_click_listener_installed(self):
+        page = FakePageWithMissingClick()
+        called = []
+
+        def on_armed():
+            called.append((
+                page.armed,
+                len(page.callbacks.get("request", [])),
+                len(page.callbacks.get("response", [])),
+            ))
+
+        data = await observe_manual_page(
+            page, REGION, timeout_sec=1, on_armed=on_armed)
+        self.assertEqual(called, [(True, 1, 2)])
+        self.assertEqual(data["status"], "OBSERVER_LOST")
+        self.assertEqual(data["observer_diagnostics"]["classification"],
+                         "OBSERVER_LOST")
+        self.assertFalse(page.armed)
+        self.assertFalse(page.callbacks["request"])
+        self.assertFalse(page.callbacks["response"])
+        self.assertFalse(data["authorizes_listings"])
 
 
 class FakeRequest:
