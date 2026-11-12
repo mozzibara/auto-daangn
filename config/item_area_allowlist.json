@@ -1,0 +1,17 @@
+{
+  "schema": "daangn_item_area_allowlist_v1",
+  "allowed_areas": [
+    {
+      "key": "cheonan_buldang",
+      "city": "천안시",
+      "district": "불당동",
+      "region_id": "2292"
+    },
+    {
+      "key": "asan_baebang",
+      "city": "아산시",
+      "district": "배방읍",
+      "region_id": "2333"
+    }
+  ]
+}
