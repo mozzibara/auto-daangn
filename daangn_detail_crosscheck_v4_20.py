@@ -225,7 +225,9 @@ def pick_samples(model,salt,limit=SAMPLES_PER_CONTEXT):
                         'item_locality_status':sanitize_item_locality(
                             row.get('item_locality_status')),
                         'item_area_status':area_status,
-                        'item_area_key':area_key})
+                        'item_area_key':area_key,
+                        'item_area_token':(row.get('item_area_token')
+                            if area_status==ALLOWED and area_key else None)})
             break
     return out
 
@@ -360,6 +362,7 @@ async def audit_sample(page,model,name,region,options,salt,ui_diag,*,checker=rob
             entry['v435_route_item_locality_status']=sample['item_locality_status']
             entry['item_area_status']=sample['item_area_status']
             entry['item_area_key']=sample['item_area_key']
+            entry['item_area_token']=sample['item_area_token']
             # v4.33: keyed same-run article identity, never a raw URL or stable ID.
             # One ephemeral salt covers all three contexts of this capture.
             entry['v433_listing_run_hmac']=sample['token']
@@ -442,6 +445,7 @@ async def audit_sample(page,model,name,region,options,salt,ui_diag,*,checker=rob
                         'listing_run_hmac':sample['token'],
                         'item_area_key':sample['item_area_key'],
                         'item_area_status':sample['item_area_status'],
+                        'item_area_token':sample['item_area_token'],
                         'title':title.get('title'),
                         'title_status':title.get('status')})
                 if getattr(options,'controls_v423',False):
