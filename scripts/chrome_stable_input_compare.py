@@ -35,7 +35,7 @@ from app_v5.region_picker_phases import (
     RegionPickerPhaseWitness, sanitize_picker_phases,
 )
 from app_v5.region_header_activation import (
-    HeaderActivationWitness, verify_header_click_timeout_without_reclick,
+    HeaderActivationWitness, assess_header_click_timeout_without_reclick,
 )
 from app_v5.region_option_events import (
     RegionOptionEventWitness, verify_single_target_click_after_timeout,
@@ -235,6 +235,7 @@ async def one_public_region(browser, mode, *, timezone_id=None,
     picker_phase = RegionPickerPhaseWitness(region)
     header_activation = HeaderActivationWitness()
     header_activation_snapshot = None
+    header_timeout_gate_reason = "NOT_INVOKED"
     picker_phase_armed = False
     observed_input = None
     input_matches = False
@@ -272,14 +273,21 @@ async def one_public_region(browser, mode, *, timezone_id=None,
         picker_phase_armed = True
 
         async def after_timeout():
-            # The original click may have dispatched successfully even when
-            # Playwright's action promise timed out. Never issue a second click.
-            # Check same-origin public search and independent trusted events,
-            # plus one visible empty enabled region input inside the dialog.
+            nonlocal header_timeout_gate_reason
+            # Read-only reason for an actual Playwright TimeoutError:
+            # one delivered region-header click vs input/DOM mismatch.
+            # Never retry, click twice, or change browser state.
             if not is_public_search(page.url):
+                header_timeout_gate_reason = "PAGE_NOT_PUBLIC_SEARCH"
                 return False
-            return await verify_header_click_timeout_without_reclick(
-                page, header_activation)
+            try:
+                result = await assess_header_click_timeout_without_reclick(
+                    page, header_activation)
+                header_timeout_gate_reason = result["reason"]
+                return result["verified"] is True
+            except Exception:
+                header_timeout_gate_reason = "UNOBSERVABLE"
+                return False
 
         async def after_open():
             picker_phase.picker_opened = True
@@ -434,6 +442,7 @@ async def one_public_region(browser, mode, *, timezone_id=None,
                 header_click_exception_kind=steps.get(
                     "header_click_exception_kind"),
                 header_activation=header_activation_snapshot,
+                header_timeout_gate_reason=header_timeout_gate_reason,
                 option_click_returned=steps.get("option_click_returned"),
                 option_click_verified_after_timeout=steps.get(
                     "option_click_verified_after_timeout"),
@@ -460,7 +469,8 @@ async def one_public_region(browser, mode, *, timezone_id=None,
                                  "picker_phase_diagnostics":picker_phase.export(
                                      error="RuntimeError",
                                      readiness=readiness.export()["state"],
-                                     header_activation=header_activation_snapshot)})
+                                     header_activation=header_activation_snapshot,
+                                     header_timeout_gate_reason=header_timeout_gate_reason)})
     finally:
         if page is not None:
             await header_activation.stop(page)
