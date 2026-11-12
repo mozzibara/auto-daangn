@@ -199,10 +199,16 @@ async def delegated_manual_fixture(browser):
         await context.close()
 
 
-async def one_public_region(browser, mode):
+async def one_public_region(browser, mode, *, timezone_id=None):
     region = core.BY_KEY["cheonan"]
-    context = await browser.new_context(
-        locale="ko-KR", viewport={"width": 1280, "height": 850})
+    if timezone_id not in (None, "Asia/Seoul"):
+        raise ValueError("ONLY_EXPLICIT_SEOUL_TIMEZONE_CONTROL_ALLOWED")
+    # An explicit timezone only for a bounded, declared experimental arm.
+    # No network/proxy, geolocation, storage, login or UA modification.
+    settings = {"locale": "ko-KR", "viewport": {"width": 1280, "height": 850}}
+    if timezone_id is not None:
+        settings["timezone_id"] = timezone_id
+    context = await browser.new_context(**settings)
     page = None
     input_probe = RegionInputEventWitness()
     option_probe = RegionOptionEventWitness(region)
