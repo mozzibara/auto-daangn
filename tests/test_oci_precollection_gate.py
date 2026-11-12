@@ -256,6 +256,12 @@ class OperatorGateTests(unittest.IsolatedAsyncioTestCase):
                 "precollection":{
                     "status":"PRECOLLECTION_READY_REVIEW",
                     "strict_filter_evidence":True,
+                    "region_gate_confirmed":True,
+                    "ui_selected_before_apply":True,
+                    "ui_selected_after_apply":True,
+                    "filter_apply_returned":True,
+                    "filtered_url_matches":True,
+                    "filtered_route_count":1,
                     "server_filters":{"region":"EXPECTED",
                                       "category":"EXPECTED",
                                       "price_max":"EXPECTED",
