@@ -307,7 +307,7 @@ class FakePageWithMissingClick:
         if "addEventListener('click'" in script:
             self.armed = True
             return True
-        if "removeEventListener('click'" in script:
+        if "document[key]?.stop?.()" in script:
             self.armed = False
             return True
         if "auto_daangn_manual_chrome_v1" in script:
