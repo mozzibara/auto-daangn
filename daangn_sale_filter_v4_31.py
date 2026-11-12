@@ -34,9 +34,13 @@ BLOCK_OUTSIDE='SALE_FILTER_BLOCK_VERIFIED_OUT_OF_AREA'
 HOLD_LOCALITY='SALE_FILTER_HOLD_BUY_NOW_LOCALITY'
 
 
-def _out(code, canonical='NOT_VERIFIED'):
+def _out(code, canonical='NOT_VERIFIED', *, area_key=None):
     allowed=code in (PASS,PASS_DIRECT)
+    from app_v5.item_area_policy import configured_label
+    verified_area=(area_key if allowed and type(area_key) is str and
+                   configured_label(area_key) is not None else None)
     return {'sale_filter_status':code,'sale_filter_eligible':allowed,
+        'item_area_key':verified_area,
         'sale_filter_basis':('DIRECT_FOR_SALE_PRIMARY_UI' if code==PASS_DIRECT
             else 'IN_STOCK_AND_NO_PRIMARY_SOLD_RESERVED_UI' if code==PASS
             else 'EXPLICIT_SOLD_OR_RESERVED_UI' if code==BLOCK
@@ -169,7 +173,8 @@ def assess_source(record, *, diagnostic=None, survey=None):
         return _out(UNKNOWN,txn)
     # Even when a direct FOR_SALE marker is present, a complete current
     # item check + InStock is sufficient, but a marker is never required.
-    return _out(PASS_DIRECT if txn=='FOR_SALE' else PASS,txn)
+    return _out(PASS_DIRECT if txn=='FOR_SALE' else PASS,txn,
+                area_key=local['area_key'])
 
 
 def evaluate_capture(v423, v429):
