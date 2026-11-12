@@ -33,7 +33,7 @@ def diag(*, labels=0, ctas=0, locality=LOCAL_EXACT,
         "role": "SOURCE", "dom_capture_status": "CAPTURED",
         "probe": probe, "item_locality_status": locality,
         "item_area_status":area,
-        "item_area_key":"cheonan_buldang" if area==AREA_ALLOWED else None,
+        "item_area_token":"a"*20 if area==AREA_ALLOWED else None,
         "phases": {name: {
             "same_document_url": True,
             "scan_complete": True,
