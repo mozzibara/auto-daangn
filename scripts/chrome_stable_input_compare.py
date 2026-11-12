@@ -145,6 +145,53 @@ async def one_fixture(browser, mode):
         await context.close()
 
 
+async def delegated_manual_fixture(browser):
+    """Offline DOM-only check: document witness survives later dialog creation.
+
+    This is NOT real human IME evidence. It tests delegated listener wiring
+    under real Chrome without visiting the marketplace.
+    """
+    from app_v5.manual_region_input_events import ManualRegionInputEventWitness
+    context = await browser.new_context(locale="ko-KR")
+    witness = ManualRegionInputEventWitness()
+    try:
+        page = await context.new_page()
+        await page.set_content("<!doctype html><html><body></body></html>")
+        armed = await witness.arm(page)
+        if not armed:
+            return {"armed": False, "observed_input": False,
+                    "authorizes_listings": False}
+        # The target input intentionally does NOT exist at arm time.
+        await page.evaluate("""() => {
+            const dialog=document.createElement('div');
+            dialog.setAttribute('role','dialog');
+            const field=document.createElement('input');
+            field.setAttribute('placeholder','지역 검색');
+            field.id='synthetic-region';
+            dialog.appendChild(field);
+            document.body.appendChild(dialog);
+        }""")
+        field = page.locator("#synthetic-region")
+        await field.press_sequentially("불당동", delay=10)
+        result = await witness.sample(page)
+        matched = result["observed_input"] and result["counts"]["INPUT"] >= 1
+        # Remove from DOM: witness should retain the already seen sequence.
+        await page.evaluate("""() => {
+            document.querySelector('[role="dialog"]').remove();
+        }""")
+        final = await witness.sample(page)
+        return {"armed": armed, "observed_input": matched,
+                "preserved_after_dialog_removal":
+                    final["counts"]["INPUT"] == result["counts"]["INPUT"],
+                "authorizes_listings": False}
+    finally:
+        try:
+            await witness.stop(page)
+        except Exception:
+            pass
+        await context.close()
+
+
 async def one_public_region(browser, mode):
     region = core.BY_KEY["cheonan"]
     context = await browser.new_context(
@@ -305,6 +352,7 @@ async def run(*, live=False, headed=False):
                "browser": "GOOGLE_CHROME_STABLE",
                "profile": "DISPOSABLE",
                "headless": not headed, "fixture": [], "public_site": [],
+               "delegated_manual_fixture": {},
                "authorizes_listings": False}
     if live:
         if (not check_public_robots()
@@ -319,6 +367,7 @@ async def run(*, live=False, headed=False):
         try:
             for mode in _MODES:
                 results["fixture"].append(await one_fixture(browser, mode))
+            results["delegated_manual_fixture"] = await delegated_manual_fixture(browser)
             if live:
                 for mode in _MODES:
                     row = await one_public_region(browser, mode)
@@ -353,7 +402,11 @@ def main(argv=None) -> int:
     if (len(result["fixture"]) != 2 or
             any(x["status"] != "FIXTURE_COMPLETE"
                 or not x["input_events"]["armed"]
-                for x in result["fixture"])):
+                for x in result["fixture"])
+            or result["delegated_manual_fixture"].get("armed") is not True
+            or result["delegated_manual_fixture"].get("observed_input") is not True
+            or result["delegated_manual_fixture"].get(
+                "preserved_after_dialog_removal") is not True):
         return 2
     if args.live and len(result["public_site"]) != 2:
         return 2
