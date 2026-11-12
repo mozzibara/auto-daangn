@@ -265,30 +265,68 @@ class PassiveFilteredRoute:
         self.restricted = False
         self.observed = 0
         self.starts = set()
+        self.broad_starts = set()
+        self.diagnostics = {key: 0 for key in _TRANSPORT_COUNTS}
+
+    def _increase(self, key):
+        self.diagnostics[key] = min(20, self.diagnostics[key] + 1)
 
     def on_request(self, request):
         try:
-            if (request.resource_type in ("fetch", "xhr")
-                    and request.method == "GET"
-                    and _unique_query(request.url)
-                    and len(self.starts) < 4):
-                self.starts.add(request)
+            if (not _same_public_search_path(request.url)
+                    or request.resource_type not in ("fetch", "xhr", "document")):
+                return
+            self._increase("search_requests")
+            if request.resource_type in ("fetch", "xhr"):
+                self._increase("search_fetch_requests")
+            else:
+                self._increase("search_document_requests")
+            if request.method != "GET":
+                self._increase("search_other_method_requests")
+            if _unique_query(request.url):
+                self._increase("search_exact_query_requests")
+                if (request.method == "GET"
+                        and request.resource_type in ("fetch", "xhr")
+                        and len(self.starts) < 4):
+                    self.starts.add(request)
+            else:
+                self._increase("search_different_query_requests")
+            if len(self.broad_starts) < 20:
+                self.broad_starts.add(request)
+        except (AttributeError, TypeError, ValueError):
+            return
+
+    def on_requestfailed(self, request):
+        try:
+            if request in self.broad_starts:
+                self.broad_starts.discard(request)
+                self.starts.discard(request)
+                self._increase("search_request_failures")
         except (AttributeError, TypeError, ValueError):
             return
 
     def on_response(self, response):
         try:
             req = response.request
-            if (req not in self.starts
-                    or req.resource_type not in ("fetch", "xhr")
+            if req not in self.broad_starts:
+                return
+            self.broad_starts.discard(req)
+            self._increase("search_responses")
+            if response.status in (401, 403, 429):
+                self._increase("search_response_restricted")
+                self.restricted = True
+            elif response.status == 200:
+                self._increase("search_response_200")
+            else:
+                self._increase("search_response_other")
+            if req not in self.starts:
+                return
+            self.starts.discard(req)
+            if (req.resource_type not in ("fetch", "xhr")
                     or req.method != "GET"
                     or not _unique_query(response.url)):
                 return
-            self.starts.discard(req)
             self.observed = min(20, self.observed + 1)
-            if response.status in (401, 403, 429):
-                self.restricted = True
-                return
             if response.status != 200 or len(self.events) + len(self.tasks) >= 3:
                 return
             ctype = response.headers.get("content-type", "").lower()
@@ -332,6 +370,7 @@ async def verify_filter_before_collection(page, region=REGION):
     info = {
         "region_gate_confirmed": True, "status": "BLOCKED_PRECONDITION",
         "server_filters": {}, "filtered_route_count": 0,
+        "ui_after_apply_recheck_state": "NOT_RUN",
     }
     if (region is not REGION and region != REGION) or not page.url.startswith(
             "https://www.daangn.com/kr/search/buy-sell/"):
@@ -351,6 +390,7 @@ async def verify_filter_before_collection(page, region=REGION):
             return sanitize_precollection(info)
         page.on("request", watcher.on_request)
         page.on("response", watcher.on_response)
+        page.on("requestfailed", watcher.on_requestfailed)
         try:
             await button.click(timeout=6000)
             info["filter_apply_returned"] = True
@@ -359,7 +399,10 @@ async def verify_filter_before_collection(page, region=REGION):
         finally:
             page.remove_listener("request", watcher.on_request)
             page.remove_listener("response", watcher.on_response)
+            page.remove_listener("requestfailed", watcher.on_requestfailed)
         info["filtered_route_count"] = watcher.observed
+        info["filter_transport_diagnostics"] = watcher.diagnostics.copy()
+        info["filtered_url_diagnostics"] = classify_filter_url(page.url, region)
         if watcher.restricted:
             info["status"] = "BLOCKED_ACCESS_RESTRICTED"
             return sanitize_precollection(info)
@@ -368,6 +411,9 @@ async def verify_filter_before_collection(page, region=REGION):
             info["status"] = "BLOCKED_FILTER_URL"
             return sanitize_precollection(info)
         after = await v46.check_after(page, args)
+        info["ui_after_apply_recheck_state"] = _kind(
+            after.get("observation_status"), _UI_RECHECK_STATES,
+            "NOT_OBSERVABLE")
         info["ui_selected_after_apply"] = (
             after.get("observation_status") == "OBSERVED_MATCH"
             and v46.ui_ok(after, args))
