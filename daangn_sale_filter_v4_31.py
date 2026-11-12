@@ -34,13 +34,13 @@ BLOCK_OUTSIDE='SALE_FILTER_BLOCK_VERIFIED_OUT_OF_AREA'
 HOLD_LOCALITY='SALE_FILTER_HOLD_BUY_NOW_LOCALITY'
 
 
-def _out(code, canonical='NOT_VERIFIED', *, area_key=None):
+def _out(code, canonical='NOT_VERIFIED', *, area_token=None):
     allowed=code in (PASS,PASS_DIRECT)
-    from app_v5.item_area_policy import configured_label
-    verified_area=(area_key if allowed and type(area_key) is str and
-                   configured_label(area_key) is not None else None)
+    import re
+    verified_area=(area_token if allowed and type(area_token) is str and
+                   re.fullmatch(r'[a-f0-9]{20}',area_token) else None)
     return {'sale_filter_status':code,'sale_filter_eligible':allowed,
-        'item_area_key':verified_area,
+        'item_area_token':verified_area,
         'sale_filter_basis':('DIRECT_FOR_SALE_PRIMARY_UI' if code==PASS_DIRECT
             else 'IN_STOCK_AND_NO_PRIMARY_SOLD_RESERVED_UI' if code==PASS
             else 'EXPLICIT_SOLD_OR_RESERVED_UI' if code==BLOCK
@@ -161,7 +161,8 @@ def assess_source(record, *, diagnostic=None, survey=None):
     diag = diagnostic if type(diagnostic) is dict else {}
     buy_now = classify_source_buy_now(diag)['status']
     local = assess_configured_district(
-        buy_now, diag.get('item_area_status'), diag.get('item_area_key'))
+        buy_now, diag.get('item_area_status'),
+        area_token=diag.get('item_area_token'))
     if local['decision'] == LOCALITY_OUTSIDE:
         return _out(BLOCK_OUTSIDE, txn)
     if local['decision'] == LOCALITY_HOLD:
@@ -174,7 +175,7 @@ def assess_source(record, *, diagnostic=None, survey=None):
     # Even when a direct FOR_SALE marker is present, a complete current
     # item check + InStock is sufficient, but a marker is never required.
     return _out(PASS_DIRECT if txn=='FOR_SALE' else PASS,txn,
-                area_key=local['area_key'])
+                area_token=local['area_token'])
 
 
 def evaluate_capture(v423, v429):
