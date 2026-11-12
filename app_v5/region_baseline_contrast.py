@@ -311,7 +311,9 @@ def classify_region_header_transition(before, after, *, target_term="불당동")
             return "SEOUL"
         return "OTHER"
     same=(type(before) is str and type(after) is str and
-          before.startswith("지역 선택:") and after.startswith("지역 선택:"))
+          before.startswith("지역 선택:") and after.startswith("지역 선택:")
+          and bool(before.split(":",1)[-1].strip())
+          and bool(after.split(":",1)[-1].strip()))
     status=("UNOBSERVABLE" if not same else
             "UNCHANGED" if before==after else "CHANGED")
     return {
