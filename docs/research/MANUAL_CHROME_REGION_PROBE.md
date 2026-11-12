@@ -193,3 +193,55 @@ python -m scripts.manual_chrome_region_probe --timeout-sec 150 --output "$HOME\D
 **추가 진단에서도 수동 클릭·검색창 입력 내용이나 매물 원문은
 기록하지 않습니다.** 모든 결과는 \`authorizes_listings=false\`로
 유지됩니다.
+
+
+## PR #45: 수동 키보드·한글 IME 이벤트 관찰 (진단 전용)
+
+이전 결과에서는 수동 클릭과 신선한 검색 Route는 확인됐지만 수동 타이핑의
+\`keydown\`, \`keyup\`, \`composition*\` 이벤트가 기록되지 않았습니다.
+보완된 도구는 **관찰 준비 완료 안내 전에** 문서 수준의 수동 이벤트
+관찰기를 설치합니다. 지역 대화상자에서 새로 생성되는 **지역 검색
+입력창**만 대상으로 삼습니다. 실제 검색어·키 이름·IME 조합 문자열,
+전체 HTML, 로컬 프로필, 사용자의 입력값은 수집하지 않습니다.
+
+출력의 새로운 \`manual_input_events.AT_CLICK\`은 첫 목표 클릭이
+관찰된 직후의 누적 이벤트 유형/횟수이고, \`AFTER_4000MS\`는
+정착 뒤의 누적치입니다. 둘 다 Playwright 자동 입력기의
+\`input_events\`와 동일한 허용 목록 스키마입니다.
+
+- \`counts\`, \`trusted\`: 이벤트 종류별 총 횟수와 \`isTrusted\` 횟수
+- \`sequence\`: 처음 48개의 이벤트 **종류**만 순서대로 저장
+- \`input_types\`: 입력·입력 전 이벤트의 \`inputType\`를
+  \`INSERT_TEXT\`, \`INSERT_COMPOSITION\`, \`DELETE\`, \`OTHER\`로만 집계
+- \`composing_events\`: \`isComposing=true\` 이벤트 수 (최대 48)
+- \`truncated\`: 48개 이후의 순서 손실 여부
+- \`observed_input\`: 대화상자 안 지역 검색창에서 이벤트를 관찰했는지
+- \`input_focus.AT_CLICK\`, \`input_focus.AFTER_4000MS\`: 포커스의
+  **분류**만 제공 (\`REGION_INPUT\`, \`DIALOG_OTHER\`,
+  \`OUTSIDE_DIALOG\`, \`BODY\`, \`UNOBSERVABLE\`).
+
+이 데이터만으로 특정 IME나 물리 키보드의 정확한 조합 과정을
+복원할 수는 없습니다. 특히 \`isTrusted=true\`는 사용자가 입력했다는
+증명이 아니라 브라우저가 생성한 신뢰된 이벤트라는 의미입니다.
+관찰된 \`composition*\`의 차이는 가설이자 진단 단서일 뿐이며,
+지역 확정이나 매물 수집을 승인하지 않습니다.
+
+재검사:
+
+\`\`\`powershell
+cd C:\kmj-ai-agent\auto-daangn-public
+git pull --ff-only
+.\.venv\Scripts\Activate.ps1
+python -m scripts.manual_chrome_region_probe --timeout-sec 150 --output "$HOME\Downloads\daangn_manual_region_ime_v1.json"
+\`\`\`
+
+관찰 준비 안내 후 새 임시 Chrome 창에서 **직접 지역 선택 → 불당동
+한글 입력 → 천안시 불당동 후보 1회 클릭**을 수행합니다. 수동 입력기
+설정은 평소 사용하던 방식 그대로 유지하세요. 다른 창/프로필에서
+입력하지 않으며, 첫 클릭 이후 추가 클릭/새로고침하지 않습니다.
+
+동일 브라우저가 아니라는 한계를 유지하고, 자동 비교 결과의
+\`public_site[].input_events\` 및 \`input_focus\`와 고정 종류만
+대조합니다. 로컬 JSON은 개인 PC에만 저장하며 공개 GitHub에
+업로드하지 않습니다. 전체 결과의 \`authorizes_listings=false\`는
+변경되지 않습니다.
