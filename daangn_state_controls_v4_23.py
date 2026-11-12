@@ -495,14 +495,21 @@ def project_v428_diagnosis(probe, kind='SOURCE'):
     item_area_key=(src.get('item_area_key') if item_area==AREA_ALLOWED and
                    configured_label(src.get('item_area_key')) is not None
                    else None)
-    if item_area==AREA_ALLOWED and item_area_key is None:
+    item_area_token=src.get('item_area_token')
+    if (not isinstance(item_area_token,str) or
+            re.fullmatch(r'[a-f0-9]{20}',item_area_token) is None):
+        item_area_token=None
+    if item_area==AREA_ALLOWED and (
+            item_area_key is None or item_area_token is None):
         item_area=AREA_UNKNOWN
+    if item_area!=AREA_ALLOWED:
+        item_area_token=None
     return {'source_rank':src.get('source_rank')
             if type(src.get('source_rank')) is int and 0<=src['source_rank']<=650 else None,
         'role':kind,'probe':safe,
         'item_locality_status':item_locality,
         'item_area_status':item_area,
-        'item_area_key':item_area_key,
+        'item_area_token':item_area_token,
         'dom_outcome':outcome if isinstance(outcome,str) and outcome in (
             'VISIBLE_STATUS_REPRODUCED','STATUS_EMERGED_AFTER_SETTLE',
             'STATUS_EMERGED_AFTER_SCROLL','STATUS_EMERGED_NARROW_VIEWPORT',
