@@ -212,9 +212,20 @@ def pick_samples(model,salt,limit=SAMPLES_PER_CONTEXT):
             # The class came from the exact same correlated search Route row.
             # It is a finite enum, never an address or seller region string.
             from app_v5.listing_locality import sanitize_item_locality
+            from app_v5.item_area_policy import (
+                sanitize_area_status, ALLOWED, configured_label)
+            area_status=sanitize_area_status(row.get('item_area_status'))
+            area_key=(row.get('item_area_key') if area_status==ALLOWED and
+                      configured_label(row.get('item_area_key')) is not None
+                      else None)
+            if area_status==ALLOWED and area_key is None:
+                from app_v5.item_area_policy import UNKNOWN
+                area_status=UNKNOWN
             out.append({'rank':index,'url':link,'token':tok,'price':price,
                         'item_locality_status':sanitize_item_locality(
-                            row.get('item_locality_status'))})
+                            row.get('item_locality_status')),
+                        'item_area_status':area_status,
+                        'item_area_key':area_key})
             break
     return out
 
@@ -347,6 +358,8 @@ async def audit_sample(page,model,name,region,options,salt,ui_diag,*,checker=rob
             entry['v432_route_price_krw']=sample['price']
             entry['v432_route_price_item_identity']=True
             entry['v435_route_item_locality_status']=sample['item_locality_status']
+            entry['item_area_status']=sample['item_area_status']
+            entry['item_area_key']=sample['item_area_key']
             # v4.33: keyed same-run article identity, never a raw URL or stable ID.
             # One ephemeral salt covers all three contexts of this capture.
             entry['v433_listing_run_hmac']=sample['token']
@@ -427,6 +440,8 @@ async def audit_sample(page,model,name,region,options,salt,ui_diag,*,checker=rob
                         'context':name,'source_rank':sample['rank'],
                         'price_krw':sample['price'],'url':sample['url'],
                         'listing_run_hmac':sample['token'],
+                        'item_area_key':sample['item_area_key'],
+                        'item_area_status':sample['item_area_status'],
                         'title':title.get('title'),
                         'title_status':title.get('status')})
                 if getattr(options,'controls_v423',False):
