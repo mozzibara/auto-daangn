@@ -91,6 +91,53 @@ does not expose the max-price field). Treat `status` and
 `precollection.server_filters` as evidence, not permission to import
 listing data.
 
+### OCI live `REGION_HEADER_ACTION_EXCEPTION` regression and diagnostic update
+
+Owner ran this exact Phase-1 precollection command on the isolated OCI
+Ubuntu host after PR #58. All **19 dedicated offline tests passed**.
+The real one-shot result was:
+
+- `status=STOP_REGION_NOT_VERIFIED`
+- `region_status=REGION_HEADER_ACTION_EXCEPTION`
+- `region_header_timeout_reconciled=false`
+- `precollection=null`
+- `authorizes_listings=false`, `collection_started=false`,
+  `database_written=false`
+
+This means **filter Apply was never reached**. It does not disprove
+the preceding, independently observed FILL success; the new single-arm
+precollection test did not reproduce it. The operator's output omitted
+the previously available bounded `picker_phase_diagnostics`, so a
+header `locator.click()` timeout cannot yet be attributed to a missing
+real browser click, duplicated event, remounted header, unready input,
+or unexpected exception.
+
+The following revision surfaces only **fixed classes and counts**
+as `region_diagnostics`, even on failure:
+- `core_progress_stage`, `step_error`, `readiness_state`
+- `header_click_exception_kind` (`PLAYWRIGHT_TIMEOUT` /
+  `OTHER_EXCEPTION` / `NONE`)
+- `header_timeout_gate_reason`:
+  `NOT_INVOKED` (no timeout callback), `PAGE_NOT_PUBLIC_SEARCH`,
+  `WITNESS_NOT_ARMED`, `WITNESS_UNAVAILABLE`,
+  `HEADER_CONTROL_NOT_UNIQUE`, `EVENTS_NOT_UNIQUE_TRUSTED`,
+  `INPUT_PROBE_ERROR`, `INPUT_NOT_UNIQUE_VISIBLE`,
+  `INPUT_NOT_EMPTY_ENABLED_DIALOG`, `VERIFIED`,
+  `UNOBSERVABLE`
+- bounded `header_trusted_click_count`, `header_total_click_count`,
+  `header_candidates`, `header_visible`, `header_enabled`,
+  two visible input counts, focus class, and region keyword API/Route
+  states
+
+A value of `-1` means **not observed**, not zero; no raw URLs,
+region strings, exception messages, cookies, DOM, listing/price
+content or IP data are written to the report.
+
+**Do not loosen any precollection or region admission predicate** in
+response to a single failed live attempt. Keep the exact existing
+single-click condition and no-collection restriction; use the
+categorized failure to choose the next minimal code correction.
+
 ### Outcome interpretation
 
 | Status | Operational interpretation |
