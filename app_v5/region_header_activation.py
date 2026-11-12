@@ -134,30 +134,50 @@ _CHECK_EMPTY_REGION_INPUT = r"""() => {
 }"""
 
 
-async def verify_header_click_timeout_without_reclick(page, witness):
-    """Strong proof for diagnostic-only continuation after locator click timeout.
+_HEADER_TIMEOUT_REASONS = frozenset((
+    "NOT_INVOKED", "PAGE_NOT_PUBLIC_SEARCH", "WITNESS_NOT_ARMED",
+    "WITNESS_UNAVAILABLE", "HEADER_CONTROL_NOT_UNIQUE",
+    "EVENTS_NOT_UNIQUE_TRUSTED", "INPUT_PROBE_ERROR",
+    "INPUT_NOT_UNIQUE_VISIBLE", "INPUT_NOT_EMPTY_ENABLED_DIALOG",
+    "VERIFIED", "UNOBSERVABLE",
+))
 
-    A trusted pointer and click sequence is necessary but not sufficient:
-    require exactly one still visible/active header and one empty, enabled,
-    visible region input inside the dialog. This function never acts on UI.
+
+def sanitize_header_timeout_reason(value):
+    return value if type(value) is str and value in _HEADER_TIMEOUT_REASONS else "UNOBSERVABLE"
+
+
+async def assess_header_click_timeout_without_reclick(page, witness):
+    """Return only a finite reason and boolean; inspect, never click.
+
+    A real Playwright header click may have dispatched while its action promise
+    times out. Require one exact trusted event sequence and one empty, enabled
+    visible input inside the public region dialog; no new request or action.
     """
     if witness.armed is not True:
-        return False
+        return {"verified": False, "reason": "WITNESS_NOT_ARMED"}
     snapshot = await witness.sample(page)
     if snapshot["armed"] is not True:
-        return False
+        return {"verified": False, "reason": "WITNESS_UNAVAILABLE"}
     if any(snapshot[key] != 1 for key in (
             "header_candidates", "header_visible", "header_enabled")):
-        return False
+        return {"verified": False, "reason": "HEADER_CONTROL_NOT_UNIQUE"}
     if any(snapshot["trusted"][event] != 1
            or snapshot["counts"][event] != 1 for event in _EVENTS):
-        return False
+        return {"verified": False, "reason": "EVENTS_NOT_UNIQUE_TRUSTED"}
     try:
         ready = await page.evaluate(_CHECK_EMPTY_REGION_INPUT)
     except Exception:
-        return False
-    return (
-        type(ready) is dict
-        and ready.get("one_visible_region_input") is True
-        and ready.get("one_empty_enabled_dialog_input") is True
-    )
+        return {"verified": False, "reason": "INPUT_PROBE_ERROR"}
+    if type(ready) is not dict or (
+            ready.get("one_visible_region_input") is not True):
+        return {"verified": False, "reason": "INPUT_NOT_UNIQUE_VISIBLE"}
+    if ready.get("one_empty_enabled_dialog_input") is not True:
+        return {"verified": False, "reason": "INPUT_NOT_EMPTY_ENABLED_DIALOG"}
+    return {"verified": True, "reason": "VERIFIED"}
+
+
+async def verify_header_click_timeout_without_reclick(page, witness):
+    """Compatibility boolean gate. Keep all existing default callers strict."""
+    return (await assess_header_click_timeout_without_reclick(
+        page, witness))["verified"]
