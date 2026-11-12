@@ -17,7 +17,7 @@ from app_v5.precollection_filter_gate import (
     verify_filter_before_collection, sanitize_precollection,
 )
 from scripts.chrome_stable_input_compare import (
-    check_public_robots, one_public_region,
+    check_public_robots, one_public_region, sanitize_attempt,
 )
 from scripts.run_live_checked import check_region_picker_robots
 
@@ -44,9 +44,50 @@ def isolated_execution_directory(path=None, *, home=None):
             and "/opt/auto-daangn" not in str(cwd))
 
 
+def summarize_region_failure(region_row):
+    """Safe, finite audit output for early FILL locality failures.
+
+    Fully re-sanitize the nested diagnostic independently of its producer.
+    Never export page URL, raw locale, cookie/storage, exception messages,
+    response bodies, seller/listing values, or DOM text.
+    """
+    safe = sanitize_attempt(region_row)
+    phase = safe["picker_phase_diagnostics"]
+    header = phase["header_activation"]
+    stages = phase["phases"]
+    return {
+        "core_progress_stage": phase["core_progress_stage"],
+        "step_error": phase["step_error"],
+        "readiness_state": phase["readiness_state"],
+        "header_click_exception_kind": phase["header_click_exception_kind"],
+        "header_timeout_gate_reason": phase["header_timeout_gate_reason"],
+        "header_click_returned": phase["core_header_click_returned"],
+        "header_click_verified_after_timeout": (
+            phase["header_click_verified_after_timeout"]),
+        "header_trusted_click_count": header["trusted"]["CLICK"],
+        "header_total_click_count": header["counts"]["CLICK"],
+        "header_candidates": header["header_candidates"],
+        "header_visible": header["header_visible"],
+        "header_enabled": header["header_enabled"],
+        "input_visible_at_core_return": (
+            stages["AFTER_CORE_RETURN"]["visible_inputs"]),
+        "input_visible_after_settle": (
+            stages["AFTER_SETTLE_4200MS"]["visible_inputs"]),
+        "focus_after_settle": (
+            stages["AFTER_SETTLE_4200MS"]["focus"]),
+        "picker_opened_callback_reached": phase["picker_opened"],
+        "region_keyword_api_state": phase["api"]["state"],
+        "region_route_status": safe["route_status"],
+        "region_server_search": safe["server_search"],
+        "region_server_filter": safe["server_filter"],
+        "selected_ui": safe["selected_ui"],
+        "authorizes_listings": False,
+    }
+
+
 def final_report(region_row):
-    result = region_row if type(region_row) is dict else {}
-    details = result.get("precollection")
+    result = sanitize_attempt(region_row)
+    details = region_row.get("precollection") if type(region_row) is dict else None
     details = sanitize_precollection(details) if type(details) is dict else {}
     region_ok = result.get("status") == "TARGET_REGION_CONFIRMED_DIAGNOSTIC"
     filters_ok = (
@@ -84,6 +125,7 @@ def final_report(region_row):
             "INCONCLUSIVE",
         ) else "INCONCLUSIVE",
         "region_route_verified": region_ok,
+        "region_diagnostics": summarize_region_failure(region_row),
         "region_header_timeout_reconciled": (result.get(
             "picker_phase_diagnostics", {}).get(
                 "header_click_verified_after_timeout") is True),
@@ -109,6 +151,7 @@ def blocked(reason):
         "input_mode": "FILL",
         "region_status": "INCONCLUSIVE",
         "region_route_verified": False,
+        "region_diagnostics": None,
         "precollection": None,
         "production_runtime_modified": False,
         "collection_started": False,
