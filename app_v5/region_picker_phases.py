@@ -10,6 +10,7 @@ from __future__ import annotations
 from urllib.parse import parse_qs, urlsplit
 
 from app_v5.region_input_events import sample_region_focus
+from app_v5.region_header_activation import sanitize_header_activation
 
 _STAGES = ("AFTER_PICKER_OPEN_500MS", "AFTER_CORE_RETURN", "AFTER_SETTLE_4200MS")
 _COUNTS = ("inputs", "visible_inputs", "dialog_inputs",
@@ -37,6 +38,14 @@ _READINESS = frozenset((
 ))
 _FOCUS = frozenset(("REGION_INPUT", "DIALOG_OTHER", "OUTSIDE_DIALOG",
                     "BODY", "UNOBSERVABLE"))
+_CORE_STAGES = frozenset((
+    "CORE_ENTERED", "BEFORE_REGION_BUTTON_CLICK",
+    "AFTER_REGION_BUTTON_CLICK", "AFTER_500MS_WAIT",
+    "AFTER_OPEN_CALLBACK", "AFTER_INPUT_DISCOVERY",
+    "AFTER_BEFORE_SEARCH_CALLBACK", "AFTER_INPUT_ENTRY",
+    "AFTER_API_READINESS", "BEFORE_SUGGESTION_CLICK",
+    "AFTER_SUGGESTION_CLICK", "UNOBSERVABLE",
+))
 
 # Same input selector as the first-party UI routine. This is a read only
 # snapshot of shape/visibility. Do not inspect input.value or its placeholder.
@@ -132,6 +141,10 @@ def sanitize_picker_phases(value):
         "readiness_state": _known(src.get("readiness_state"),
                                   _READINESS, "NOT_RUN"),
         "picker_opened": src.get("picker_opened") is True,
+        "core_progress_stage": _known(src.get("core_progress_stage"),
+                                     _CORE_STAGES, "UNOBSERVABLE"),
+        "core_header_click_returned": src.get("core_header_click_returned") is True,
+        "header_activation": sanitize_header_activation(src.get("header_activation")),
         "api": {
             **{name: _count(api.get(name)) for name in _REQUEST_COUNTS},
             "state": state,
@@ -201,7 +214,9 @@ class RegionPickerPhaseWitness:
             self.targets.discard(request)
             self._increase("target_request_failures")
 
-    def export(self, *, error=None, readiness=None):
+    def export(self, *, error=None, readiness=None,
+               core_progress_stage=None, core_header_click_returned=None,
+               header_activation=None):
         api = self.counts.copy()
         if api["target_responses_blocked"]:
             state = "ACCESS_RESTRICTED"
@@ -227,6 +242,9 @@ class RegionPickerPhaseWitness:
             "phases": self.phases, "step_error": phase_error(error),
             "readiness_state": readiness,
             "picker_opened": self.picker_opened,
+            "core_progress_stage": core_progress_stage,
+            "core_header_click_returned": core_header_click_returned,
+            "header_activation": header_activation,
             "api": {**api, "state": state},
             "delayed_input_observed": delayed,
         })
