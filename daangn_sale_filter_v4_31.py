@@ -16,6 +16,10 @@ from pathlib import Path
 from collections import Counter
 
 from daangn_listing_state_v4_24 import clean_record
+from app_v5.buy_now_policy import (
+    classify_source_buy_now, EXCLUDED as BUY_NOW_EXCLUDED,
+    NO_MARKER as BUY_NOW_NO_MARKER,
+)
 
 VERSION='4.31'
 CONTEXTS=('cheonan_a','asan_control','cheonan_b')
@@ -25,6 +29,7 @@ PASS_DIRECT='SALE_FILTER_PASS_EXPLICIT_FOR_SALE_UI'
 BLOCK='SALE_FILTER_BLOCK_SOLD_OR_RESERVED'
 UNKNOWN='SALE_FILTER_UNVERIFIED'
 STOCK_CONTRADICTION='SALE_FILTER_BLOCK_STOCK_NOT_IN_STOCK'
+BLOCK_BUY_NOW='SALE_FILTER_BLOCK_BUY_NOW'
 
 
 def _out(code, canonical='NOT_VERIFIED'):
@@ -33,11 +38,13 @@ def _out(code, canonical='NOT_VERIFIED'):
         'sale_filter_basis':('DIRECT_FOR_SALE_PRIMARY_UI' if code==PASS_DIRECT
             else 'IN_STOCK_AND_NO_PRIMARY_SOLD_RESERVED_UI' if code==PASS
             else 'EXPLICIT_SOLD_OR_RESERVED_UI' if code==BLOCK
+            else 'CURRENT_ITEM_BUY_NOW_OR_PURCHASE_CTA' if code==BLOCK_BUY_NOW
             else 'IN_STOCK_NOT_CONFIRMED' if code==STOCK_CONTRADICTION
             else 'INSUFFICIENT_EVIDENCE'),
         'display_status':('판매중 직접 확인' if code==PASS_DIRECT else
             '판매 가능 추정' if code==PASS else
-            '판매완료·예약중 제외' if code==BLOCK else '판매 상태 미확인'),
+            '판매완료·예약중 제외' if code==BLOCK else
+            '바로구매 제외' if code==BLOCK_BUY_NOW else '판매 상태 미확인'),
         'is_inferred_available':code==PASS,
         'direct_for_sale_ui_required':False,
         'direct_for_sale_ui_observed':code==PASS_DIRECT,
@@ -55,6 +62,8 @@ def _valid_diag(d,*,allow_explicit_for_sale=False):
     p=d.get('probe')
     frames=d.get('phases')
     if not isinstance(p,dict) or not isinstance(frames,dict):
+        return False
+    if classify_source_buy_now(d)['status'] != BUY_NOW_NO_MARKER:
         return False
     if p.get('status') not in (
         ('NO_DIRECT_FOR_SALE_UI','DIRECT_FOR_SALE_UI')
@@ -135,6 +144,14 @@ def assess_source(record, *, diagnostic=None, survey=None):
         return _out(STOCK_CONTRADICTION,txn)
     if txn not in ('NOT_OBSERVABLE','FOR_SALE'):
         return _out(UNKNOWN,txn)
+    # Item-scoped delivery/purchase exclusions are checked *before* the
+    # ordinary sale-evidence validation. Unknown legacy witness is quarantined.
+    if diagnostic is not None:
+        buy_now = classify_source_buy_now(diagnostic)['status']
+        if buy_now == BUY_NOW_EXCLUDED:
+            return _out(BLOCK_BUY_NOW, txn)
+        if buy_now != BUY_NOW_NO_MARKER:
+            return _out(UNKNOWN, txn)
     if diagnostic is not None and not _valid_diag(
             diagnostic,allow_explicit_for_sale=(txn=='FOR_SALE')):
         return _out(UNKNOWN,txn)
@@ -199,6 +216,7 @@ def evaluate_capture(v423, v429):
         'inferred_possible_for_sale':counts[PASS],
         'direct_for_sale':counts[PASS_DIRECT],
         'blocked_sold_or_reserved':counts[BLOCK],
+        'blocked_buy_now':counts[BLOCK_BUY_NOW],
         'unverified':counts[UNKNOWN]+counts[STOCK_CONTRADICTION],
         'reason_counts':dict(sorted(counts.items())),
         'direct_for_sale_required':False,
@@ -212,7 +230,7 @@ def _empty(code):
     return {'status':code,'policy_version':VERSION,'evaluation_complete':False,
         'source_visits_checked':0,'sale_filter_passed':0,
         'inferred_possible_for_sale':0,'direct_for_sale':0,
-        'blocked_sold_or_reserved':0,'unverified':0,'reason_counts':{},
+        'blocked_sold_or_reserved':0,'blocked_buy_now':0,'unverified':0,'reason_counts':{},
         'direct_for_sale_required':False,'source_transaction_status_modified':False,
         'price_category_region_verification_claimed':False,
         'fully_approved_recommendations':0,
@@ -228,11 +246,14 @@ def report(e):
         f"- Estimated possibly for sale: **{e['inferred_possible_for_sale']}**",
         f"- Direct FOR_SALE observed: {e['direct_for_sale']}",
         f"- Explicit SOLD/RESERVED blocked: {e['blocked_sold_or_reserved']}",
+        f"- Buy-now/purchase CTA excluded: {e['blocked_buy_now']}",
         f"- Unverified/conflicted: {e['unverified']}",
         f"- Per-status counts: {e['reason_counts']}",
         f"- Direct FOR_SALE badge required: {e['direct_for_sale_required']}",
         '- InStock + no same-item SOLD/RESERVED UI is a practical CANDIDATE policy, not direct transaction verification.',
         '- Primary canonical transaction status remains independent and unchanged.',
+        '- Exact current-item buy-now/purchase CTA excludes the item; missing/incomplete buy-now UI remains UNVERIFIED.',
+        '- Removing nationwide buy-now listings does NOT repair a mismatched search Route locality.',
         '- Existing server-price, category, regional scope and route proof gates are NOT bypassed.',
         '- Passing the sale filter alone NEVER approves a full recommendation.',
         f"- Fully approved recommendations: {e['fully_approved_recommendations']}",
