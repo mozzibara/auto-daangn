@@ -14,6 +14,9 @@ from urllib.parse import parse_qs, urlsplit
 
 import daangn_v4_1_core as core
 import daangn_browser_v4_6 as v46
+from app_v5.region_baseline_contrast import (
+    read_region_header_volatile, classify_region_header_transition,
+)
 from app_v5.filter_apply_activation import (
     FilterApplyActivationWitness, sanitize_apply_activation,
 )
@@ -50,6 +53,41 @@ _TRANSPORT_COUNTS = (
 )
 _DEFAULT_FILTER_FIELDS = {key: "MISSING" for key in
                           ("region", "category", "price_max", "available")}
+_REGIONLESS_ROUTE_STATUSES = (
+    "NOT_OBSERVED", "ONE_PARSED", "ONE_UNREADABLE",
+    "MULTIPLE_OBSERVED", "UNOBSERVABLE",
+)
+_HEADER_FAMILIES = (
+    "TARGET", "CHEONAN_OTHER", "ASAN", "SEOUL", "OTHER", "UNOBSERVABLE",
+)
+
+
+def _exact_except_missing_region(url):
+    """For passive diagnosis only; NEVER a substitute for _unique_query."""
+    summary = classify_filter_url(url)
+    return (
+        summary["shape"] == "FIRST_PARTY_SEARCH"
+        and summary["unexpected_keys"] == 0
+        and summary["fields"]["region"] == "MISSING"
+        and all(summary["fields"][field] == "EXPECTED"
+                for field in ("keyword", "category", "price_max", "available"))
+    )
+
+
+def regionless_route_summary(observed, events):
+    """Retain only 4 known field verdicts; no listing or raw URL data."""
+    if observed == 0:
+        return "NOT_OBSERVED", _DEFAULT_FILTER_FIELDS.copy()
+    if observed != 1:
+        return "MULTIPLE_OBSERVED", _DEFAULT_FILTER_FIELDS.copy()
+    if len(events) != 1:
+        return "ONE_UNREADABLE", _DEFAULT_FILTER_FIELDS.copy()
+    safe = {
+        k: _kind(events[0].get(k), _ITEM_STATUS, "MISSING")
+        for k in ("region", "category", "price_max", "available")
+    }
+    return "ONE_PARSED", safe
+
 
 _APPLY_STAGES = (
     "NOT_STARTED", "LOCATE_FILTER_CONTROLS", "FILTER_CONTROLS_READY",
@@ -170,6 +208,22 @@ def sanitize_precollection(value):
             src.get("ui_after_apply_recheck_state"),
             _UI_RECHECK_STATES, "NOT_RUN"),
         "filtered_route_count": _bounded(src.get("filtered_route_count")),
+        # The regionless Route is deliberately NON-ADMITTING evidence.
+        # Even four EXPECTED fields here cannot waive missing URL 'in'.
+        "regionless_route_count": _bounded(src.get("regionless_route_count")),
+        "regionless_route_status": _kind(
+            src.get("regionless_route_status"),
+            _REGIONLESS_ROUTE_STATUSES, "UNOBSERVABLE"),
+        "regionless_server_filters": {
+            k: _kind(
+                (src.get("regionless_server_filters")
+                 if type(src.get("regionless_server_filters")) is dict
+                 else {}).get(k), _ITEM_STATUS, "MISSING")
+            for k in ("region", "category", "price_max", "available")
+        },
+        "post_apply_region_header": _kind(
+            src.get("post_apply_region_header"),
+            _HEADER_FAMILIES, "UNOBSERVABLE"),
         "server_filters": {
             k: _kind(states.get(k), _ITEM_STATUS, "MISSING")
             for k in ("region", "category", "price_max", "available")
