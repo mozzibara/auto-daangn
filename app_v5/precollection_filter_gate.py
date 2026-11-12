@@ -14,6 +14,9 @@ from urllib.parse import parse_qs, urlsplit
 
 import daangn_v4_1_core as core
 import daangn_browser_v4_6 as v46
+from app_v5.region_baseline_contrast import (
+    read_region_header_volatile, classify_region_header_transition,
+)
 from app_v5.filter_apply_activation import (
     FilterApplyActivationWitness, sanitize_apply_activation,
 )
@@ -50,6 +53,41 @@ _TRANSPORT_COUNTS = (
 )
 _DEFAULT_FILTER_FIELDS = {key: "MISSING" for key in
                           ("region", "category", "price_max", "available")}
+_REGIONLESS_ROUTE_STATUSES = (
+    "NOT_OBSERVED", "ONE_PARSED", "ONE_UNREADABLE",
+    "MULTIPLE_OBSERVED", "UNOBSERVABLE",
+)
+_HEADER_FAMILIES = (
+    "TARGET", "CHEONAN_OTHER", "ASAN", "SEOUL", "OTHER", "UNOBSERVABLE",
+)
+
+
+def _exact_except_missing_region(url):
+    """For passive diagnosis only; NEVER a substitute for _unique_query."""
+    summary = classify_filter_url(url)
+    return (
+        summary["shape"] == "FIRST_PARTY_SEARCH"
+        and summary["unexpected_keys"] == 0
+        and summary["fields"]["region"] == "MISSING"
+        and all(summary["fields"][field] == "EXPECTED"
+                for field in ("keyword", "category", "price_max", "available"))
+    )
+
+
+def regionless_route_summary(observed, events):
+    """Retain only 4 known field verdicts; no listing or raw URL data."""
+    if observed == 0:
+        return "NOT_OBSERVED", _DEFAULT_FILTER_FIELDS.copy()
+    if observed != 1:
+        return "MULTIPLE_OBSERVED", _DEFAULT_FILTER_FIELDS.copy()
+    if len(events) != 1:
+        return "ONE_UNREADABLE", _DEFAULT_FILTER_FIELDS.copy()
+    safe = {
+        k: _kind(events[0].get(k), _ITEM_STATUS, "MISSING")
+        for k in ("region", "category", "price_max", "available")
+    }
+    return "ONE_PARSED", safe
+
 
 _APPLY_STAGES = (
     "NOT_STARTED", "LOCATE_FILTER_CONTROLS", "FILTER_CONTROLS_READY",
@@ -170,6 +208,22 @@ def sanitize_precollection(value):
             src.get("ui_after_apply_recheck_state"),
             _UI_RECHECK_STATES, "NOT_RUN"),
         "filtered_route_count": _bounded(src.get("filtered_route_count")),
+        # The regionless Route is deliberately NON-ADMITTING evidence.
+        # Even four EXPECTED fields here cannot waive missing URL 'in'.
+        "regionless_route_count": _bounded(src.get("regionless_route_count")),
+        "regionless_route_status": _kind(
+            src.get("regionless_route_status"),
+            _REGIONLESS_ROUTE_STATUSES, "UNOBSERVABLE"),
+        "regionless_server_filters": {
+            k: _kind(
+                (src.get("regionless_server_filters")
+                 if type(src.get("regionless_server_filters")) is dict
+                 else {}).get(k), _ITEM_STATUS, "MISSING")
+            for k in ("region", "category", "price_max", "available")
+        },
+        "post_apply_region_header": _kind(
+            src.get("post_apply_region_header"),
+            _HEADER_FAMILIES, "UNOBSERVABLE"),
         "server_filters": {
             k: _kind(states.get(k), _ITEM_STATUS, "MISSING")
             for k in ("region", "category", "price_max", "available")
@@ -284,6 +338,9 @@ class PassiveFilteredRoute:
         self.observed = 0
         self.starts = set()
         self.broad_starts = set()
+        self.regionless_starts = set()
+        self.regionless_events = []
+        self.regionless_observed = 0
         self.diagnostics = {key: 0 for key in _TRANSPORT_COUNTS}
 
     def _increase(self, key):
@@ -309,6 +366,11 @@ class PassiveFilteredRoute:
                     self.starts.add(request)
             else:
                 self._increase("search_different_query_requests")
+                if (request.method == "GET"
+                        and request.resource_type in ("fetch", "xhr")
+                        and _exact_except_missing_region(request.url)
+                        and len(self.regionless_starts) < 4):
+                    self.regionless_starts.add(request)
             if len(self.broad_starts) < 20:
                 self.broad_starts.add(request)
         except (AttributeError, TypeError, ValueError):
@@ -319,6 +381,7 @@ class PassiveFilteredRoute:
             if request in self.broad_starts:
                 self.broad_starts.discard(request)
                 self.starts.discard(request)
+                self.regionless_starts.discard(request)
                 self._increase("search_request_failures")
         except (AttributeError, TypeError, ValueError):
             return
@@ -337,6 +400,33 @@ class PassiveFilteredRoute:
                 self._increase("search_response_200")
             else:
                 self._increase("search_response_other")
+
+            # An exact 4-filter search with only 'in' absent is important
+            # evidence, but NOT a valid locality/collection Route.
+            if req in self.regionless_starts:
+                self.regionless_starts.discard(req)
+                self.regionless_observed = min(20, self.regionless_observed + 1)
+                if (response.status == 200
+                        and len(self.regionless_events) + len(self.tasks) < 3
+                        and ("json" in response.headers.get(
+                            "content-type", "").lower()
+                            or "remix" in response.headers.get(
+                                "content-type", "").lower())):
+                    content_length = response.headers.get("content-length", "")
+                    if (not content_length.isdecimal()
+                            or int(content_length) <= _MAX_BODY):
+                        async def read_regionless_metadata():
+                            try:
+                                body = await asyncio.wait_for(
+                                    response.body(), timeout=8)
+                                self.regionless_events.append(
+                                    inspect_filtered_response(body))
+                            except Exception:
+                                self.regionless_events.append(
+                                    _DEFAULT_FILTER_FIELDS.copy())
+                        task = asyncio.create_task(read_regionless_metadata())
+                        self.tasks.add(task)
+                        task.add_done_callback(self.tasks.discard)
             if req not in self.starts:
                 return
             self.starts.discard(req)
@@ -495,12 +585,28 @@ async def verify_filter_before_collection(page, region=REGION):
                 pass
         if info.get("apply_request_listener_armed") is True:
             info["filtered_route_count"] = watcher.observed
+            info["regionless_route_count"] = watcher.regionless_observed
+            (
+                info["regionless_route_status"],
+                info["regionless_server_filters"],
+            ) = regionless_route_summary(
+                watcher.regionless_observed, watcher.regionless_events)
             info["filter_transport_diagnostics"] = watcher.diagnostics.copy()
             try:
                 info["filtered_url_diagnostics"] = classify_filter_url(
                     page.url, region)
             except Exception:
                 pass
+        # Read the existing header only. A still-selected target header does
+        # not prove the backend search region is correct after Apply.
+        if info.get("apply_request_listener_armed") is True:
+            try:
+                raw_header = await read_region_header_volatile(page)
+                state = classify_region_header_transition(
+                    raw_header, raw_header, target_term=region["term"])
+                info["post_apply_region_header"] = state["after_header_family"]
+            except Exception:
+                info["post_apply_region_header"] = "UNOBSERVABLE"
         info["apply_activation"] = await witness.sample(page)
         await witness.stop(page)
     return sanitize_precollection(info)
