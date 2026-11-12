@@ -28,7 +28,8 @@ from app_v5.manual_region_input_events import ManualRegionInputEventWitness
 from app_v5.region_lifecycle import RegionLifecycleWitness
 from app_v5.region_baseline_contrast import (
     capture_first_load, sanitize_baseline, optional_egress_context,
-    safe_machine_class,
+    safe_machine_class, read_region_header_volatile,
+    classify_region_header_transition, sanitize_header_transition,
 )
 from app_v5.region_option_events import RegionOptionEventWitness
 from app_v5.region_readiness import RegionReadinessWitness
@@ -97,6 +98,7 @@ def sanitize_attempt(row) -> dict:
         "selected_ui": _strict_enum(src.get("selected_ui"),
                                     _REGION, "UNOBSERVABLE"),
         "initial_baseline":sanitize_baseline(src.get("initial_baseline")),
+        "header_transition":sanitize_header_transition(src.get("header_transition")),
         "authorizes_listings": False,
     }
 
@@ -216,6 +218,8 @@ async def one_public_region(browser, mode):
     request_armed = False
     api_armed = False
     initial_baseline = None
+    original_header = None
+    header_transition = None
     try:
         page = await context.new_page()
         # Observe the very first search navigation, not only postclick.
@@ -233,6 +237,7 @@ async def one_public_region(browser, mode):
         await network.drain()
         initial_baseline = await capture_first_load(
             page,region,passive_events=list(network.events))
+        original_header=await read_region_header_volatile(page)
 
         async def before_search():
             nonlocal api_armed, request_armed
@@ -279,6 +284,9 @@ async def one_public_region(browser, mode):
         )
         await page.wait_for_timeout(4200)
         input_focus["AFTER_4000MS"] = await sample_region_focus(page)
+        header_transition=classify_region_header_transition(
+            original_header,await read_region_header_volatile(page),
+            target_term=region["term"])
         await option_probe.checkpoint(page, "AFTER_SETTLE")
         await lifecycle.checkpoint(page, "AFTER_DELAYED_SETTLE")
         await resolver.drain()
@@ -342,13 +350,15 @@ async def one_public_region(browser, mode):
             "server_search": server_search,
             "server_filter": server_filter, "selected_ui": ui_region,
             "initial_baseline": initial_baseline,
+            "header_transition":header_transition,
         })
     except Exception:
         return sanitize_attempt({"mode": mode, "status": "UNEXPECTED_EXCEPTION",
                                  "input_events": observed_input,
                                  "input_focus": input_focus,
                                  "api_response_count": resolver.responses,
-                                 "initial_baseline":initial_baseline})
+                                 "initial_baseline":initial_baseline,
+                                 "header_transition":header_transition})
     finally:
         if page is not None:
             await input_probe.stop(page)
