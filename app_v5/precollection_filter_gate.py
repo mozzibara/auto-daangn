@@ -80,6 +80,9 @@ def _unique_query(url, expected_region=REGION):
                 or u.port is not None or u.path != core.SEARCH_PATH):
             return False
         q = parse_qs(u.query, keep_blank_values=True)
+        if any(k not in {"q", "in", "category_id", "price",
+                         "only_on_sale"} for k in q):
+            return False
         return all(q.get(k) == [val] for k, val in (
             ("q", KEYWORD), ("in", expected_region["slug"]),
             ("category_id", str(CATEGORY_ID)), ("price", "__" + str(MAX_PRICE)),
@@ -170,14 +173,27 @@ class PassiveFilteredRoute:
         self.tasks = set()
         self.restricted = False
         self.observed = 0
+        self.starts = set()
+
+    def on_request(self, request):
+        try:
+            if (request.resource_type in ("fetch", "xhr")
+                    and request.method == "GET"
+                    and _unique_query(request.url)
+                    and len(self.starts) < 4):
+                self.starts.add(request)
+        except (AttributeError, TypeError, ValueError):
+            return
 
     def on_response(self, response):
         try:
             req = response.request
-            if (req.resource_type not in ("fetch", "xhr")
+            if (req not in self.starts
+                    or req.resource_type not in ("fetch", "xhr")
                     or req.method != "GET"
                     or not _unique_query(response.url)):
                 return
+            self.starts.discard(req)
             self.observed = min(20, self.observed + 1)
             if response.status in (401, 403, 429):
                 self.restricted = True
@@ -234,22 +250,23 @@ async def verify_filter_before_collection(page, region=REGION):
         available_only=True, max_price=MAX_PRICE, min_price=0)
     watcher = PassiveFilteredRoute()
     try:
-        _, selected = await v46.set_filter(page, args, [])
+        button, selected = await v46.set_filter(page, args, [])
         info["ui_selected_before_apply"] = v46.ui_ok(selected, args)
         if not info["ui_selected_before_apply"]:
             info["status"] = "BLOCKED_FILTER_CONTROL"
             return sanitize_precollection(info)
-        trigger = page.get_by_role("button", name="적용하기", exact=True)
-        if await trigger.count() != 1 or not await trigger.is_enabled():
+        if not await button.is_enabled():
             info["status"] = "BLOCKED_FILTER_CONTROL"
             return sanitize_precollection(info)
+        page.on("request", watcher.on_request)
         page.on("response", watcher.on_response)
         try:
-            await trigger.click(timeout=6000)
+            await button.click(timeout=6000)
             info["filter_apply_returned"] = True
             await page.wait_for_timeout(1800)
             await watcher.drain()
         finally:
+            page.remove_listener("request", watcher.on_request)
             page.remove_listener("response", watcher.on_response)
         info["filtered_route_count"] = watcher.observed
         if watcher.restricted:
