@@ -107,3 +107,57 @@ class HeaderActivationWitness:
             except Exception:
                 pass
             self.armed=False
+
+# Diagnostic-only continuation gate. The observable UI must be ready,
+# without a second click, event synthesis, navigation, or API request.
+# Only returns boolean predicates: never export input contents or DOM.
+_CHECK_EMPTY_REGION_INPUT = r"""() => {
+  const selector='input[placeholder*="지역"],input[placeholder*="동네"],'+
+    '[role="dialog"] input,[role="combobox"]';
+  const seen=e=>{try{
+    const s=getComputedStyle(e);
+    return e.isConnected&&!!e.getClientRects().length&&
+      s.display!=='none'&&s.visibility!=='hidden';
+  }catch(_){return false;}};
+  const all=[...document.querySelectorAll(selector)].slice(0,50);
+  const visible=all.filter(seen);
+  const valid=visible.filter(x=>
+    x.closest('[role="dialog"]') &&
+    !x.disabled && !x.readOnly &&
+    x.getAttribute('aria-disabled')!=='true' &&
+    typeof x.value==='string' && x.value.length===0
+  );
+  return {
+    one_visible_region_input:visible.length===1,
+    one_empty_enabled_dialog_input:valid.length===1
+  };
+}"""
+
+
+async def verify_header_click_timeout_without_reclick(page, witness):
+    """Strong proof for diagnostic-only continuation after locator click timeout.
+
+    A trusted pointer and click sequence is necessary but not sufficient:
+    require exactly one still visible/active header and one empty, enabled,
+    visible region input inside the dialog. This function never acts on UI.
+    """
+    if witness.armed is not True:
+        return False
+    snapshot = await witness.sample(page)
+    if snapshot["armed"] is not True:
+        return False
+    if any(snapshot[key] != 1 for key in (
+            "header_candidates", "header_visible", "header_enabled")):
+        return False
+    if any(snapshot["trusted"][event] != 1
+           or snapshot["counts"][event] != 1 for event in _EVENTS):
+        return False
+    try:
+        ready = await page.evaluate(_CHECK_EMPTY_REGION_INPUT)
+    except Exception:
+        return False
+    return (
+        type(ready) is dict
+        and ready.get("one_visible_region_input") is True
+        and ready.get("one_empty_enabled_dialog_input") is True
+    )
