@@ -26,6 +26,9 @@ _APPROVAL = "I_APPROVE_OCI_PRECOLLECTION_FILL_V1"
 # This separate token is required to read metadata from the browser's
 # newly observed _data Route body. Legacy owner approval is insufficient.
 _PASSIVE_METADATA_APPROVAL = "I_APPROVE_OCI_FILTER_METADATA_ONLY_V1"
+# V2 extends the permitted selector class to source-verified dynamic
+# routes/* names. It requires a THIRD token, never old/V1 approval.
+_DYNAMIC_METADATA_APPROVAL = "I_APPROVE_OCI_DYNAMIC_METADATA_ONLY_V2"
 
 
 def isolated_execution_directory(path=None, *, home=None):
@@ -172,9 +175,13 @@ def blocked(reason):
 
 async def run(*, approve, live, headed, robots=None, picker_robots=None,
               directory_check=None, diagnostic=None,
-              passive_changed_loader=False):
-    accepted = (_PASSIVE_METADATA_APPROVAL if passive_changed_loader is True
-                else _APPROVAL)
+              passive_changed_loader=False, passive_dynamic_loader=False):
+    if passive_changed_loader is True and passive_dynamic_loader is True:
+        return blocked("OWNER_APPROVAL_REQUIRED")
+    accepted = (
+        _DYNAMIC_METADATA_APPROVAL if passive_dynamic_loader is True
+        else _PASSIVE_METADATA_APPROVAL if passive_changed_loader is True
+        else _APPROVAL)
     if not (live is True and approve == accepted and headed is True):
         return blocked("OWNER_APPROVAL_REQUIRED")
     directory_check = directory_check or isolated_execution_directory
@@ -200,7 +207,8 @@ async def run(*, approve, live, headed, robots=None, picker_robots=None,
                         browser, "FILL",
                         on_region_confirmed=partial(
                             verify_filter_before_collection,
-                            passive_changed_loader=passive_changed_loader))
+                            passive_changed_loader=passive_changed_loader,
+                            passive_dynamic_loader=passive_dynamic_loader))
                 finally:
                     await browser.close()
         return final_report(region_result)
@@ -214,13 +222,19 @@ def main(argv=None):
     parser.add_argument("--headed", action="store_true")
     parser.add_argument("--owner-approval", default="")
     parser.add_argument("--passive-new-loader-metadata", action="store_true",
-        help="Opt-in to one bounded changed Remix _data metadata-only read;"
-             " requires a separate explicit owner approval")
+        help="V1: opt-in to bounded search-prefix Remix metadata read;"
+             " requires separate explicit approval")
+    parser.add_argument("--passive-dynamic-loader-metadata", action="store_true",
+        help="V2: opt-in to bounded dynamic routes/* Remix metadata read;"
+             " requires a distinct explicit owner approval")
     options = parser.parse_args(argv)
+    exclusive = not (options.passive_new_loader_metadata
+                     and options.passive_dynamic_loader_metadata)
     expected_approval = (
-        _PASSIVE_METADATA_APPROVAL if options.passive_new_loader_metadata
+        _DYNAMIC_METADATA_APPROVAL if options.passive_dynamic_loader_metadata
+        else _PASSIVE_METADATA_APPROVAL if options.passive_new_loader_metadata
         else _APPROVAL)
-    if not (options.live and options.headed
+    if not (exclusive and options.live and options.headed
             and options.owner_approval == expected_approval):
         # No asyncio event loop or browser/robots client is constructed
         # without the full literal one-shot operator approval.
@@ -229,7 +243,8 @@ def main(argv=None):
         report = asyncio.run(run(
             approve=options.owner_approval, live=options.live,
             headed=options.headed,
-            passive_changed_loader=options.passive_new_loader_metadata))
+            passive_changed_loader=options.passive_new_loader_metadata,
+            passive_dynamic_loader=options.passive_dynamic_loader_metadata))
     print(json.dumps(report, ensure_ascii=False, sort_keys=True, indent=2))
     return 0 if report["status"] == "PRECOLLECTION_EVIDENCE_COMPLETE" else 2
 
