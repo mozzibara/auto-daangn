@@ -11,6 +11,7 @@ import argparse
 import asyncio
 import json
 import os
+from functools import partial
 from pathlib import Path
 
 from app_v5.precollection_filter_gate import (
@@ -22,6 +23,9 @@ from scripts.chrome_stable_input_compare import (
 from scripts.run_live_checked import check_region_picker_robots
 
 _APPROVAL = "I_APPROVE_OCI_PRECOLLECTION_FILL_V1"
+# This separate token is required to read metadata from the browser's
+# newly observed _data Route body. Legacy owner approval is insufficient.
+_PASSIVE_METADATA_APPROVAL = "I_APPROVE_OCI_FILTER_METADATA_ONLY_V1"
 
 
 def isolated_execution_directory(path=None, *, home=None):
@@ -167,8 +171,11 @@ def blocked(reason):
 
 
 async def run(*, approve, live, headed, robots=None, picker_robots=None,
-              directory_check=None, diagnostic=None):
-    if not (live is True and approve == _APPROVAL and headed is True):
+              directory_check=None, diagnostic=None,
+              passive_changed_loader=False):
+    accepted = (_PASSIVE_METADATA_APPROVAL if passive_changed_loader is True
+                else _APPROVAL)
+    if not (live is True and approve == accepted and headed is True):
         return blocked("OWNER_APPROVAL_REQUIRED")
     directory_check = directory_check or isolated_execution_directory
     if not directory_check():
@@ -191,7 +198,9 @@ async def run(*, approve, live, headed, robots=None, picker_robots=None,
                     # Exactly one FILL attempt, no SEQUENTIAL_KEYS, no repeat.
                     region_result = await one_public_region(
                         browser, "FILL",
-                        on_region_confirmed=verify_filter_before_collection)
+                        on_region_confirmed=partial(
+                            verify_filter_before_collection,
+                            passive_changed_loader=passive_changed_loader))
                 finally:
                     await browser.close()
         return final_report(region_result)
@@ -204,16 +213,23 @@ def main(argv=None):
     parser.add_argument("--live", action="store_true")
     parser.add_argument("--headed", action="store_true")
     parser.add_argument("--owner-approval", default="")
+    parser.add_argument("--passive-new-loader-metadata", action="store_true",
+        help="Opt-in to one bounded changed Remix _data metadata-only read;"
+             " requires a separate explicit owner approval")
     options = parser.parse_args(argv)
+    expected_approval = (
+        _PASSIVE_METADATA_APPROVAL if options.passive_new_loader_metadata
+        else _APPROVAL)
     if not (options.live and options.headed
-            and options.owner_approval == _APPROVAL):
+            and options.owner_approval == expected_approval):
         # No asyncio event loop or browser/robots client is constructed
         # without the full literal one-shot operator approval.
         report = blocked("OWNER_APPROVAL_REQUIRED")
     else:
         report = asyncio.run(run(
             approve=options.owner_approval, live=options.live,
-            headed=options.headed))
+            headed=options.headed,
+            passive_changed_loader=options.passive_new_loader_metadata))
     print(json.dumps(report, ensure_ascii=False, sort_keys=True, indent=2))
     return 0 if report["status"] == "PRECOLLECTION_EVIDENCE_COMPLETE" else 2
 

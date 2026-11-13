@@ -245,6 +245,30 @@ def classify_remix_loader_selector(url):
         return "UNOBSERVABLE"
 
 
+def _changed_search_remix_loader(url):
+    """Tight opt-in diagnostic selector, NEVER a trusted Route or URL gate.
+
+    Same first-party search path + exact four known filters + no 'in', and
+    precisely one _data with a bounded search-route-like value. Arbitrary
+    unknown or duplicate selectors must remain unread.
+    """
+    if (classify_extra_query_family(url) != "OTHER_REMIX_DATA_ID"
+            or type(url) is not str or len(url) > 4096):
+        return False
+    try:
+        u = urlsplit(url)
+        if u.username is not None or u.password is not None or u.fragment:
+            return False
+        qs = parse_qs(u.query, keep_blank_values=True)
+        route = qs["_data"][0]
+        return (type(route) is str and 10 <= len(route) <= 180
+                and route.startswith("routes/kr.search.buy-sell")
+                and route != core.ROUTE_ID
+                and all(ch.isalnum() or ch in "._/-$" for ch in route))
+    except (ValueError, KeyError, TypeError, AttributeError):
+        return False
+
+
 def _exact_known_remix_regionless_loader(url):
     """Non-admitting passive probe of an already-browser-generated Route."""
     return classify_remix_loader_selector(url) == "EXPECTED_SEARCH_LOADER"
@@ -459,6 +483,20 @@ def sanitize_precollection(value):
         "regionless_route_count": _bounded(src.get("regionless_route_count")),
         "remix_regionless_route_count": _bounded(
             src.get("remix_regionless_route_count")),
+        "changed_loader_metadata_mode": src.get(
+            "changed_loader_metadata_mode") is True,
+        "changed_loader_metadata_count": _bounded(
+            src.get("changed_loader_metadata_count")),
+        "changed_loader_metadata_status": _kind(
+            src.get("changed_loader_metadata_status"),
+            _REGIONLESS_ROUTE_STATUSES, "UNOBSERVABLE"),
+        "changed_loader_server_filters": {
+            k: _kind(
+                (src.get("changed_loader_server_filters")
+                 if type(src.get("changed_loader_server_filters")) is dict
+                 else {}).get(k), _ITEM_STATUS, "MISSING")
+            for k in ("region", "category", "price_max", "available")
+        },
         "remix_regionless_route_status": _kind(
             src.get("remix_regionless_route_status"),
             _REGIONLESS_ROUTE_STATUSES, "UNOBSERVABLE"),
@@ -589,7 +627,13 @@ def inspect_filtered_response(blob):
 
 class PassiveFilteredRoute:
     """Only browser-generated first-party filtered Route responses, no fetch."""
-    def __init__(self):
+    def __init__(self, *, passive_changed_loader=False):
+        # Caller must hold the SEPARATE owner approval token. An ordinary
+        # FILL precollection attempt does not read unknown Remix bodies.
+        self.passive_changed_loader = passive_changed_loader is True
+        self.changed_starts = set()
+        self.changed_observed = 0
+        self.changed_events = []
         self.events = []
         self.tasks = set()
         self.restricted = False
@@ -651,6 +695,12 @@ class PassiveFilteredRoute:
                         and _exact_except_missing_region(request.url)
                         and len(self.regionless_starts) < 4):
                     self.regionless_starts.add(request)
+                if (self.passive_changed_loader
+                        and request.method == "GET"
+                        and request.resource_type in ("fetch", "xhr")
+                        and _changed_search_remix_loader(request.url)
+                        and len(self.changed_starts) < 4):
+                    self.changed_starts.add(request)
                 if (request.method == "GET"
                         and request.resource_type in ("fetch", "xhr")
                         and _exact_known_remix_regionless_loader(request.url)
@@ -668,6 +718,7 @@ class PassiveFilteredRoute:
                 self.starts.discard(request)
                 self.regionless_starts.discard(request)
                 self.remix_regionless_starts.discard(request)
+                self.changed_starts.discard(request)
                 self._increase("search_request_failures")
                 if request in self.request_verdicts:
                     self.request_verdicts[request]["outcome"] = "REQUEST_FAILED"
@@ -699,6 +750,45 @@ class PassiveFilteredRoute:
                 self._increase("search_response_200")
             else:
                 self._increase("search_response_other")
+
+            # Explicitly owner-approved, metadata-only diagnostic:
+            # a changed but search-prefix-constrained _data query may
+            # carry exactly the already known searchRegion/currentFilters
+            # schema. This response is NEVER an admitted collector Route.
+            if req in self.changed_starts:
+                self.changed_starts.discard(req)
+                self.changed_observed = min(20, self.changed_observed + 1)
+                # Require a single first-party request/response pair, no
+                # redirect, matching safe query and JSON content type.
+                if (self.passive_changed_loader
+                        and self.diagnostics["search_requests"] == 1
+                        and response.status == 200
+                        and req.url == response.url
+                        and _changed_search_remix_loader(response.url)
+                        and len(self.changed_events) + len(self.tasks) < 3):
+                    ctype = str(
+                        response.headers.get("content-type", "")).lower()
+                    size = str(
+                        response.headers.get("content-length", ""))
+                    if (("json" in ctype or "remix" in ctype)
+                            and (not size.isdecimal()
+                                 or int(size) <= _MAX_BODY)):
+                        async def read_changed_metadata_only():
+                            try:
+                                blob = await asyncio.wait_for(
+                                    response.body(), timeout=8)
+                                # inspect_filtered_response excludes item
+                                # arrays entirely from the model traversal;
+                                # only four finite verdicts may be retained.
+                                self.changed_events.append(
+                                    inspect_filtered_response(blob))
+                            except Exception:
+                                self.changed_events.append(
+                                    _DEFAULT_FILTER_FIELDS.copy())
+                        task = asyncio.create_task(
+                            read_changed_metadata_only())
+                        self.tasks.add(task)
+                        task.add_done_callback(self.tasks.discard)
 
             # A known first-party Remix loader may carry the exact four
             # filters plus _data=<known search route>. It cannot admit
@@ -838,7 +928,8 @@ class PassiveFilteredRoute:
                 pass
 
 
-async def verify_filter_before_collection(page, region=REGION):
+async def verify_filter_before_collection(
+        page, region=REGION, *, passive_changed_loader=False):
     """Fail-closed FILL-only public filter Apply, ending before listing collection.
 
     After *any* exception, preserve already observed click/URL/request categories.
@@ -852,6 +943,7 @@ async def verify_filter_before_collection(page, region=REGION):
         "apply_action_stage": "NOT_STARTED",
         "apply_action_exception_kind": "NONE",
         "posttimeout_passive_observation": "NOT_APPLICABLE",
+        "changed_loader_metadata_mode": passive_changed_loader is True,
     }
     if (region is not REGION and region != REGION) or not page.url.startswith(
             "https://www.daangn.com/kr/search/buy-sell/"):
@@ -860,7 +952,8 @@ async def verify_filter_before_collection(page, region=REGION):
     args = SimpleNamespace(
         category_name="디지털기기", category_id=CATEGORY_ID,
         available_only=True, max_price=MAX_PRICE, min_price=0)
-    watcher = PassiveFilteredRoute()
+    watcher = PassiveFilteredRoute(
+        passive_changed_loader=passive_changed_loader)
     witness = FilterApplyActivationWitness()
     url_stage_states = {}
 
@@ -981,6 +1074,26 @@ async def verify_filter_before_collection(page, region=REGION):
                 pass
         if info.get("apply_request_listener_armed") is True:
             info["filtered_route_count"] = watcher.observed
+            info["changed_loader_metadata_count"] = (
+                watcher.changed_observed)
+            # Ambiguous, failed, or restricted overall request windows
+            # cannot be represented as one authoritative metadata sample.
+            if (watcher.diagnostics["search_requests"] != 1
+                    or watcher.diagnostics["search_responses"] != 1
+                    or watcher.diagnostics["search_request_failures"] != 0
+                    or watcher.restricted):
+                info["changed_loader_metadata_status"] = (
+                    "MULTIPLE_OBSERVED"
+                    if watcher.diagnostics["search_requests"] > 1
+                    else "ONE_UNREADABLE")
+                info["changed_loader_server_filters"] = (
+                    _DEFAULT_FILTER_FIELDS.copy())
+            else:
+                (
+                    info["changed_loader_metadata_status"],
+                    info["changed_loader_server_filters"],
+                ) = regionless_route_summary(
+                    watcher.changed_observed, watcher.changed_events)
             info["regionless_route_count"] = watcher.regionless_observed
             info["remix_regionless_route_count"] = (
                 watcher.remix_regionless_observed)
