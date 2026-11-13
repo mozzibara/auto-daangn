@@ -197,7 +197,7 @@ class BlockingOutputTests(unittest.IsolatedAsyncioTestCase):
                 response=Res(request)
                 for fn in page.hooks.get("response",[]):
                     fn(response)
-        async def set_filter(*args):
+        async def set_filter(*args, **kwargs):
             return Button(),BEFORE
         async def must_not_recheck(*args):
             raise AssertionError("Should not reopen Filter on URL block")
