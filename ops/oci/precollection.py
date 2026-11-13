@@ -80,6 +80,7 @@ def summarize_region_failure(region_row):
         "picker_opened_callback_reached": phase["picker_opened"],
         "region_keyword_api_state": phase["api"]["state"],
         "region_route_status": safe["route_status"],
+        "region_url_provenance": safe["region_url_provenance"],
         "region_server_search": safe["server_search"],
         "region_server_filter": safe["server_filter"],
         "selected_ui": safe["selected_ui"],

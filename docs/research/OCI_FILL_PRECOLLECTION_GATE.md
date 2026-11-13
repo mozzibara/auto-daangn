@@ -778,6 +778,97 @@ fields. Do not rewrite the URL, add `in` manually, trust the new
 unknown `_data` body, or start listing capture to compensate for
 missing server locality proof.
 
+### OCI URL region absent before opening filter — 2026-11-13 owner verification
+
+Owner upgraded the isolated OCI checkout to PR #68 main
+`1c414515e229ec11a5779ae5dc46891c0f40ad73`, passed
+`test_oci_region_url_stage_timeline.py` **12/12**, then performed
+one owner-approved FILL precollection run.
+
+**Conclusive scope:** the public search page URL already lacked
+`in` at `BEFORE_OPEN_FILTER`, and every later filter checkpoint
+(OPEN/CATEGORY/AVAILABLE/MAX_FILL/MAX_TAB/BEFORE_APPLY/
+AFTER_CLICK_RETURN/AFTER_SETTLE/AT_REPORT_SNAPSHOT) also lacked
+`in`. Filter Apply did **not newly remove** the `in` parameter
+within the observed sequence. Region-picker browser UI, first-party
+keyword resolver and one fresh postclick search Route independently
+reported target region; both server search and currentFilter region
+IDs EXPECTED. Selected header TARGET. A trusted, normally returned
+Apply clicked once; one browser-generated GET fetch/xhr HTTP 200,
+four requested non-region filters EXPECTED, `in` MISSING, changed
+`_data` ID. Server locality and price/availability/category after
+Apply were **not** proven. `BLOCKED_FILTER_URL` and
+`STOP_FILTERS_NOT_VERIFIED` remain appropriate. No item/DB/production
+activity.
+
+The next root-cause question is whether the selected-region query
+`in` was **ever** present during the region-picker workflow and
+whether the *correlated fresh post-option-click Route request URL*
+contained `in`. The existing region UI/Route validation is
+substantive **server evidence** after region selection; it does not
+imply the page's URL was updated.
+
+**New non-admitting passive URL provenance observer:**
+- Reuses the **existing** region-picker callbacks to classify
+  `page.url` immediately BEFORE the single target region-option
+  click, AFTER that click returns (or uniquely witnessed timeout),
+  AFTER the existing region-selection core function returns,
+  AFTER the existing 4.2s settle and BEFORE the existing optional
+  filter precollection callback.
+- The existing `ManualSearchResponses.after_click()` already ties
+  a Route to a request **started after** the trusted option click.
+  An additional implementation audit found an accuracy bug:
+  `request_region` had been derived from `response.url` rather
+  than the actual initiating `response.request.url`. This PR
+  corrects that source and tests deliberately divergent browser
+  request vs response URLs. The new field
+  `fresh_route_request_region` exposes **only** the corrected,
+  fixed `EXPECTED/MISSING/OTHER/INVALID` verdict and **only**
+  if `route_status=ONE_FRESH`; otherwise UNOBSERVABLE.
+- Output:
+  `region_diagnostics.region_url_provenance.checkpoints`
+  (`BEFORE_OPTION_CLICK`, `AFTER_OPTION_CLICK`,
+  `AFTER_CORE_RETURN`, `AFTER_SETTLE`, `BEFORE_FILTER`),
+  `first_observed_missing_stage` and
+  `fresh_route_request_region`. Values are fixed enums, no
+  raw URL/path/query/slug/region ID stored or exported. The
+  first observed missing checkpoint is a **temporal observation**
+  not proof of its causal mutation step; gaps → INCONCLUSIVE.
+- In particular a fresh Route request with `in=MISSING` whose
+  **response** contains both region IDs EXPECTED would support
+  the hypothesis that the site can return a region-specific
+  server result without encoding locality in the request URL.
+  It still would **not** prove that a later *filtered* Route has
+  the same locality.
+- No new clicks, request registrations, navigation, timers,
+  force actions, cookie/storage inspection, new response-body
+  parsing or collector permission. Existing region API/Route
+  authentication, exact filtered `in` URL requirement, price
+  metadata and post-Apply filter UI gates remain unchanged.
+
+After all four offline CI tasks are green and the PR merged,
+the owner may run **one** isolated approved observation only if
+current public robots/access controls permit:
+
+```bash
+cd "$HOME/code/auto-daangn-region-diagnostic"
+git pull --ff-only
+source .venv/bin/activate
+python -m unittest discover -s tests -p 'test_oci_region_route_url_provenance.py' -v
+set -o pipefail
+xvfb-run -a python -m ops.oci.precollection --live --headed --owner-approval I_APPROVE_OCI_PRECOLLECTION_FILL_V1 | tee "$HOME/daangn_oci_region_route_url_provenance.json"
+```
+
+Inspect only `region_diagnostics.region_url_provenance`, existing
+`region_route_status`, `region_server_search`,
+`region_server_filter` and
+`precollection.region_url_timeline.BEFORE_OPEN_FILTER`.
+If `fresh_route_request_region=MISSING` alongside server EXPECTED,
+do **not** simply remove the later exact-region URL requirement or
+interpret a filtered 200 as region proof. Redesign requires separate
+postfilter proof independent of legacy request form and explicit
+owner approval; no listing read/import is permitted in this probe.
+
 ### Outcome interpretation
 
 | Status | Operational interpretation |

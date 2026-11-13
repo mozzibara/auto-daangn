@@ -261,7 +261,9 @@ class ManualSearchResponses:
             if length.isdigit() and int(length) > _MAX_ROUTE_BYTES:
                 self.skipped += 1
                 return
-            req_region = classify_browser_url(response.url, self.region)["region"]
+            # request_region must describe the actual browser-initiated URL.
+            # response.url can differ after redirects or framework routing.
+            req_region = classify_browser_url(request.url, self.region)["region"]
 
             async def receive():
                 state = "ROUTE_UNREADABLE"
