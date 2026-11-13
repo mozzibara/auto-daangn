@@ -1076,11 +1076,24 @@ async def verify_filter_before_collection(
             info["filtered_route_count"] = watcher.observed
             info["changed_loader_metadata_count"] = (
                 watcher.changed_observed)
-            (
-                info["changed_loader_metadata_status"],
-                info["changed_loader_server_filters"],
-            ) = regionless_route_summary(
-                watcher.changed_observed, watcher.changed_events)
+            # Ambiguous, failed, or restricted overall request windows
+            # cannot be represented as one authoritative metadata sample.
+            if (watcher.diagnostics["search_requests"] != 1
+                    or watcher.diagnostics["search_responses"] != 1
+                    or watcher.diagnostics["search_request_failures"] != 0
+                    or watcher.restricted):
+                info["changed_loader_metadata_status"] = (
+                    "MULTIPLE_OBSERVED"
+                    if watcher.diagnostics["search_requests"] > 1
+                    else "ONE_UNREADABLE")
+                info["changed_loader_server_filters"] = (
+                    _DEFAULT_FILTER_FIELDS.copy())
+            else:
+                (
+                    info["changed_loader_metadata_status"],
+                    info["changed_loader_server_filters"],
+                ) = regionless_route_summary(
+                    watcher.changed_observed, watcher.changed_events)
             info["regionless_route_count"] = watcher.regionless_observed
             info["remix_regionless_route_count"] = (
                 watcher.remix_regionless_observed)
