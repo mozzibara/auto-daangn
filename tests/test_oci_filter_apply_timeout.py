@@ -101,7 +101,7 @@ class TimeoutDiagnosticTests(unittest.IsolatedAsyncioTestCase):
     async def _run(self,*,count=1,error="timeout",delivered=True):
         page=Page(witness_count=count)
         button=Button(page,err=error,delivered=delivered)
-        async def select(*args):
+        async def select(*args, **kwargs):
             return button,BEFORE
         async def forbidden_recheck(*args):
             raise AssertionError("No UI-recheck or second click on Apply timeout")
