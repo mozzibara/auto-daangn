@@ -13,6 +13,7 @@ from app_v5.region_input_events import sample_region_focus
 from app_v5.region_header_activation import (
     sanitize_header_activation, sanitize_header_timeout_reason,
 )
+from app_v5.region_header_actionability import sanitize_header_actionability
 
 _STAGES = ("AFTER_PICKER_OPEN_500MS", "AFTER_CORE_RETURN", "AFTER_SETTLE_4200MS")
 _COUNTS = ("inputs", "visible_inputs", "dialog_inputs",
@@ -154,6 +155,10 @@ def sanitize_picker_phases(value):
             src.get("header_click_exception_kind"),
             ("NONE", "PLAYWRIGHT_TIMEOUT", "OTHER_EXCEPTION"), "NONE"),
         "header_activation": sanitize_header_activation(src.get("header_activation")),
+        "header_actionability_pre": sanitize_header_actionability(
+            src.get("header_actionability_pre")),
+        "header_actionability_timeout": sanitize_header_actionability(
+            src.get("header_actionability_timeout")),
         "header_timeout_gate_reason": sanitize_header_timeout_reason(
             src.get("header_timeout_gate_reason", "NOT_INVOKED")),
         "option_click_returned": src.get("option_click_returned") is True,
@@ -236,6 +241,8 @@ class RegionPickerPhaseWitness:
                header_activation=None, header_click_verified_after_timeout=None,
                header_click_exception_kind=None,
                header_timeout_gate_reason=None,
+               header_actionability_pre=None,
+               header_actionability_timeout=None,
                option_click_returned=None,
                option_click_verified_after_timeout=None,
                option_click_exception_kind=None):
@@ -270,6 +277,8 @@ class RegionPickerPhaseWitness:
             "header_click_exception_kind": header_click_exception_kind,
             "header_activation": header_activation,
             "header_timeout_gate_reason": header_timeout_gate_reason,
+            "header_actionability_pre": header_actionability_pre,
+            "header_actionability_timeout": header_actionability_timeout,
             "option_click_returned": option_click_returned,
             "option_click_verified_after_timeout": option_click_verified_after_timeout,
             "option_click_exception_kind": option_click_exception_kind,
