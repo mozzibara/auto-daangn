@@ -81,6 +81,12 @@ def sanitize_apply_request_diagnostics(raw):
             src.get("method"), _REQUEST_METHOD_STATES, "UNOBSERVABLE"),
         "request_url": sanitize_filter_url_diagnostic(src.get("request_url")),
         "response_url": sanitize_filter_url_diagnostic(src.get("response_url")),
+        "request_extra_query_family": _kind(
+            src.get("request_extra_query_family"),
+            _EXTRA_QUERY_FAMILIES, "UNOBSERVABLE"),
+        "response_extra_query_family": _kind(
+            src.get("response_extra_query_family"),
+            _EXTRA_QUERY_FAMILIES, "UNOBSERVABLE"),
         "request_route_selector": _kind(
             src.get("request_route_selector"),
             _REMIX_SELECTOR_STATES, "UNOBSERVABLE"),
@@ -96,6 +102,55 @@ def sanitize_apply_request_diagnostics(raw):
         },
         "authorizes_listings": False,
     }
+
+
+_EXTRA_QUERY_FAMILIES = (
+    "NONE", "EXACT_REMIX_DATA", "OTHER_REMIX_DATA_ID",
+    "ROUTES_KEY", "INDEX_KEY", "DUPLICATE_EXTRA_VALUE",
+    "OTHER_SINGLE_KEY", "MULTIPLE_EXTRA_KEYS",
+    "FILTER_QUERY_MISMATCH", "UNOBSERVABLE",
+)
+
+
+def classify_extra_query_family(url):
+    """Known-key family only; never copy arbitrary key names or values.
+
+    This is *not* an authoritative transport or locality proof. It
+    categorizes exactly the already-browser-observed public search query,
+    after checking its four fixed requested filters and absence of 'in'.
+    """
+    if type(url) is not str or len(url) > 4096:
+        return "UNOBSERVABLE"
+    if not _same_public_search_path(url):
+        return "FILTER_QUERY_MISMATCH"
+    try:
+        qs = parse_qs(urlsplit(url).query, keep_blank_values=True)
+        fixed = {
+            "q": KEYWORD, "category_id": str(CATEGORY_ID),
+            "price": "__" + str(MAX_PRICE), "only_on_sale": "true",
+        }
+        if (qs.get("in") is not None
+                or any(qs.get(k) != [v] for k, v in fixed.items())):
+            return "FILTER_QUERY_MISMATCH"
+        keys = set(qs).difference(fixed)
+        if not keys:
+            return "NONE"
+        if len(keys) != 1:
+            return "MULTIPLE_EXTRA_KEYS"
+        key = next(iter(keys))
+        values = qs[key]
+        if len(values) != 1:
+            return "DUPLICATE_EXTRA_VALUE"
+        if key == "_data":
+            return ("EXACT_REMIX_DATA" if values[0] == core.ROUTE_ID
+                    else "OTHER_REMIX_DATA_ID")
+        if key == "_routes":
+            return "ROUTES_KEY"
+        if key == "index":
+            return "INDEX_KEY"
+        return "OTHER_SINGLE_KEY"
+    except (ValueError, TypeError, AttributeError):
+        return "UNOBSERVABLE"
 
 
 _REMIX_SELECTOR_STATES = (
@@ -465,6 +520,9 @@ class PassiveFilteredRoute:
                     "request_url": classify_filter_url(request.url),
                     "request_route_selector": classify_remix_loader_selector(
                         request.url),
+                    "request_extra_query_family": classify_extra_query_family(
+                        request.url),
+                    "response_extra_query_family": "UNOBSERVABLE",
                     "response_url": None,
                     "response_route_selector": "UNOBSERVABLE",
                     "outcome": "NOT_OBSERVED",
@@ -522,6 +580,8 @@ class PassiveFilteredRoute:
                 entry = self.request_verdicts[req]
                 entry["response_url"] = classify_filter_url(response.url)
                 entry["response_route_selector"] = classify_remix_loader_selector(
+                    response.url)
+                entry["response_extra_query_family"] = classify_extra_query_family(
                     response.url)
                 entry["outcome"] = (
                     "ACCESS_RESTRICTED" if response.status in (401, 403, 429)
@@ -655,6 +715,8 @@ class PassiveFilteredRoute:
             "method": entry["method"],
             "request_url": url,
             "response_url": entry["response_url"],
+            "request_extra_query_family": entry["request_extra_query_family"],
+            "response_extra_query_family": entry["response_extra_query_family"],
             "request_route_selector": entry["request_route_selector"],
             "response_route_selector": entry["response_route_selector"],
             "outcome": entry["outcome"],
