@@ -72,7 +72,7 @@ class KnownSelectorTests(unittest.TestCase):
         bad=(
             LOADER+"&private=SECRET",
             LOADER+"&_data="+core.ROUTE_ID,
-            LOADER.replace(core.ROUTE_ID,"other.route"),
+            PAGE+"&"+urlencode({"_data":"other.route"}),
             PAGE+"&_data=secret_private",
             LOADER.replace("q=HDD","q=SSD"),
             LOADER.replace("category_id=1","category_id=2"),
