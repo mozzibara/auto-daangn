@@ -6,6 +6,7 @@ import json
 import unittest
 
 import daangn_v4_1_core as core
+from app_v5.manual_chrome_region import ManualSearchResponses
 from app_v5.region_url_provenance import (
     RegionURLProvenance, classify_page_region,
     sanitize_region_url_provenance,
@@ -115,6 +116,49 @@ class ChronologyTests(unittest.TestCase):
             postclick_route={"request_region":"OTHER"})[
                 "fresh_route_request_region"],"OTHER")
 
+
+class ExistingBrowserRouteRequestTests(unittest.IsolatedAsyncioTestCase):
+    async def test_request_region_comes_from_initiating_browser_request_not_response_url(self):
+        """Redirects cannot silently mislabel a response URL as request."""
+        class Request:
+            resource_type="fetch"
+            method="GET"
+            def __init__(self,url):self.url=url
+
+        class Response:
+            headers={"content-type":"application/json"}
+            status=200
+            def __init__(self,request,url):
+                self.request=request
+                self.url=url
+                self.body_read_count=0
+            async def body(self):
+                self.body_read_count+=1
+                return json.dumps({
+                    "route":{
+                        "buySellArticles":[{"title":"PRIVATE_SELLER_TITLE"}],
+                        "searchRegion":{"id":"2292","name":"불당동"},
+                        "currentFilters":{"regionId":"2292"},
+                    }
+                }).encode()
+
+        for request_url,response_url,expected in (
+            (WITH_REGION,URL,"EXPECTED"),
+            (URL,WITH_REGION,"MISSING"),
+        ):
+            observer=ManualSearchResponses(REGION)
+            request=Request(request_url)
+            response=Response(request,response_url)
+            observer.on_request(request)
+            observer.on_response(response)
+            await observer.drain()
+            self.assertEqual(len(observer.events),1)
+            self.assertEqual(observer.events[0]["request_region"],expected)
+            self.assertEqual(observer.events[0]["state"],"OBSERVED")
+            self.assertEqual(observer.events[0]["model"]["search_region"],
+                             "EXPECTED")
+            self.assertEqual(response.body_read_count,1)
+            self.assertNotIn("PRIVATE",json.dumps(observer.events))
 
 class PrivacyAndOperatorTests(unittest.TestCase):
     def test_sanitizer_drops_extra_unknown_fields_and_injected_approval(self):
