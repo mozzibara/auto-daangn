@@ -53,6 +53,45 @@ _TRANSPORT_COUNTS = (
 )
 _DEFAULT_FILTER_FIELDS = {key: "MISSING" for key in
                           ("region", "category", "price_max", "available")}
+_REQUEST_OBSERVATION_STATES = (
+    "NOT_OBSERVED", "ONE_OBSERVED", "MULTIPLE_OBSERVED", "UNOBSERVABLE",
+)
+_REQUEST_TRANSPORT_STATES = ("FETCH_OR_XHR", "DOCUMENT", "UNOBSERVABLE")
+_REQUEST_METHOD_STATES = ("GET", "OTHER", "UNOBSERVABLE")
+_REQUEST_OUTCOME_STATES = (
+    "NOT_OBSERVED", "HTTP_200", "ACCESS_RESTRICTED",
+    "OTHER_HTTP", "REQUEST_FAILED",
+)
+_VERDICT_RELATIONS = ("SAME", "DIFFERENT", "UNOBSERVABLE")
+
+
+def sanitize_apply_request_diagnostics(raw):
+    """Finite field verdicts ONLY; never export a request URL or parameter."""
+    src = raw if type(raw) is dict else {}
+    relations = (src.get("field_verdict_relationship")
+                 if type(src.get("field_verdict_relationship")) is dict else {})
+    return {
+        "observation": _kind(
+            src.get("observation"), _REQUEST_OBSERVATION_STATES,
+            "UNOBSERVABLE"),
+        "transport": _kind(
+            src.get("transport"), _REQUEST_TRANSPORT_STATES,
+            "UNOBSERVABLE"),
+        "method": _kind(
+            src.get("method"), _REQUEST_METHOD_STATES, "UNOBSERVABLE"),
+        "request_url": sanitize_filter_url_diagnostic(src.get("request_url")),
+        "response_url": sanitize_filter_url_diagnostic(src.get("response_url")),
+        "outcome": _kind(src.get("outcome"), _REQUEST_OUTCOME_STATES,
+                         "NOT_OBSERVED"),
+        # These compare classifications, NOT raw query values or exact URLs.
+        "field_verdict_relationship": {
+            key: _kind(relations.get(key), _VERDICT_RELATIONS, "UNOBSERVABLE")
+            for key in _URL_FIELDS
+        },
+        "authorizes_listings": False,
+    }
+
+
 _REGIONLESS_ROUTE_STATUSES = (
     "NOT_OBSERVED", "ONE_PARSED", "ONE_UNREADABLE",
     "MULTIPLE_OBSERVED", "UNOBSERVABLE",
@@ -204,6 +243,8 @@ def sanitize_precollection(value):
             src.get("filtered_url_diagnostics")),
         "filter_transport_diagnostics": sanitize_filter_transport_diagnostic(
             src.get("filter_transport_diagnostics")),
+        "apply_search_request_diagnostics": sanitize_apply_request_diagnostics(
+            src.get("apply_search_request_diagnostics")),
         "ui_after_apply_recheck_state": _kind(
             src.get("ui_after_apply_recheck_state"),
             _UI_RECHECK_STATES, "NOT_RUN"),
@@ -342,6 +383,9 @@ class PassiveFilteredRoute:
         self.regionless_events = []
         self.regionless_observed = 0
         self.diagnostics = {key: 0 for key in _TRANSPORT_COUNTS}
+        # Bound at 3 browser-generated request objects, never raw URLs or
+        # response data in output, and never inspect nonmatching response body.
+        self.request_verdicts = {}
 
     def _increase(self, key):
         self.diagnostics[key] = min(20, self.diagnostics[key] + 1)
@@ -352,6 +396,16 @@ class PassiveFilteredRoute:
                     or request.resource_type not in ("fetch", "xhr", "document")):
                 return
             self._increase("search_requests")
+            if len(self.request_verdicts) < 3:
+                self.request_verdicts[request] = {
+                    "transport": (
+                        "FETCH_OR_XHR" if request.resource_type in
+                        ("fetch", "xhr") else "DOCUMENT"),
+                    "method": "GET" if request.method == "GET" else "OTHER",
+                    "request_url": classify_filter_url(request.url),
+                    "response_url": None,
+                    "outcome": "NOT_OBSERVED",
+                }
             if request.resource_type in ("fetch", "xhr"):
                 self._increase("search_fetch_requests")
             else:
@@ -383,6 +437,8 @@ class PassiveFilteredRoute:
                 self.starts.discard(request)
                 self.regionless_starts.discard(request)
                 self._increase("search_request_failures")
+                if request in self.request_verdicts:
+                    self.request_verdicts[request]["outcome"] = "REQUEST_FAILED"
         except (AttributeError, TypeError, ValueError):
             return
 
@@ -393,6 +449,13 @@ class PassiveFilteredRoute:
                 return
             self.broad_starts.discard(req)
             self._increase("search_responses")
+            if req in self.request_verdicts:
+                entry = self.request_verdicts[req]
+                entry["response_url"] = classify_filter_url(response.url)
+                entry["outcome"] = (
+                    "ACCESS_RESTRICTED" if response.status in (401, 403, 429)
+                    else "HTTP_200" if response.status == 200
+                    else "OTHER_HTTP")
             if response.status in (401, 403, 429):
                 self._increase("search_response_restricted")
                 self.restricted = True
@@ -457,6 +520,41 @@ class PassiveFilteredRoute:
             task.add_done_callback(self.tasks.discard)
         except (AttributeError, TypeError, ValueError):
             return
+
+    def summarize_request_verdicts(self, public_page_url):
+        """One browser search request: request/response/page field classes.
+
+        This does not compare literal URL values; only classification
+        verdicts. Multiple requests remain ambiguous, without selecting
+        a favorable sample.
+        """
+        count = self.diagnostics["search_requests"]
+        if count == 0:
+            return sanitize_apply_request_diagnostics(
+                {"observation": "NOT_OBSERVED"})
+        if count != 1 or len(self.request_verdicts) != 1:
+            return sanitize_apply_request_diagnostics({
+                "observation": (
+                    "MULTIPLE_OBSERVED" if count > 1 else "UNOBSERVABLE")})
+        entry = next(iter(self.request_verdicts.values()))
+        page = classify_filter_url(public_page_url)
+        url = entry["request_url"]
+        relationships = {}
+        for key in _URL_FIELDS:
+            a = url["fields"][key]
+            b = page["fields"][key]
+            relationships[key] = (
+                "UNOBSERVABLE" if "UNOBSERVABLE" in (a, b)
+                else "SAME" if a == b else "DIFFERENT")
+        return sanitize_apply_request_diagnostics({
+            "observation": "ONE_OBSERVED",
+            "transport": entry["transport"],
+            "method": entry["method"],
+            "request_url": url,
+            "response_url": entry["response_url"],
+            "outcome": entry["outcome"],
+            "field_verdict_relationship": relationships,
+        })
 
     async def drain(self):
         if self.tasks:
@@ -592,6 +690,8 @@ async def verify_filter_before_collection(page, region=REGION):
             ) = regionless_route_summary(
                 watcher.regionless_observed, watcher.regionless_events)
             info["filter_transport_diagnostics"] = watcher.diagnostics.copy()
+            info["apply_search_request_diagnostics"] = (
+                watcher.summarize_request_verdicts(page.url))
             try:
                 info["filtered_url_diagnostics"] = classify_filter_url(
                     page.url, region)
