@@ -1379,6 +1379,92 @@ requests, item-price inspection, additional UI operations or
 collect listings as part of this patch. No identical OCI live
 repeat is recommended solely to validate the same encoded echo.
 
+### Historical v4.18/v4.19 price enforcement reuse — offline audit after #74
+
+Owner updated isolated OCI checkout to #74 main
+`1b430a26a9b88bf28e83421abcce10d20461c6e9`;
+`test_oci_evidence_ledger.py` passed **16/16**. No new live
+OCI precollection diagnostic was run. The evidence ledger remains
+strictly advisory: the last owner-approved live V2 outcome had
+`dynamic_loader_price_echo=ENCODED_MAX_MATCH` but
+`price_max=MISSING`, no URL `in` and post-Apply UI `NOT_RUN`.
+`backend_price_enforcement=NOT_PROVEN`.
+
+Source re-audit of `daangn_price_crossover_v4_18.py` and
+`daangn_filter_schema_v4_19.py`:
+- The **historical** price-crossover design expected **seven**
+  profile observations: 20k, 50k and 100k in two target-region
+  repetitions, and one independent control-region 50k.
+- The reported behavioral criterion required all seven Route
+  captures with complete item-price coverage, zero observed
+  over-cap prices, verified SPA/reload native UI, positive
+  differentiated upper price band, repeated target-set Jaccard
+  >=0.80, and distinct control-region sample set. These
+  criteria test observed sample-level behavior, not backend
+  implementation or full marketplace recall.
+- The old capture path REQUIRED `core.region_id_in_url(page.url)`
+  both at baseline and after filter Apply. Today's OCI browser
+  and fresh browser-generated region-select/filtered Route
+  requests consistently have `in=MISSING`, even when response
+  region IDs match. Thus the historic exact-URL evidence cannot
+  be mechanically transplanted into this current search path.
+- The v4.18 persisted `v418_price_crossover_results.json`
+  included only `safe_row` observations and aggregate
+  `evaluation`. **The per-listing HMAC tokens (`_rows`) were
+  intentionally excluded.** Consequently an independently
+  reproducible Jaccard calculation from that persisted JSON
+  alone is **impossible**, even if the aggregate success boolean
+  is present.
+- The v4.19 persisted
+  `v419_filter_schema_results.json` records a distinct
+  evidence grade; even a behavioral-positive tier is advisory,
+  and explicitly does not override the legacy listing gate.
+- **Neither archived result JSON is in the current public Git
+  repository** as inspected. The code alone does NOT establish
+  that the past seven observations completed successfully or
+  that a prior positive behavioral grade was actually obtained.
+
+**Offline-only verification helper:**
+`python -m scripts.audit_legacy_price_reuse` prints only
+fixed enumerated states and always
+`current_oci_price_enforcement=NOT_PROVEN`,
+`current_oci_regionless_transfer=NOT_VALIDATED`,
+`archival_provenance=UNVERIFIED`,
+`jaccard_independently_recomputable=false`,
+`authorizes_listings=false`. No file paths, raw response,
+listing fields, HMAC tokens, seller IDs, cookies or unknown
+keys are exported. Without supplied existing reports, status
+is `NOT_PROVIDED`.
+
+If owner already has the **historical redacted** result JSON
+elsewhere, they may optionally run the *offline-only* auditor:
+
+```bash
+python -m scripts.audit_legacy_price_reuse \
+  --v418 /path/to/v418_price_crossover_results.json \
+  --v419 /path/to/v419_filter_schema_results.json
+```
+
+Both inputs are optional; malformed/oversized input is
+rejected and never echoed. A positive pair can report
+`SELF_REPORTED_COMPLETE` only after seven source-defined
+profiles, UI and response metadata structure checks, but
+the actual output is still
+`ARCHIVED_BEHAVIORAL_CLAIM_UNVERIFIABLE`, because
+archival provenance and the HMAC-derived sample sets cannot
+be recomputed from those reports. One partial archive, access
+restriction, observed cap violation or response-price conflict
+never becomes successful evidence.
+
+This command **never launches Chrome, replays site requests,
+performs price-band experiments, reads product pages, changes
+OCI production runtime, authorizes listings, or writes DB/files**.
+A new live price-crossover study would require a separate
+research design, legal/access checks and explicit owner
+authorization. Never silently substitute those old reports for
+a current regionless Route proof or bypass the 3 unresolved
+URL, backend price enforcement and post-Apply UI gaps.
+
 ### Outcome interpretation
 
 | Status | Operational interpretation |
