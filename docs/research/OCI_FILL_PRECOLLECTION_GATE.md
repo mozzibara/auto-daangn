@@ -1193,6 +1193,107 @@ Do not broaden beyond consent, start any listing capture, add a
 user-invisible retry, inject `in`, or relax the existing stop.
 Even four EXPECTED V2 response fields are *diagnostic only*.
 
+### OCI 2026-11-13 — V2 filtered server metadata price is an untrusted `currentFilters.price` only
+
+After updating isolated OCI checkout to PR #72 main
+`6700bf064e36027d3e6153df010a3021b521d4ec`, owner ran
+`test_oci_price_metadata_sources.py` **19/19 passed** and separately
+approved one V2 live metadata-only FILL experiment:
+
+- Native region selection with one trusted click, keyword API 200,
+  one fresh region Route with both target server region IDs expected.
+  No explicit `in` in the actual initiating region Route request.
+- Native filter Apply returned; one trusted click generated exactly
+  one first-party GET fetch/xhr request and response HTTP 200,
+  dynamically classified as `OTHER_ROUTES_NAMESPACE` for both request
+  and response. Four nonregion URL filter conditions expected;
+  `in=MISSING`.
+- V2 consumed **one** matching public search response body:
+  `dynamic_loader_metadata_status=ONE_PARSED`; response-region,
+  category and available-only scalar fields each EXPECTED, but
+  `price_max=MISSING` and
+  **`dynamic_loader_price_shape=UNTRUSTED_PRICE_ONLY`**.
+  Thus the response search model contains `currentFilters.price`
+  but no recognized independent max-price scalar, including the
+  newly checked `priceRange.max`. Actual `currentFilters.price`
+  **value is not currently known** from the sanitized output.
+- The page and search request contain frontend `price=__50000`
+  but this **does not independently prove backend enforcement**.
+  Post-Apply persisted UI recheck was NOT_RUN and the strict URL
+  `in` remains absent: `BLOCKED_FILTER_URL`,
+  `STOP_FILTERS_NOT_VERIFIED`. No listing, seller, item-price
+  inspection, DB write, export or production runtime change.
+
+**Relevant historical source (already in repository, not new API
+guessing):** `daangn_filter_schema_v4_19.py` explicitly identifies
+the `currentFilters.price` scalar as a possible
+**encoded frontend URL echo** rather than declared backend maximum.
+It uses `daangn_v4_5_evidence.parse_observed_max_only_price` to
+interpret the *observed* `__<positive integer>` max-only syntax,
+distinguishes a matching encoded echo from an independently validated
+server cap, and never treats an echo as sufficient listing admission.
+This code was not yet wired into the current V2 scalar diagnostic.
+Finding this source explains what to test, but does NOT prove
+the live response's value or that the filter is enforced.
+
+**V2-only, response-body-scope-preserving improvement:**
+
+The original V2 `--passive-dynamic-loader-metadata` and separate
+`I_APPROVE_OCI_DYNAMIC_METADATA_ONLY_V2` approval remain required.
+Using the **same single already authorized metadata response body**,
+project the selected `currentFilters.price` (already checked
+for existence in the prior V2 probe) through the repository's
+existing exact `parse_observed_max_only_price` helper. Emit only
+the finite `dynamic_loader_price_echo` classification:
+`ENCODED_MAX_MATCH`, `ENCODED_MAX_OTHER`,
+`UNRECOGNIZED_STRING`, `NON_STRING_VALUE`, `ABSENT`,
+`NO_SEARCH_MODEL`, `UNOBSERVABLE`. No raw encoded value, region
+string, price number, request/body, arbitrary keys or item fields
+are exported. Unknown or pathological values never leak.
+
+The previous `dynamic_loader_price_shape` field and the four
+`dynamic_loader_server_filters` verdicts retain their meaning.
+**Crucially:** even if the new echo is
+`ENCODED_MAX_MATCH`, `price_max` remains MISSING in the
+absence of a separate direct or nested server maximum, and
+`strict_filter_evidence=false`. A response direct max that
+contradicts an encoded echo is not promoted as a passing price cap.
+The default and narrow V1 probes do not receive additional
+unknown-body permission, and the V2 parser still reads each bounded
+response body once without scanning or serializing article arrays.
+
+This is a single-request structural observation, NOT behavioral
+proof of a 50,000 KRW backend price cap. Historical v4.19 research
+treated response echo and independent causal/behavioral server
+enforcement as separate tiers; no experiments involving listing
+prices, result pages, new request variants or collector activation
+are introduced here.
+
+After all offline CI checks pass and the PR is merged, the owner
+may decide whether to authorize one more isolated V2 metadata-only
+experiment, **only when site robots and access rules allow it**:
+
+```bash
+cd "$HOME/code/auto-daangn-region-diagnostic"
+git pull --ff-only
+source .venv/bin/activate
+python -m unittest discover -s tests -p 'test_oci_v2_price_echo_evidence.py' -v
+set -o pipefail
+xvfb-run -a python -m ops.oci.precollection --live --headed \
+  --passive-dynamic-loader-metadata \
+  --owner-approval I_APPROVE_OCI_DYNAMIC_METADATA_ONLY_V2 \
+  | tee "$HOME/daangn_oci_price_echo_v2.json"
+```
+
+Interpret `dynamic_loader_price_echo` together with
+`dynamic_loader_price_shape` and
+`dynamic_loader_server_filters.price_max`. If encoded echo matches,
+that confirms only server response **echoed the requested value**,
+not that backend filtering happened. If the echo is different,
+this is evidence of a response/request discrepancy requiring
+conservative investigation. All precollection variants still
+block listing export, DB writes and production importer activation.
+
 ### Outcome interpretation
 
 | Status | Operational interpretation |

@@ -14,6 +14,7 @@ from urllib.parse import parse_qs, urlsplit
 
 import daangn_v4_1_core as core
 import daangn_browser_v4_6 as v46
+from daangn_v4_5_evidence import parse_observed_max_only_price
 from app_v5.region_baseline_contrast import (
     read_region_header_volatile, classify_region_header_transition,
 )
@@ -35,6 +36,12 @@ _PRICE_METADATA_SHAPES = (
     "RANGE_WITHOUT_MAX", "MALFORMED_RANGE",
     "MULTIPLE_PRICE_SOURCES", "UNTRUSTED_PRICE_ONLY",
     "ABSENT", "NO_SEARCH_MODEL", "UNOBSERVABLE",
+)
+# v4.19 already separated a price query echo from independent
+# server-side max-price enforcement. This is *echo evidence only*.
+_PRICE_ECHO_STATES = (
+    "ENCODED_MAX_MATCH", "ENCODED_MAX_OTHER", "UNRECOGNIZED_STRING",
+    "NON_STRING_VALUE", "ABSENT", "NO_SEARCH_MODEL", "UNOBSERVABLE",
 )
 _AVAILABLE = ("onlyOnSale", "only_on_sale", "onlyAvailable", "availableOnly")
 _ITEM_STATUS = ("EXPECTED", "MISSING", "OTHER", "AMBIGUOUS")
@@ -547,6 +554,9 @@ def sanitize_precollection(value):
         "dynamic_loader_price_shape": _kind(
             src.get("dynamic_loader_price_shape"),
             _PRICE_METADATA_SHAPES, "UNOBSERVABLE"),
+        "dynamic_loader_price_echo": _kind(
+            src.get("dynamic_loader_price_echo"),
+            _PRICE_ECHO_STATES, "UNOBSERVABLE"),
         "dynamic_loader_metadata_mode": src.get(
             "dynamic_loader_metadata_mode") is True,
         "dynamic_loader_metadata_count": _bounded(
@@ -739,18 +749,46 @@ def _price_value_and_shape(filters):
     return "MISSING", "ABSENT"
 
 
-def inspect_dynamic_filtered_response(blob):
-    """V2-only diagnostic projection with bounded price-source provenance.
+def _price_echo_state(filters):
+    """Classify currentFilters.price using v4.5's exact max-only syntax.
 
-    The same already-consented response bytes are decoded once. No new
-    site traffic or additional body read; article arrays are not traversed.
+    v4.19's structural research already distinguished a browser-query
+    echo from independent server enforcement. Even a matching echo
+    MUST leave price_max=MISSING unless a separate trusted direct/nested
+    response maximum exists. This never exposes raw values.
+    """
+    if type(filters) is not dict:
+        return "NO_SEARCH_MODEL"
+    if "price" not in filters:
+        return "ABSENT"
+    value = filters["price"]
+    if type(value) is not str:
+        return "NON_STRING_VALUE"
+    parsed = parse_observed_max_only_price(value)
+    if parsed is None:
+        return "UNRECOGNIZED_STRING"
+    return "ENCODED_MAX_MATCH" if parsed == MAX_PRICE else "ENCODED_MAX_OTHER"
+
+
+def inspect_dynamic_filtered_response_details(blob):
+    """One bounded parse of existing V2-consented server scalar metadata.
+
+    Return four filter verdicts, the source shape and a *non-authoritative*
+    encoded price echo class. No item array descent or raw fields exported.
     """
     pair = _find_search_model(blob)
     states = _project_filtered_pair(pair)
     if pair is None:
-        return states, "NO_SEARCH_MODEL"
-    state, shape = _price_value_and_shape(pair[1])
+        return states, "NO_SEARCH_MODEL", "NO_SEARCH_MODEL"
+    filters = pair[1]
+    state, shape = _price_value_and_shape(filters)
     states["price_max"] = state
+    return states, shape, _price_echo_state(filters)
+
+
+def inspect_dynamic_filtered_response(blob):
+    """Original two-value V2 API remains stable for existing callers."""
+    states, shape, _echo = inspect_dynamic_filtered_response_details(blob)
     return states, shape
 
 
@@ -766,6 +804,7 @@ class PassiveFilteredRoute:
         self.dynamic_observed = 0
         self.dynamic_events = []
         self.dynamic_price_shapes = []
+        self.dynamic_price_echoes = []
         self.changed_starts = set()
         self.changed_observed = 0
         self.changed_events = []
@@ -922,14 +961,18 @@ class PassiveFilteredRoute:
                             try:
                                 blob = await asyncio.wait_for(
                                     response.body(), timeout=8)
-                                verdicts, shape = inspect_dynamic_filtered_response(
-                                    blob)
+                                verdicts, shape, echo = (
+                                    inspect_dynamic_filtered_response_details(
+                                        blob))
                                 self.dynamic_events.append(verdicts)
                                 self.dynamic_price_shapes.append(shape)
+                                self.dynamic_price_echoes.append(echo)
                             except Exception:
                                 self.dynamic_events.append(
                                     _DEFAULT_FILTER_FIELDS.copy())
                                 self.dynamic_price_shapes.append(
+                                    "UNOBSERVABLE")
+                                self.dynamic_price_echoes.append(
                                     "UNOBSERVABLE")
                         task = asyncio.create_task(
                             read_dynamic_metadata_only())
@@ -1279,6 +1322,7 @@ async def verify_filter_before_collection(
                 info["dynamic_loader_server_filters"] = (
                     _DEFAULT_FILTER_FIELDS.copy())
                 info["dynamic_loader_price_shape"] = "UNOBSERVABLE"
+                info["dynamic_loader_price_echo"] = "UNOBSERVABLE"
             else:
                 (
                     info["dynamic_loader_metadata_status"],
@@ -1289,6 +1333,9 @@ async def verify_filter_before_collection(
                         and len(watcher.dynamic_price_shapes) == 1):
                     info["dynamic_loader_price_shape"] = (
                         watcher.dynamic_price_shapes[0])
+                    if len(watcher.dynamic_price_echoes) == 1:
+                        info["dynamic_loader_price_echo"] = (
+                            watcher.dynamic_price_echoes[0])
             info["changed_loader_metadata_count"] = (
                 watcher.changed_observed)
             # Ambiguous, failed, or restricted overall request windows
