@@ -20,15 +20,15 @@ def _safe_read_json(path):
     try:
         source = Path(path)
         if not source.is_file() or source.stat().st_size > 2_000_000:
-            return None
+            return {"version": "INVALID_ARCHIVAL_INPUT"}
         with source.open("rb") as stream:
             blob = stream.read(2_000_001)
         if len(blob) > 2_000_000:
-            return None
+            return {"version": "INVALID_ARCHIVAL_INPUT"}
         doc = json.loads(blob)
-        return doc if type(doc) is dict else None
+        return doc if type(doc) is dict else {"version": "INVALID_ARCHIVAL_INPUT"}
     except (OSError, ValueError, UnicodeError, TypeError):
-        return None
+        return {"version": "INVALID_ARCHIVAL_INPUT"}
 
 
 def main(argv=None):
