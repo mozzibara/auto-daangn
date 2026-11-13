@@ -234,7 +234,9 @@ class PrivacyAndOperatorTests(unittest.TestCase):
         self.assertFalse(out["authorizes_listings"])
         self.assertFalse(out["collection_started"])
         self.assertFalse(out["database_written"])
-        self.assertIsNone(out["precollection"])
+        # A successful region gate with no supplied filter report retains
+        # an empty sanitized precollection dict; it is not approval.
+        self.assertEqual(out["precollection"],{})
         self.assertNotIn("PRIVATE",json.dumps(out))
 
     def test_checkpoint_does_not_retain_raw_url_in_python_state(self):
