@@ -1294,6 +1294,91 @@ this is evidence of a response/request discrepancy requiring
 conservative investigation. All precollection variants still
 block listing export, DB writes and production importer activation.
 
+### OCI 2026-11-14 — matching V2 encoded price echo, but backend max enforcement remains unknown
+
+Owner updated the isolated OCI FILL checkout to #73 main
+`6d566861392bdc96d2b8dd2ec747af10caf0314a` and passed
+**11/11** `test_oci_v2_price_echo_evidence.py` offline
+regressions, then separately approved **one** V2 live metadata-only
+experiment. The returned safe JSON established:
+
+- Regional selection: UI target, one fresh browser search Route
+  response with target `searchRegion.id` and
+  `currentFilters.regionId`; keyword resolver HTTP 200.
+  Region query `in` was absent before and after selection.
+- Filter Apply: one trusted native click; exactly one first-party
+  GET fetch/xhr search request and response HTTP 200, with expected
+  q/category/price/available-only query fields, but **`in=MISSING`**.
+  `_data` classified `OTHER_ROUTES_NAMESPACE` on both ends.
+- V2 parsed one bounded public search response
+  (`ONE_PARSED`), reporting **region/category/available=EXPECTED**.
+  Price response: **`dynamic_loader_price_shape=UNTRUSTED_PRICE_ONLY`**,
+  **`dynamic_loader_price_echo=ENCODED_MAX_MATCH`**,
+  but **`dynamic_loader_server_filters.price_max=MISSING`**.
+  The known `currentFilters.price` field mirrors the requested
+  50,000 KRW max-only encoding, but **does not independently prove**
+  the backend enforced that price ceiling.
+- After Apply header remained TARGET; persisted filter UI was
+  `NOT_RUN` because strict page URL locality was missing.
+  `BLOCKED_FILTER_URL`, `STOP_FILTERS_NOT_VERIFIED`,
+  `authorizes_listings=false`, `collection_started=false`,
+  `database_written=false`, zero listing/detail/export actions.
+
+**Decision:** the currently approved one-response V2 diagnostic has
+answered the encoded-price echo question. Repeating the *same*
+single-response experiment does not produce independent backend
+price-cap enforcement proof. Historical
+`daangn_filter_schema_v4_19.independent_evidence_grade`
+expressly separates response echoes from behavioral/causal server
+validation. It is unsafe to reinterpret an echoed price as a
+verified server max merely to unblock collection.
+
+**New offline-only evidence ledger (zero new browser requests):**
+`precollection.evidence_ledger` is recomputed solely from the
+existing sanitized FILL report and contains:
+
+- `region_selection` — whether the earlier region picker passed.
+- `apply_request` — exactly one first-party GET fetch/xhr HTTP 200
+  with expected q/category/price/available request and response
+  fields and no competing failures/restrictions.
+- `filtered_server_metadata` — only region/category/available
+  classifications from exactly one consented, parsed response.
+  A 200/URL alone is not enough to claim server metadata.
+- `response_price_evidence` — distinguishes
+  `DECLARED_MAX_MATCH`, `DECLARED_MAX_MISMATCH`,
+  `DECLARED_MAX_AMBIGUOUS`, `ENCODED_ECHO_MATCH_ONLY`,
+  `ENCODED_ECHO_MISMATCH`, `ENCODED_ECHO_UNRECOGNIZED`,
+  `NO_INDEPENDENT_MAX`, `UNVERIFIED`.
+  The actual OCI result is `ENCODED_ECHO_MATCH_ONLY`.
+- `backend_price_enforcement` is always `NOT_PROVEN`
+  because neither an encoded response echo nor a declared max
+  alone proves causal enforcement on returned results.
+- `url_region`, `post_apply_ui` and
+  `remaining_independent_gaps` report unresolved
+  `URL_REGION_NOT_VERIFIED`,
+  `BACKEND_PRICE_ENFORCEMENT_UNPROVEN`, and
+  `POST_APPLY_UI_NOT_VERIFIED` independently.
+- `same_scope_repeat=ECHO_ONLY_CANNOT_PROVE_ENFORCEMENT` means
+  the identical V2 response-echo check is not a sound substitute
+  for independent evidence. It does **not** initiate/authorize
+  another probe.
+- `authorizes_listings` is **always false**, regardless of
+  evidence tier. The ledger is advisory, not a new gate.
+
+This ledger uses no new approval token because it reads **only**
+the already redacted local diagnostics, *not* live browser state
+or an expanded server response scope. Original `_unique_query`,
+known-route and UI evidence, owner approval, robot/access checks,
+OCI production isolation, listing and database stops stay
+**unchanged**.
+
+**Next development decision:** any credible backend price-cap
+enforcement check requires a separately reviewed evidence source
+and explicit owner approval. Do not silently add price-band
+requests, item-price inspection, additional UI operations or
+collect listings as part of this patch. No identical OCI live
+repeat is recommended solely to validate the same encoded echo.
+
 ### Outcome interpretation
 
 | Status | Operational interpretation |
