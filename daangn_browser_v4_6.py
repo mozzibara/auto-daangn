@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """v4.6 configurable, conservative public-search verifier. No bypass/transactions."""
-import argparse,asyncio,hashlib,json,re
+import argparse,asyncio,hashlib,inspect,json,re
 from datetime import datetime,timezone
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -165,26 +165,45 @@ async def set_checked_by_label(page,field,label,steps,desired=True):
     if await field.is_checked()!=desired:raise RuntimeError('FILTER_CONTROL_WRONG_STATE')
 
 
-async def set_filter(page,args,steps):
+async def set_filter(page,args,steps,*,on_diagnostic_checkpoint=None):
+    # Optional passive URL snapshots for the owner-approved OCI precollection
+    # experiment. This callback cannot change native UI actions and is not
+    # enabled in the historical/production call sites.
+    async def observe(stage):
+        if on_diagnostic_checkpoint is None:
+            return
+        try:
+            value=on_diagnostic_checkpoint(stage,page)
+            if inspect.isawaitable(value):await value
+        except Exception:
+            # An unavailable diagnostic cannot prove a filter was applied.
+            pass
+    await observe('BEFORE_OPEN_FILTER')
     steps.append('OPEN_FILTER')
     await open_filter(page)
+    await observe('AFTER_OPEN_FILTER')
     steps.append('LOCATE_CONTROLS')
     cat,avail,maxp,minp=await controls(page,args)
     if cat is None or avail is None or maxp is None or not await maxp.count() or (args.min_price and (minp is None or not await minp.count())):
         raise RuntimeError('FILTER_INPUT_MISSING')
     await set_checked_by_label(page,cat,args.category_name,steps)
+    await observe('AFTER_CATEGORY')
     await set_checked_by_label(page,avail,'거래 가능만 보기',steps,args.available_only)
+    await observe('AFTER_AVAILABLE')
     if args.min_price:
         steps.append('FILL_MIN_PRICE');await minp.first.fill(str(args.min_price),timeout=6000)
         steps.append('COMMIT_MIN_PRICE');await minp.first.press('Tab',timeout=6000)
     steps.append('FILL_MAX_PRICE');await maxp.first.fill(str(args.max_price),timeout=6000)
+    await observe('AFTER_MAX_FILL')
     steps.append('COMMIT_MAX_PRICE');await maxp.first.press('Tab',timeout=6000)
+    await observe('AFTER_MAX_TAB')
     steps.append('CONFIRM_SELECTED_STATE')
     state=await ui_state(page,args)
     if not ui_ok(state,args):raise RuntimeError('FILTER_INPUT_NOT_CONFIRMED')
     steps.append('LOCATE_APPLY_BUTTON')
     apply=page.get_by_role('button',name='적용하기',exact=True)
     if await apply.count()!=1 or not await apply.is_enabled():raise RuntimeError('APPLY_NOT_AVAILABLE')
+    await observe('BEFORE_APPLY')
     return apply,state
 
 
