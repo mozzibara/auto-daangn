@@ -817,11 +817,14 @@ imply the page's URL was updated.
   filter precollection callback.
 - The existing `ManualSearchResponses.after_click()` already ties
   a Route to a request **started after** the trusted option click.
-  It already classifies `request_region` from that exact
-  response URL without exporting query contents. The new field
-  `fresh_route_request_region` exposes **only** that existing
-  `EXPECTED/MISSING/OTHER/INVALID` verdict and **only** if
-  `route_status=ONE_FRESH`; otherwise UNOBSERVABLE.
+  An additional implementation audit found an accuracy bug:
+  `request_region` had been derived from `response.url` rather
+  than the actual initiating `response.request.url`. This PR
+  corrects that source and tests deliberately divergent browser
+  request vs response URLs. The new field
+  `fresh_route_request_region` exposes **only** the corrected,
+  fixed `EXPECTED/MISSING/OTHER/INVALID` verdict and **only**
+  if `route_status=ONE_FRESH`; otherwise UNOBSERVABLE.
 - Output:
   `region_diagnostics.region_url_provenance.checkpoints`
   (`BEFORE_OPTION_CLICK`, `AFTER_OPTION_CLICK`,
