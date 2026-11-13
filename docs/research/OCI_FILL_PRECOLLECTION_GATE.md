@@ -507,6 +507,36 @@ evidence, **not automatic collection permission**. Missing price or
 availability metadata similarly remains insufficient. Do not repeat,
 force, bypass, proxy or collect listing fields to fill evidence gaps.
 
+### After PR #64 — the unknown extra request key is **not** the known Remix loader (2026-11-13)
+
+Owner updated to PR #64 main `3e4b849`, passed 13/13 targeted offline tests, then ran one approved isolated OCI FILL precollection diagnostic. The region gate passed with trusted header click, first-party keyword response 200, one fresh search Route and both server region IDs EXPECTED. Filter Apply delivered one trusted browser click without exception and generated exactly one public GET fetch/xhr HTTP 200.
+
+The **request and response URLs** each contained exactly four expected fixed fields (q, category_id, price, only_on_sale), **no `in` region**, and **one additional parameter**. The final page URL contained the same four filters, no `in`, **no additional parameter**. The new exact known-loader selector reported `request_route_selector=OTHER_EXTRA` and `response_route_selector=OTHER_EXTRA`, so the extra parameter is **not** the exact prior `_data=routes/kr.search.buy-sell._index` hypothesis. This does **not** establish whether the extra key is `_data` with another route ID or a different key. Thus the existing exact 5-field, exact 4-field and known _data loader watchers all count zero; backend locality **after Apply** is still unverified. `post_apply_region_header=TARGET` is UI evidence only.
+
+The next narrowly scoped **no-body-read** discriminator classifies a single extra key in the already browser-observed public search request into a fixed category, without storing the actual key or value:
+- `EXACT_REMIX_DATA`: the existing `_data` and exact `core.ROUTE_ID`
+- `OTHER_REMIX_DATA_ID`: `_data` with a different value, **not** evidence the other value is safe
+- `ROUTES_KEY`: the literal `_routes` key, value intentionally uninspected
+- `INDEX_KEY`: the literal `index` key, value intentionally uninspected
+- `OTHER_SINGLE_KEY`, `DUPLICATE_EXTRA_VALUE`,
+  `MULTIPLE_EXTRA_KEYS`, `FILTER_QUERY_MISMATCH`,
+  `NONE`, `UNOBSERVABLE`
+
+Output only `precollection.apply_search_request_diagnostics.request_extra_query_family` and `response_extra_query_family`. No unknown key names, values, raw URLs, HTML, bodies, cookies, token-like text or listing data are exported. This feature never interprets an unknown key as authorization to parse the response, never triggers additional network requests or browser clicks, and **cannot alter the strict no-collection predicate**.
+
+After green offline CI and merge, run the following once only if the site's public robots/access controls permit:
+
+```bash
+cd "$HOME/code/auto-daangn-region-diagnostic"
+git pull --ff-only
+source .venv/bin/activate
+python -m unittest discover -s tests -p 'test_oci_search_extra_param_family.py' -v
+set -o pipefail
+xvfb-run -a python -m ops.oci.precollection --live --headed --owner-approval I_APPROVE_OCI_PRECOLLECTION_FILL_V1 | tee "$HOME/daangn_oci_extra_query_family.json"
+```
+
+**Stop** if an unknown/unsupported key is encountered; do not infer a new route, inject `in`, bypass the UI, fetch unknown response bodies, or activate listing collection. A separate owner review is required to expand any source-verified transport semantics. The current experiment is dedicated to diagnosis only, while the production OCI importer remains unchanged.
+
 ### Outcome interpretation
 
 | Status | Operational interpretation |
