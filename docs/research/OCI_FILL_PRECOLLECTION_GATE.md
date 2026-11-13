@@ -869,6 +869,112 @@ interpret a filtered 200 as region proof. Redesign requires separate
 postfilter proof independent of legacy request form and explicit
 owner approval; no listing read/import is permitted in this probe.
 
+### 2026-11-13 — OCI region selection server proof without URL `in` (#69) and separately approved filtered metadata probe
+
+Owner fast-forwarded to main `a21e152`, ran **13/13** offline tests
+for region Route URL provenance and one strictly owner-approved isolated
+FILL precollection. Important evidence:
+
+- Every checked browser page URL from BEFORE_OPTION_CLICK through
+  AFTER_OPTION_CLICK, AFTER_CORE_RETURN, AFTER_SETTLE, BEFORE_FILTER
+  had `in=MISSING`. All ten filter-stage URL checkpoints also had
+  `in=MISSING`.
+- The **browser-initiated, fresh region-selection GET Route request**
+  also had `in=MISSING`, yet its HTTP response contained independently
+  observed, **EXPECTED** search-region and current-filter region IDs
+  for the selected neighborhood, with target UI header. This is a real
+  case where the selected region is present in the observed server
+  response without a matching query parameter; it does **not**
+  establish how the server chose that region.
+- After filter Apply, one native trusted click and one first-party
+  GET fetch/xhr HTTP 200 returned four expected non-region query
+  filters (keyword, category, max price, available-only) with no
+  `in`. The single additional key is `_data`, but its value
+  **differs** from the old `core.ROUTE_ID`. The filtered response
+  body remained unread, so its actual server region, category,
+  price and availability are **not proved**.
+- `BLOCKED_FILTER_URL`, `STOP_FILTERS_NOT_VERIFIED`, no listing
+  access/DB write/import and no collection permission are correct.
+
+**Explicit, separate-owner-approval metadata-only research mode:**
+
+The prior `I_APPROVE_OCI_PRECOLLECTION_FILL_V1` token DOES NOT
+authorize reading a response body for the changed `_data` selector.
+The new `--passive-new-loader-metadata` CLI flag requires the
+**different** literal token
+`I_APPROVE_OCI_FILTER_METADATA_ONLY_V1`. The flag and exact token
+must appear together; old token plus new flag or new token without
+flag is rejected before browser, robots or public network activity.
+No background or automatic task invokes this new mode.
+
+Only within the *existing* single manually approved browser UI
+Apply action and existing request/response listeners, the optional
+probe matches:
+
+1. First-party HTTPS `www.daangn.com/kr/search/buy-sell/` GET
+   fetch/xhr request, exact four fixed q/category_id/price/available
+   filters; `in` **absent**, no other query key except a **single**
+   `_data` route-like value beginning
+   `routes/kr.search.buy-sell` and differing from old core.ROUTE_ID
+   (bounded and sanitized). No arbitrarily named extra key,
+   duplicate, offsite, malformed, redirected or wrong filter query.
+2. Exact initiating request URL == response URL, HTTP 200, JSON/Remix
+   content type, bounded response metadata size. HTTP 401/403/429 or
+   any mismatch never triggers body read. There are no additional
+   requests, retries, clicks, navigations, URL edits, proxy changes
+   or credential reads.
+3. **Only** the known searchRegion.id and currentFilters.regionId,
+   category, maximum price and available-only scalar metadata is
+   reduced to EXPECTED/MISSING/OTHER/AMBIGUOUS using the existing
+   search-model parser. Item/listing arrays are not traversed or
+   serialized. Raw body remains transient in memory and is not
+   written to disk or artifact.
+
+New diagnostic-only fields:
+`precollection.changed_loader_metadata_mode`,
+`changed_loader_metadata_count`,
+`changed_loader_metadata_status` and
+`changed_loader_server_filters` (four fixed field verdicts).
+Unknown schema, multiple requests, access restriction and absent
+values are inconclusive; NEVER infer any field from URL/UI alone.
+The selector prefix is a source-bounded hypothesis: actual changed
+`_data` may not match it. In that case the new Route metadata stays
+NOT_OBSERVED, rather than broadening the parser automatically.
+
+**Crucially, this is NOT new collector authorization.** The
+unchanged strict `_unique_query` still requires `in`, and the
+subsequent accepted fresh Route plus post-Apply native UI evidence
+is untouched. Even if *all four new metadata fields* show EXPECTED,
+the action ends `BLOCKED_FILTER_URL`,
+`STOP_FILTERS_NOT_VERIFIED`, `authorizes_listings=false`,
+`collection_started=false` and `database_written=false`.
+A later redesign of acceptance criteria is a separate reviewed
+task, not a side effect of this diagnostic.
+
+After all four offline CI tasks pass and the branch merges,
+if the owner explicitly authorizes this **expanded metadata-only
+observation** and public access controls permit one experiment:
+
+```bash
+cd "$HOME/code/auto-daangn-region-diagnostic"
+git pull --ff-only
+source .venv/bin/activate
+python -m unittest discover -s tests -p 'test_oci_changed_loader_metadata_optin.py' -v
+set -o pipefail
+xvfb-run -a python -m ops.oci.precollection --live --headed \
+  --passive-new-loader-metadata \
+  --owner-approval I_APPROVE_OCI_FILTER_METADATA_ONLY_V1 \
+  | tee "$HOME/daangn_oci_filter_metadata_optin.json"
+```
+
+**Do not run automatically.** This is an intentional scope expansion
+relative to the previously approved one-shot experiment: a matched
+changed Remix response's body is inspected in volatile RAM for only
+the allowed scalar metadata. If the owner does not approve that
+expanded scope, continue using the original command; its unknown
+changed-loader response body is never read. Neither mode collects
+listing data or changes the production runtime.
+
 ### Outcome interpretation
 
 | Status | Operational interpretation |
