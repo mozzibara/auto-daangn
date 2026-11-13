@@ -461,6 +461,7 @@ async def ui_select_region(page, region: dict, *, on_before_select=None,
                            on_before_search=None, on_after_select=None,
                            on_after_open=None,
                            on_header_click_timeout=None,
+                           on_before_header_click=None,
                            on_option_click_timeout=None,
                            on_option_witness=None, on_after_search_fill=None,
                            first_activation_mode="POINTER_CLICK",
@@ -489,6 +490,12 @@ async def ui_select_region(page, region: dict, *, on_before_select=None,
     try:
         selector = page.get_by_role("button", name=re.compile(r"지역 선택"))
         steps["progress_stage"] = "BEFORE_REGION_BUTTON_CLICK"
+        # Optional diagnostic-only read before the existing sole click.
+        # Not set by production runtime or the general collector.
+        if on_before_header_click is not None:
+            preflight = on_before_header_click()
+            if inspect.isawaitable(preflight):
+                await preflight
         try:
             await selector.first.click(timeout=5000)
             steps["clicked_region_button"] = True
