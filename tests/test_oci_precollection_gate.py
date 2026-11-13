@@ -190,7 +190,7 @@ AFTER={**BEFORE,"observation_status":"OBSERVED_MATCH"}
 class EndToEndNoCollectionTests(unittest.IsolatedAsyncioTestCase):
     async def test_one_apply_metadata_ui_and_url_before_collection(self):
         page=FakePage()
-        async def select(*a):
+        async def select(*a, **kwargs):
             return page.button,BEFORE
         async def check(*a):
             return AFTER
@@ -207,7 +207,7 @@ class EndToEndNoCollectionTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_apply_error_stops_even_with_valid_preselected_controls(self):
         page=FakePage(error=RuntimeError("PRIVATE_ACTION"))
-        async def select(*a):
+        async def select(*a, **kwargs):
             return page.button,BEFORE
         with patch("app_v5.precollection_filter_gate.v46.set_filter",select):
             result=await verify_filter_before_collection(page)

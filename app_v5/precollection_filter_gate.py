@@ -38,6 +38,64 @@ _REPORT_STATUS = (
 )
 _MAX_BODY = 2_000_000
 _URL_FIELDS = ("keyword", "region", "category", "price_max", "available")
+_REGION_URL_TIMELINE_STAGES = (
+    "BEFORE_OPEN_FILTER", "AFTER_OPEN_FILTER", "AFTER_CATEGORY",
+    "AFTER_AVAILABLE", "AFTER_MAX_FILL", "AFTER_MAX_TAB",
+    "BEFORE_APPLY", "AFTER_CLICK_RETURN", "AFTER_SETTLE",
+    "AT_REPORT_SNAPSHOT",
+)
+_REGION_TIMELINE_FIRST_STATES = (
+    "NOT_OBSERVED", "INCONCLUSIVE", *_REGION_URL_TIMELINE_STAGES,
+)
+
+
+def sanitize_region_url_timeline(raw):
+    """Fixed stages + redacted URL classifications only; never raw URL."""
+    src = raw if type(raw) is dict else {}
+    stages = src.get("stage_region") if type(src.get("stage_region")) is dict else {}
+    return {
+        "stage_region": {
+            key: _kind(stages.get(key), _URL_FIELD_STATES, "UNOBSERVABLE")
+            for key in _REGION_URL_TIMELINE_STAGES
+        },
+        "first_missing_stage": _kind(
+            src.get("first_missing_stage"), _REGION_TIMELINE_FIRST_STATES,
+            "INCONCLUSIVE"),
+        "authorizes_listings": False,
+    }
+
+
+def summarize_region_url_timeline(stage_states):
+    """Find first observable missing 'in' without assuming missing gaps.
+
+    All stages are read-only observations; this is not proof of a server
+    region and it never changes the strict Apply admission gate.
+    """
+    src = stage_states if type(stage_states) is dict else {}
+    observed = {}
+    for key in _REGION_URL_TIMELINE_STAGES:
+        if key in src:
+            entry = sanitize_filter_url_diagnostic(src[key])
+            observed[key] = entry["fields"]["region"]
+    first = "INCONCLUSIVE"
+    if observed.get("BEFORE_OPEN_FILTER") in ("EXPECTED", "MISSING"):
+        first = "NOT_OBSERVED"
+        previous = observed["BEFORE_OPEN_FILTER"]
+        for key in _REGION_URL_TIMELINE_STAGES:
+            if key not in observed:
+                continue
+            state = observed[key]
+            if state == "MISSING":
+                first = key
+                break
+            if state != "EXPECTED":
+                first = "INCONCLUSIVE"
+                break
+            previous = state
+    return sanitize_region_url_timeline({
+        "stage_region": observed,
+        "first_missing_stage": first,
+    })
 _URL_FIELD_STATES = ("EXPECTED", "MISSING", "OTHER", "DUPLICATE", "UNOBSERVABLE")
 _URL_SHAPES = ("FIRST_PARTY_SEARCH", "OTHER_PATH_OR_ORIGIN", "UNOBSERVABLE")
 _UI_RECHECK_STATES = (
@@ -386,6 +444,8 @@ def sanitize_precollection(value):
         "filtered_url_matches": src.get("filtered_url_matches") is True,
         "filtered_url_diagnostics": sanitize_filter_url_diagnostic(
             src.get("filtered_url_diagnostics")),
+        "region_url_timeline": sanitize_region_url_timeline(
+            src.get("region_url_timeline")),
         "filter_transport_diagnostics": sanitize_filter_transport_diagnostic(
             src.get("filter_transport_diagnostics")),
         "apply_search_request_diagnostics": sanitize_apply_request_diagnostics(
@@ -802,10 +862,22 @@ async def verify_filter_before_collection(page, region=REGION):
         available_only=True, max_price=MAX_PRICE, min_price=0)
     watcher = PassiveFilteredRoute()
     witness = FilterApplyActivationWitness()
+    url_stage_states = {}
+
+    def record_url_stage(stage, current_page=page):
+        if stage in _REGION_URL_TIMELINE_STAGES:
+            try:
+                url_stage_states[stage] = classify_filter_url(
+                    current_page.url, region)
+            except Exception:
+                # Observability errors stay unknown; never generate a URL.
+                pass
+
     listeners = []
     try:
         info["apply_action_stage"] = "LOCATE_FILTER_CONTROLS"
-        button, selected = await v46.set_filter(page, args, [])
+        button, selected = await v46.set_filter(
+            page, args, [], on_diagnostic_checkpoint=record_url_stage)
         info["apply_action_stage"] = "FILTER_CONTROLS_READY"
         info["ui_selected_before_apply"] = v46.ui_ok(selected, args)
         if not info["ui_selected_before_apply"] or not await button.is_enabled():
@@ -824,9 +896,11 @@ async def verify_filter_before_collection(page, region=REGION):
             info["apply_request_listener_armed"] = True
             info["apply_action_stage"] = "BEFORE_APPLY_CLICK"
             await button.click(timeout=6000)
+            record_url_stage("AFTER_CLICK_RETURN")
             info["filter_apply_returned"] = True
             info["apply_action_stage"] = "AFTER_APPLY_CLICK"
             await page.wait_for_timeout(1800)
+            record_url_stage("AFTER_SETTLE")
             info["apply_action_stage"] = "AFTER_APPLY_SETTLE"
             await watcher.drain()
             info["apply_action_stage"] = "AFTER_TRANSPORT_DRAIN"
@@ -889,6 +963,9 @@ async def verify_filter_before_collection(page, region=REGION):
         # Irrespective of this extra observation, Playwright Apply failed:
         # never retry the button or advance to after-Apply UI checks.
     finally:
+        record_url_stage("AT_REPORT_SNAPSHOT")
+        info["region_url_timeline"] = summarize_region_url_timeline(
+            url_stage_states)
         # The previous implementation returned all -1 counters if click()
         # raised. Inspect the already generated browser events *regardless*
         # of whether the Playwright action promise returned successfully.

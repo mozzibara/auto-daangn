@@ -193,7 +193,7 @@ class EndToEndBlockedTests(unittest.IsolatedAsyncioTestCase):
     async def test_expected_regionless_backend_still_does_not_authorize_collection(self):
         page=Page()
         button=Button(page)
-        async def select(*args):
+        async def select(*args, **kwargs):
             return button,{
                 "complete":True,"category":True,"available":True,
                 "maximum":50000,"minimum":0,

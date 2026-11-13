@@ -106,7 +106,7 @@ class OperatorTimeoutTests(unittest.IsolatedAsyncioTestCase):
     async def execute(self,scenario,*,clicks=1):
         page=Page(clicks=clicks)
         button=Button(page,scenario=scenario)
-        async def select(*args):
+        async def select(*args, **kwargs):
             return button,FIXED_UI
         async def never_recheck(*args):
             raise AssertionError("No Apply retry or filter UI recheck after timeout")
