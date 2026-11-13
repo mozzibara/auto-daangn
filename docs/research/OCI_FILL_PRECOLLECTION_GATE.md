@@ -537,6 +537,87 @@ xvfb-run -a python -m ops.oci.precollection --live --headed --owner-approval I_A
 
 **Stop** if an unknown/unsupported key is encountered; do not infer a new route, inject `in`, bypass the UI, fetch unknown response bodies, or activate listing collection. A separate owner review is required to expand any source-verified transport semantics. The current experiment is dedicated to diagnosis only, while the production OCI importer remains unchanged.
 
+### OCI 2026-11-13 — changed Remix _data route ID and Playwright timeout after trusted Apply click
+
+Owner advanced to PR #65 `f4cb4af` in the isolated Ubuntu checkout,
+ran **12/12** `test_oci_search_extra_param_family.py` offline tests,
+then performed one approved `FILL` precollection test:
+
+- Region gate passed: `TARGET_REGION_CONFIRMED_DIAGNOSTIC`,
+  region header click returned normally, one fresh Route with both
+  target search/filter region IDs EXPECTED, resolver HTTP 200 and
+  selected region UI EXPECTED.
+- All fixed filter controls were selected before Apply.
+- Playwright Apply `click(timeout=6000)` raised
+  `PLAYWRIGHT_TIMEOUT`, stage `BEFORE_APPLY_CLICK`,
+  **despite exactly one trusted** pointer/mouse/click event. No second
+  Apply click was issued.
+- Before the exception **one** first-party GET fetch/xhr request
+  started whose **four non-region filters** were EXPECTED,
+  `in` MISSING, one extra key. The new key-family diagnostic found
+  **`request_extra_query_family=OTHER_REMIX_DATA_ID`**. Thus the
+  extra key really **is `_data`**, but its value differs from the
+  hardcoded `core.ROUTE_ID`. This is browser-observed evidence that
+  the old exact Remix search-loader ID cannot be assumed correct.
+- At the instant diagnostics ended, no response was observed
+  (`search_requests=1`, `search_responses=0`,
+  `outcome=NOT_OBSERVED`). The final page URL was still the
+  earlier q-only search, with price/category/available MISSING.
+  **This is an intermediate snapshot, not proof of missing filters
+  after eventual completion.**
+- `BLOCKED_APPLY_ACTION`, `STOP_FILTERS_NOT_VERIFIED`,
+  `authorizes_listings=false`; no database, listing/detail or
+  production runtime activity.
+
+The next **read-only, non-admitting** instrumentation closes a
+diagnostic race: a Playwright action promise may time out even after
+its trusted click caused one valid public search request.
+
+When and **only when** a timeout occurred at
+`BEFORE_APPLY_CLICK`, the Apply witness proves **one trusted**
+pointer/mouse/click sequence, the already armed observer counted
+**exactly one** public search request, **zero** failed/restricted
+requests and **zero** responses, the operator passively waits
+**at most 2 seconds** on the existing browser event-loop.
+It does not navigate, click again, issue a fetch, change the Route
+validator, or read any unknown Remix response body.
+
+`posttimeout_passive_observation` is one fixed sanitized enum:
+`OBSERVED_LATE_RESPONSE`, `NO_RESPONSE_IN_WINDOW`,
+`SKIPPED_CLICK_NOT_PROVEN`, `SKIPPED_REQUEST_NOT_UNIQUE`,
+`SKIPPED_ALREADY_RESPONDED`, `SKIPPED_RESTRICTED`,
+`OBSERVER_ERROR`, `NOT_APPLICABLE`. Existing
+`apply_search_request_diagnostics.response_extra_query_family`,
+HTTP counters, and final URL field verdicts are then snapshot with
+the passive listeners still installed. A late 403/429 is recorded
+as restricted, not retried or bypassed. A late HTTP 200 **does not**
+change the overall `BLOCKED_APPLY_ACTION` on Playwright timeout;
+no subsequent UI recheck is attempted and no listing collection
+can be enabled.
+
+This improves evidence quality, **not** the server filter proof
+or completeness. A changed `_data` Route ID is not automatically
+accepted; the current regionless URL and server-side locality remain
+unverified. Exact allowlisted source-level Route authorization would
+require a separate, evidenced policy change.
+
+After successful offline CI and merge, only if normal robots/access
+rules allow one explicitly approved isolated diagnostic:
+
+```bash
+cd "$HOME/code/auto-daangn-region-diagnostic"
+git pull --ff-only
+source .venv/bin/activate
+python -m unittest discover -s tests -p 'test_oci_apply_timeout_late_response.py' -v
+set -o pipefail
+xvfb-run -a python -m ops.oci.precollection --live --headed --owner-approval I_APPROVE_OCI_PRECOLLECTION_FILL_V1 | tee "$HOME/daangn_oci_late_apply_response.json"
+```
+
+Interpret late HTTP status and `response_extra_query_family` without
+outputting private data. **Do not** continue to collect, inject `in`,
+guess the new loader ID, issue direct Route requests, bypass site
+controls or write to the production importer.
+
 ### Outcome interpretation
 
 | Status | Operational interpretation |

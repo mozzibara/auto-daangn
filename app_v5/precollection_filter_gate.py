@@ -235,6 +235,48 @@ _APPLY_STAGES = (
     "COMPLETE",
 )
 _APPLY_EXCEPTION_KINDS = ("NONE", "PLAYWRIGHT_TIMEOUT", "OTHER_EXCEPTION")
+_POST_TIMEOUT_OBSERVATIONS = (
+    "NOT_APPLICABLE", "OBSERVED_LATE_RESPONSE", "NO_RESPONSE_IN_WINDOW",
+    "SKIPPED_CLICK_NOT_PROVEN", "SKIPPED_REQUEST_NOT_UNIQUE",
+    "SKIPPED_ALREADY_RESPONDED", "SKIPPED_RESTRICTED",
+    "OBSERVER_ERROR",
+)
+# One fixed, local event-loop observation window; no navigation/requests.
+_POST_TIMEOUT_OBSERVATION_SEC = 2.0
+
+
+async def passive_posttimeout_request_observation(watcher, witness, page):
+    """Observe only an already-started single search request, never re-click.
+
+    The Playwright click promise may timeout *after* a trusted click and
+    a browser search request. This read-only wait distinguishes a pending
+    request that receives its response after the exception from one still
+    unobserved. It never authorizes an Apply action that did not return.
+    """
+    try:
+        snap = await witness.sample(page)
+        if snap["one_trusted_click"] is not True:
+            return "SKIPPED_CLICK_NOT_PROVEN"
+        d = watcher.diagnostics
+        if (d["search_requests"] != 1 or
+                d["search_request_failures"] != 0):
+            return "SKIPPED_REQUEST_NOT_UNIQUE"
+        if d["search_response_restricted"] != 0 or watcher.restricted:
+            return "SKIPPED_RESTRICTED"
+        if d["search_responses"] != 0:
+            return "SKIPPED_ALREADY_RESPONDED"
+        # Do not wait on an arbitrary page event or issue network calls.
+        # Keep the original response/request listeners installed.
+        await asyncio.sleep(_POST_TIMEOUT_OBSERVATION_SEC)
+        await watcher.drain()
+        if watcher.restricted:
+            return "SKIPPED_RESTRICTED"
+        if d["search_requests"] != 1 or d["search_request_failures"] != 0:
+            return "SKIPPED_REQUEST_NOT_UNIQUE"
+        return ("OBSERVED_LATE_RESPONSE" if d["search_responses"] == 1
+                else "NO_RESPONSE_IN_WINDOW")
+    except Exception:
+        return "OBSERVER_ERROR"
 
 
 def _same_public_search_path(url):
@@ -336,6 +378,9 @@ def sanitize_precollection(value):
         "apply_action_exception_kind": _kind(
             src.get("apply_action_exception_kind"),
             _APPLY_EXCEPTION_KINDS, "NONE"),
+        "posttimeout_passive_observation": _kind(
+            src.get("posttimeout_passive_observation"),
+            _POST_TIMEOUT_OBSERVATIONS, "NOT_APPLICABLE"),
         "apply_activation": sanitize_apply_activation(src.get("apply_activation")),
         "apply_request_listener_armed": src.get("apply_request_listener_armed") is True,
         "filtered_url_matches": src.get("filtered_url_matches") is True,
@@ -746,6 +791,7 @@ async def verify_filter_before_collection(page, region=REGION):
         "ui_after_apply_recheck_state": "NOT_RUN",
         "apply_action_stage": "NOT_STARTED",
         "apply_action_exception_kind": "NONE",
+        "posttimeout_passive_observation": "NOT_APPLICABLE",
     }
     if (region is not REGION and region != REGION) or not page.url.startswith(
             "https://www.daangn.com/kr/search/buy-sell/"):
@@ -834,6 +880,14 @@ async def verify_filter_before_collection(page, region=REGION):
             "BLOCKED_APPLY_ACTION"
             if info.get("ui_selected_before_apply") is True
             else "BLOCKED_FILTER_CONTROL")
+        if (isinstance(exc, PlaywrightTimeoutError)
+                and info.get("apply_action_stage") == "BEFORE_APPLY_CLICK"
+                and info.get("apply_request_listener_armed") is True):
+            info["posttimeout_passive_observation"] = (
+                await passive_posttimeout_request_observation(
+                    watcher, witness, page))
+        # Irrespective of this extra observation, Playwright Apply failed:
+        # never retry the button or advance to after-Apply UI checks.
     finally:
         # The previous implementation returned all -1 counters if click()
         # raised. Inspect the already generated browser events *regardless*
