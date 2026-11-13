@@ -37,6 +37,9 @@ from app_v5.region_picker_phases import (
 from app_v5.region_header_activation import (
     HeaderActivationWitness, assess_header_click_timeout_without_reclick,
 )
+from app_v5.region_header_actionability import (
+    sample_header_actionability,
+)
 from app_v5.region_option_events import (
     RegionOptionEventWitness, verify_single_target_click_after_timeout,
 )
@@ -235,6 +238,8 @@ async def one_public_region(browser, mode, *, timezone_id=None,
     picker_phase = RegionPickerPhaseWitness(region)
     header_activation = HeaderActivationWitness()
     header_activation_snapshot = None
+    header_actionability_pre = None
+    header_actionability_timeout = None
     header_timeout_gate_reason = "NOT_INVOKED"
     picker_phase_armed = False
     observed_input = None
@@ -272,8 +277,17 @@ async def one_public_region(browser, mode, *, timezone_id=None,
         page.on("requestfailed", picker_phase.on_requestfailed)
         picker_phase_armed = True
 
+        async def before_header_click():
+            nonlocal header_actionability_pre
+            # Read-only hit-testing immediately before the sole normal click.
+            header_actionability_pre = await sample_header_actionability(page)
+
         async def after_timeout():
-            nonlocal header_timeout_gate_reason
+            nonlocal header_timeout_gate_reason, header_actionability_timeout
+            # Independent post-failure hit-test, including when zero
+            # trusted browser click events were delivered.
+            header_actionability_timeout = (
+                await sample_header_actionability(page))
             # Read-only reason for an actual Playwright TimeoutError:
             # one delivered region-header click vs input/DOM mismatch.
             # Never retry, click twice, or change browser state.
@@ -341,6 +355,7 @@ async def one_public_region(browser, mode, *, timezone_id=None,
             page, region, on_before_search=before_search,
             on_after_open=after_open,
             on_header_click_timeout=after_timeout,
+            on_before_header_click=before_header_click,
             on_after_search_fill=after_search_fill,
             on_option_witness=option_probe.arm,
             on_option_click_timeout=after_option_timeout,
@@ -443,6 +458,8 @@ async def one_public_region(browser, mode, *, timezone_id=None,
                     "header_click_exception_kind"),
                 header_activation=header_activation_snapshot,
                 header_timeout_gate_reason=header_timeout_gate_reason,
+                header_actionability_pre=header_actionability_pre,
+                header_actionability_timeout=header_actionability_timeout,
                 option_click_returned=steps.get("option_click_returned"),
                 option_click_verified_after_timeout=steps.get(
                     "option_click_verified_after_timeout"),
@@ -470,7 +487,9 @@ async def one_public_region(browser, mode, *, timezone_id=None,
                                      error="RuntimeError",
                                      readiness=readiness.export()["state"],
                                      header_activation=header_activation_snapshot,
-                                     header_timeout_gate_reason=header_timeout_gate_reason)})
+                                     header_timeout_gate_reason=header_timeout_gate_reason,
+                                     header_actionability_pre=header_actionability_pre,
+                                     header_actionability_timeout=header_actionability_timeout)})
     finally:
         if page is not None:
             await header_activation.stop(page)
