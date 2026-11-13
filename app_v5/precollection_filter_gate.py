@@ -470,6 +470,7 @@ class PassiveFilteredRoute:
                 self.regionless_starts.discard(req)
                 self.regionless_observed = min(20, self.regionless_observed + 1)
                 if (response.status == 200
+                        and _exact_except_missing_region(response.url)
                         and len(self.regionless_events) + len(self.tasks) < 3
                         and ("json" in response.headers.get(
                             "content-type", "").lower()
