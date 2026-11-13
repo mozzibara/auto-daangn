@@ -692,6 +692,92 @@ not by retrying or force-clicking. An UNOBSERVABLE snapshot proves
 nothing. PR #66's Apply observer remains untested in OCI unless a
 later run again reaches that phase.
 
+### OCI region and filter click both succeed, but `in` remains missing — owner observation after PR #67 (2026-11-13)
+
+Owner updated isolated `~/code/auto-daangn-region-diagnostic` to main
+`f791d9f`, passed **10/10** new header-actionability regressions, then
+ran one approved Chrome FILL precollection attempt.
+
+- The header button was observed BEFORE the click as one unique,
+  visible, enabled, in-viewport target with pointer events enabled.
+  Playwright click returned normally, and exactly one trusted
+  pointer/mouse/click sequence was witnessed. No timeout post-check
+  was needed (`header_actionability_timeout=UNOBSERVABLE`).
+- Region selection then produced the expected keyword suggestion API 200,
+  one fresh public search Route with expected **server search-region ID
+  and server filter-region ID**, and the visible header TARGET.
+  `TARGET_REGION_CONFIRMED_DIAGNOSTIC`.
+- The filter controls were selected before native Apply; one trusted
+  Apply click returned successfully without exception. One first-party
+  browser-generated GET fetch/xhr search request and its HTTP 200
+  response had q/category_id/price/only_on_sale EXPECTED but **`in`
+  MISSING** and one extra `_data` with **a different Route ID** from
+  the old `core.ROUTE_ID`.
+- The final page address also had q/category_id/price/only_on_sale
+  EXPECTED and **`in` MISSING**, no extra keys. The existing region
+  header still rendered TARGET. Strict exact-five Route, diagnostic
+  exact-four Route and old known-loader Route all counted zero.
+  `BLOCKED_FILTER_URL` / `STOP_FILTERS_NOT_VERIFIED`. Post-Apply
+  persisted filter UI was NOT rechecked, and server-side locality and
+  four filter metadata fields remain UNVERIFIED.
+- No listing-detail access, listing field extraction, storage,
+  production runtime edits or collection authorization.
+
+**New causality hypothesis to test:** the previous reports only
+compared the post-region first-party Route/visible header with the
+**post-Apply URL**, but did not record when the URL region param
+`in` disappeared. The region API/Route is a separate authority from
+the browser address: it is possible the URL was already regionless
+*before* opening the filter. Conversely, React/Remix filter open,
+category selection, availability selection, price fill/blur or Apply
+may alter the URL.
+
+A new **passive, no-added-action** fixed-stage URL-region witness
+records only allowlisted `EXPECTED/MISSING/OTHER/DUPLICATE/
+UNOBSERVABLE` verdicts of the `in` parameter at:
+`BEFORE_OPEN_FILTER`, `AFTER_OPEN_FILTER`, `AFTER_CATEGORY`,
+`AFTER_AVAILABLE`, `AFTER_MAX_FILL`, `AFTER_MAX_TAB`,
+`BEFORE_APPLY`, `AFTER_CLICK_RETURN`, `AFTER_SETTLE` and
+`AT_REPORT_SNAPSHOT`.
+
+`precollection.region_url_timeline.stage_region` is fixed-schema,
+with `first_missing_stage` indicating the first **observed**
+missing `in` when stage evidence was sufficient. A stage marked
+UNOBSERVABLE does not prove the region state. If the very first
+stage is MISSING, do **not** attribute the loss to the Apply click.
+When a Playwright Apply timeout occurs, the final snapshot is an
+intermediate observation, not proof of a completed search.
+
+The original `v46.set_filter` call sequence (opening the public
+panel, native category/available controls, price input and Tab, then
+one ordinary Apply) is unchanged; each optional hook only reads
+`page.url` and reduces it to fixed, sanitized verdicts. No URL or
+query value exported; no additional click, navigation, injected
+request, direct API, response-body read, listing access, retry, or
+permission relaxation. Historical and production callers omit the
+optional hook. Existing `_unique_query`, backend first-party Route
+proof, matching region and server filter metadata, after-Apply UI
+recheck and all collection/DB hard stops remain intact.
+
+After all four offline CI jobs pass and PR is merged, optional one
+manual operator-approved live precollection diagnostic **only when**
+normal robots/access controls still permit it:
+
+```bash
+cd "$HOME/code/auto-daangn-region-diagnostic"
+git pull --ff-only
+source .venv/bin/activate
+python -m unittest discover -s tests -p 'test_oci_region_url_stage_timeline.py' -v
+set -o pipefail
+xvfb-run -a python -m ops.oci.precollection --live --headed --owner-approval I_APPROVE_OCI_PRECOLLECTION_FILL_V1 | tee "$HOME/daangn_oci_region_url_timeline.json"
+```
+
+Interpret the first missing stage together with the region gate,
+after-Apply `filtered_url_diagnostics`, and actual network request
+fields. Do not rewrite the URL, add `in` manually, trust the new
+unknown `_data` body, or start listing capture to compensate for
+missing server locality proof.
+
 ### Outcome interpretation
 
 | Status | Operational interpretation |
