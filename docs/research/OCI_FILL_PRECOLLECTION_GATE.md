@@ -1096,6 +1096,103 @@ denies access or another route category is observed, stop rather
 than broadening the selector or replaying requests. There is no
 collection authorization in any precollection mode.
 
+### 2026-11-13 OCI V2: server region/category/available confirmed; price metadata MISSING
+
+Owner advanced isolated OCI checkout to main `1987b361`, passed
+**18/18** `test_oci_dynamic_loader_metadata_v2.py` offline
+regressions, and performed one explicit
+`--passive-dynamic-loader-metadata --owner-approval
+I_APPROVE_OCI_DYNAMIC_METADATA_ONLY_V2` one-shot live test.
+
+- Native region selection was confirmed: one trusted header click,
+  keyword resolver HTTP 200, one fresh browser search Route with
+  both target server region IDs EXPECTED and selected UI TARGET.
+  The region `in` query remained absent before and after.
+- One trusted filter Apply click returned normally; one first-party
+  GET fetch/xhr search HTTP 200 whose request and response matched,
+  with q/category_id/price/available-only EXPECTED and `in` MISSING.
+  The `_data` selector was classified as `OTHER_ROUTES_NAMESPACE`
+  on both request and response, not the old literal route.
+- **V2 actually parsed one response**:
+  `dynamic_loader_metadata_mode=true`,
+  `dynamic_loader_metadata_count=1`,
+  `dynamic_loader_metadata_status=ONE_PARSED`.
+  Its **server region=EXPECTED, category=EXPECTED, available=EXPECTED,
+  price_max=MISSING**.
+- Price `MISSING` means only that the V2 parser found no price in its
+  **recognized direct `currentFilters` max-price aliases**. It is
+  *not* a finding that price filtering failed, nor proof that
+  price=__50000 in the URL is enforced. The exact response price
+  representation has not yet been established.
+- After Apply header still TARGET; persisted post-Apply filter UI
+  not rechecked (`NOT_RUN`). Strict accepted route count 0
+  because `in` absent. Correct gate:
+  `BLOCKED_FILTER_URL`, `STOP_FILTERS_NOT_VERIFIED`.
+  Zero listing fields extracted, details visited, exports, DB writes
+  or production runtime edits. The consent did not authorize collection.
+
+**Source-derived price-field gap:** historical
+`daangn_v4_5_evidence.public_filters` and
+`validated_predicates` explicitly support
+`currentFilters.priceRange.max` as a server response price scalar,
+but OCI's original `inspect_filtered_response` only checked the
+direct `maxPrice/max_price/priceMax/priceTo/price_to/maximumPrice`
+aliases. This is a **code-level coverage gap**, not a claim
+that the live V2 response actually contained `priceRange.max`.
+
+**V2-only price provenance extension** (no new consent scope or
+browser request): run the **same existing owner-approved V2**
+bounded single-response scalar inspection. Parse the same JSON body
+once with the existing unique-search-model selector, skip all
+article/listing arrays, and check either one direct known alias
+or the previously source-supported `priceRange.max` scalar.
+Never derive server price from the frontend URL `price=__50000`
+or from free-form `currentFilters.price`. If two direct aliases,
+or both direct and nested price sources exist, classify as
+`AMBIGUOUS` rather than choose the favorable one. Malformed
+ranges also remain `AMBIGUOUS`; range without max or untrusted
+price-only field remains `MISSING`.
+
+A new fixed sanitized
+`precollection.dynamic_loader_price_shape` reports one of:
+`DIRECT_ALIAS`, `NESTED_PRICE_RANGE_MAX`,
+`RANGE_WITHOUT_MAX`, `MALFORMED_RANGE`,
+`MULTIPLE_PRICE_SOURCES`, `UNTRUSTED_PRICE_ONLY`,
+`ABSENT`, `NO_SEARCH_MODEL` or `UNOBSERVABLE`.
+No raw numbers, property names outside this allowlist, arbitrary
+response body, item text, seller ID or URL leave the process.
+Other previously approved V1/default parser behavior is unchanged.
+
+If live result is `NESTED_PRICE_RANGE_MAX` and
+`dynamic_loader_server_filters.price_max=EXPECTED`, the V2
+diagnostic has one response-scoped price scalar match, but the
+strict `in` URL admission and post-Apply UI recheck gates remain
+blocked. If `ABSENT` or `UNTRUSTED_PRICE_ONLY`, the server
+price cap remains **unproven**, and further analysis should
+focus on independently evidenced response metadata structure;
+do not infer from the URL alone or prices of listings.
+
+After all four offline CI jobs are green and this change merged,
+the owner may opt for **one** new isolated V2 diagnostic attempt
+only if they again explicitly approve the existing V2 scope and
+current normal robots/access conditions allow:
+
+```bash
+cd "$HOME/code/auto-daangn-region-diagnostic"
+git pull --ff-only
+source .venv/bin/activate
+python -m unittest discover -s tests -p 'test_oci_price_metadata_sources.py' -v
+set -o pipefail
+xvfb-run -a python -m ops.oci.precollection --live --headed \
+  --passive-dynamic-loader-metadata \
+  --owner-approval I_APPROVE_OCI_DYNAMIC_METADATA_ONLY_V2 \
+  | tee "$HOME/daangn_oci_price_metadata_shape_v3.json"
+```
+
+Do not broaden beyond consent, start any listing capture, add a
+user-invisible retry, inject `in`, or relax the existing stop.
+Even four EXPECTED V2 response fields are *diagnostic only*.
+
 ### Outcome interpretation
 
 | Status | Operational interpretation |

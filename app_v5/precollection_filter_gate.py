@@ -27,6 +27,15 @@ MAX_PRICE = 50000
 KEYWORD = "HDD"
 _CATS = ("categoryId", "category_id", "categoryIds")
 _PRICES = ("maxPrice", "max_price", "priceMax", "priceTo", "price_to", "maximumPrice")
+# Historical daangn_v4_5_evidence.public_filters and validated_predicates
+# independently support currentFilters.priceRange.max as a server scalar.
+# Only the separately approved V2 diagnostic uses this extension.
+_PRICE_METADATA_SHAPES = (
+    "DIRECT_ALIAS", "NESTED_PRICE_RANGE_MAX",
+    "RANGE_WITHOUT_MAX", "MALFORMED_RANGE",
+    "MULTIPLE_PRICE_SOURCES", "UNTRUSTED_PRICE_ONLY",
+    "ABSENT", "NO_SEARCH_MODEL", "UNOBSERVABLE",
+)
 _AVAILABLE = ("onlyOnSale", "only_on_sale", "onlyAvailable", "availableOnly")
 _ITEM_STATUS = ("EXPECTED", "MISSING", "OTHER", "AMBIGUOUS")
 _REPORT_STATUS = (
@@ -535,6 +544,9 @@ def sanitize_precollection(value):
         "regionless_route_count": _bounded(src.get("regionless_route_count")),
         "remix_regionless_route_count": _bounded(
             src.get("remix_regionless_route_count")),
+        "dynamic_loader_price_shape": _kind(
+            src.get("dynamic_loader_price_shape"),
+            _PRICE_METADATA_SHAPES, "UNOBSERVABLE"),
         "dynamic_loader_metadata_mode": src.get(
             "dynamic_loader_metadata_mode") is True,
         "dynamic_loader_metadata_count": _bounded(
@@ -670,11 +682,10 @@ def _find_search_model(blob):
     return matches[0] if len(matches) == 1 else None
 
 
-def inspect_filtered_response(blob):
-    pair = _find_search_model(blob)
+def _project_filtered_pair(pair):
+    """Only four scalar verdicts from one bounded unique search model."""
     if pair is None:
-        return {k: "MISSING" for k in (
-            "region", "category", "price_max", "available")}
+        return _DEFAULT_FILTER_FIELDS.copy()
     search, filters = pair
     region_a = _value_state(search, ("id",), int(REGION["id"]), as_int=True)
     region_b = _value_state(filters, ("regionId",), int(REGION["id"]), as_int=True)
@@ -691,6 +702,58 @@ def inspect_filtered_response(blob):
     }
 
 
+def inspect_filtered_response(blob):
+    """Legacy four-field metadata projection; unchanged strict semantics."""
+    return _project_filtered_pair(_find_search_model(blob))
+
+
+def _price_value_and_shape(filters):
+    """Source-supported server price fields only; never infer from URL.
+
+    Known historical response paths: a direct maxPrice alias or
+    currentFilters.priceRange.max. The browser query 'price=__50000'
+    is explicitly NOT server evidence, even if copied into filters.
+    A duplicate source is not promoted, even if values seem consistent.
+    """
+    if type(filters) is not dict:
+        return "MISSING", "NO_SEARCH_MODEL"
+    direct = [key for key in _PRICES if key in filters]
+    has_range = "priceRange" in filters
+    if len(direct) > 1 or (direct and has_range):
+        return "AMBIGUOUS", "MULTIPLE_PRICE_SOURCES"
+    if direct:
+        return (_value_state(filters, _PRICES, MAX_PRICE, as_int=True),
+                "DIRECT_ALIAS")
+    if has_range:
+        range_obj = filters["priceRange"]
+        if type(range_obj) is not dict:
+            return "AMBIGUOUS", "MALFORMED_RANGE"
+        if "max" not in range_obj:
+            return "MISSING", "RANGE_WITHOUT_MAX"
+        return (_value_state(range_obj, ("max",), MAX_PRICE, as_int=True),
+                "NESTED_PRICE_RANGE_MAX")
+    if "price" in filters:
+        # The web UI's max-only query notation has not been shown to be
+        # independently validated as a server response metadata field.
+        return "MISSING", "UNTRUSTED_PRICE_ONLY"
+    return "MISSING", "ABSENT"
+
+
+def inspect_dynamic_filtered_response(blob):
+    """V2-only diagnostic projection with bounded price-source provenance.
+
+    The same already-consented response bytes are decoded once. No new
+    site traffic or additional body read; article arrays are not traversed.
+    """
+    pair = _find_search_model(blob)
+    states = _project_filtered_pair(pair)
+    if pair is None:
+        return states, "NO_SEARCH_MODEL"
+    state, shape = _price_value_and_shape(pair[1])
+    states["price_max"] = state
+    return states, shape
+
+
 class PassiveFilteredRoute:
     """Only browser-generated first-party filtered Route responses, no fetch."""
     def __init__(self, *, passive_changed_loader=False,
@@ -702,6 +765,7 @@ class PassiveFilteredRoute:
         self.dynamic_starts = set()
         self.dynamic_observed = 0
         self.dynamic_events = []
+        self.dynamic_price_shapes = []
         self.changed_starts = set()
         self.changed_observed = 0
         self.changed_events = []
@@ -858,11 +922,15 @@ class PassiveFilteredRoute:
                             try:
                                 blob = await asyncio.wait_for(
                                     response.body(), timeout=8)
-                                self.dynamic_events.append(
-                                    inspect_filtered_response(blob))
+                                verdicts, shape = inspect_dynamic_filtered_response(
+                                    blob)
+                                self.dynamic_events.append(verdicts)
+                                self.dynamic_price_shapes.append(shape)
                             except Exception:
                                 self.dynamic_events.append(
                                     _DEFAULT_FILTER_FIELDS.copy())
+                                self.dynamic_price_shapes.append(
+                                    "UNOBSERVABLE")
                         task = asyncio.create_task(
                             read_dynamic_metadata_only())
                         self.tasks.add(task)
@@ -1210,12 +1278,17 @@ async def verify_filter_before_collection(
                     else "ONE_UNREADABLE")
                 info["dynamic_loader_server_filters"] = (
                     _DEFAULT_FILTER_FIELDS.copy())
+                info["dynamic_loader_price_shape"] = "UNOBSERVABLE"
             else:
                 (
                     info["dynamic_loader_metadata_status"],
                     info["dynamic_loader_server_filters"],
                 ) = regionless_route_summary(
                     watcher.dynamic_observed, watcher.dynamic_events)
+                if (info["dynamic_loader_metadata_status"] == "ONE_PARSED"
+                        and len(watcher.dynamic_price_shapes) == 1):
+                    info["dynamic_loader_price_shape"] = (
+                        watcher.dynamic_price_shapes[0])
             info["changed_loader_metadata_count"] = (
                 watcher.changed_observed)
             # Ambiguous, failed, or restricted overall request windows
