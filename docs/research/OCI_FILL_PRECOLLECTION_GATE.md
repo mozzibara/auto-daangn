@@ -347,6 +347,88 @@ authority to waive the mandatory `in` or post-Apply UI checks.
 The purpose of this test is **diagnostic attribution**, not success
 by relaxing guards.
 
+### OCI regionless page address but no regionless search request — 2026-11-13
+
+After PR #62 (`12aae1f`), the owner ran 10/10 targeted offline
+regressions and one approved OCI FILL precollection attempt.
+
+The latest browser evidence is unusually specific:
+
+- FILL region selection: `TARGET_REGION_CONFIRMED_DIAGNOSTIC` with
+  `header_click_returned=true` (no Playwright timeout), trusted header
+  click 1, keyword resolver HTTP 200, one fresh Route and both target
+  server-region IDs EXPECTED.
+- Filter UI pre-Apply matching target digital category/max KRW50,000/
+  available-only; Apply had exactly one trusted pointer/mouse/click
+  sequence, action returned successfully (`apply_action_exception_kind=NONE`).
+- Filter Apply produced **exactly one first-party search fetch/xhr**
+  request and HTTP 200; browser address afterwards had expected query
+  values for keyword/category/price/available but **no `in`**.
+- The strict original Route count remained 0, **and** the diagnostic
+  exact-four-param regionless Route count was also **0**. The header
+  after Apply still displayed the target region.
+- The old counters did not record **which of the five fields (or extra
+  query keys) were present on the actual network request**. The fact
+  that both exact-five and exact-four route counts are zero means
+  the sole request did not match either shape; it does **not** mean
+  it had no region or that the returned server region is wrong.
+- `BLOCKED_FILTER_URL`, `STOP_FILTERS_NOT_VERIFIED`; all listing,
+  database, and production-runtime operations stayed disabled.
+
+**New read-only probe:** within the same one-Apply request listener
+window, remember only up to three **safe field verdict snapshots**
+from first-party public search requests. If exactly one browser
+request occurred, `apply_search_request_diagnostics` reports:
+
+- `observation=ONE_OBSERVED` (else NOT_OBSERVED, MULTIPLE_OBSERVED
+  or UNOBSERVABLE), `transport=FETCH_OR_XHR/DOCUMENT`,
+  `method=GET/OTHER`, and `outcome=HTTP_200/ACCESS_RESTRICTED/
+  OTHER_HTTP/REQUEST_FAILED/NOT_OBSERVED`
+- `request_url.shape`, `request_url.fields.keyword/region/category/
+  price_max/available` (each EXPECTED/MISSING/OTHER/DUPLICATE/
+  UNOBSERVABLE), and only the **bounded count** of unexpected
+  parameter names. No raw key name, query, value or request URL emitted.
+- `response_url` with exactly the same limited classification, for
+  cases where the browser response's URL differed from the initiating
+  request.
+- `field_verdict_relationship` compares only the **per-field
+  classifications** from the network request and final page address.
+  SAME is **not** literal URL equality (two OTHER values could differ).
+- Neither nonmatching response body nor any listing array is inspected.
+  The bounded regionless metadata parser also now requires the actual
+  response URL to match the exact safe regionless shape *before*
+  reading that response body.
+
+**No authorization change:** The accepted filter Route still requires
+the exact five-key query including the correct `in`, one fresh response,
+allowlisted server region/category/price/availability metadata and
+native visible filter UI recheck. These remain unobserved; even
+`apply_search_request_diagnostics` showing request-region EXPECTED
+**never authorizes listing collection**. No new browser navigation,
+clicks, retries, proxy change or network requests were introduced.
+
+After all four offline CI jobs pass and the update is merged, an
+owner-controlled repeat is possible only under the usual
+robots/access allowance:
+
+```bash
+cd "$HOME/code/auto-daangn-region-diagnostic"
+git pull --ff-only
+source .venv/bin/activate
+python -m unittest discover -s tests -p 'test_oci_apply_request_url_verdicts.py' -v
+set -o pipefail
+xvfb-run -a python -m ops.oci.precollection --live --headed --owner-approval I_APPROVE_OCI_PRECOLLECTION_FILL_V1 | tee "$HOME/daangn_oci_network_url_verdicts.json"
+```
+
+Use the `precollection.apply_search_request_diagnostics` section
+rather than recording HAR/raw URLs. If network request region is
+EXPECTED but the final address region is MISSING, next distinguish
+network state from visible URL state; if request region MISSING,
+explore the search Route behavior and previous locality binding
+without inventing a query. If the request has extra keys, compare
+known Route metadata shape in an independent controlled fixture
+before ever revising acceptance. Continue to fail closed.
+
 ### Outcome interpretation
 
 | Status | Operational interpretation |
