@@ -61,6 +61,8 @@ def summarize_region_failure(region_row):
         "readiness_state": phase["readiness_state"],
         "header_click_exception_kind": phase["header_click_exception_kind"],
         "header_timeout_gate_reason": phase["header_timeout_gate_reason"],
+        "header_actionability_pre": phase["header_actionability_pre"],
+        "header_actionability_timeout": phase["header_actionability_timeout"],
         "header_click_returned": phase["core_header_click_returned"],
         "header_click_verified_after_timeout": (
             phase["header_click_verified_after_timeout"]),
