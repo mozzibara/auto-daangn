@@ -975,6 +975,127 @@ expanded scope, continue using the original command; its unknown
 changed-loader response body is never read. Neither mode collects
 listing data or changes the production runtime.
 
+### 2026-11-13 OCI: V1 opt-in observed zero matched routes — V2 source-derived dynamic `_data` probe
+
+Owner updated isolated OCI checkout to PR #70 main
+`46cb22bd45961b3661220d5507f9ae00e41dba2e`, passed
+**17/17** new opt-in metadata-only offline tests and used the distinct
+literal token `I_APPROVE_OCI_FILTER_METADATA_ONLY_V1` to run a
+single explicitly approved live Chrome FILL precollection.
+
+- The region selection was independently verified: first-party
+  keyword resolver HTTP 200, one fresh first-party Route with both
+  target region IDs EXPECTED, visible header and one trusted
+  option click. Both the regional route's initiating request and
+  the browser URL lacked `in` throughout, including all filter
+  UI checkpoints.
+- Filter controls were selected before Apply and one trusted
+  Apply click completed. One first-party GET fetch/xhr request and
+  response returned HTTP 200. The four expected non-region search
+  query fields were all EXPECTED, `in` MISSING, plus one changed
+  `_data` value (`OTHER_REMIX_DATA_ID`).
+- New V1 diagnostic was activated
+  (`changed_loader_metadata_mode=true`) but its request selector
+  did **not** match: `changed_loader_metadata_count=0`,
+  `changed_loader_metadata_status=NOT_OBSERVED`; all four
+  `changed_loader_server_filters` MISSING.
+- This does **not** show server filters missing or a bad response;
+  it means the V1 classifier found **no response matching its
+  narrow** `routes/kr.search.buy-sell` prefix. The actual value
+  was neither exported nor examined as a server body.
+  `BLOCKED_FILTER_URL`, `STOP_FILTERS_NOT_VERIFIED`, no item
+  reads, collection, export, DB writes or production runtime edits.
+
+**Source-level audit:** the older `daangn_browser_v4_6.Network`
+and `daangn_full_route_v4_14.RouteBodies` identify browser-generated
+first-party search JSON using exact HTTPS origin + search URL path,
+XHR/fetch, JSON content type, bounded body and verified public
+search model. They do **not** require the old literal
+`routes/kr.search.buy-sell._index` prefix. Existing
+`tests/test_v434_search_json_variants.py` explicitly exercises
+a changed `_data` ID on the public search path, where metadata
+verification takes precedence over a legacy selector value.
+This provides a code-grounded reason to separate dynamic Remix
+namespace from a hardcoded old route ID, but not to trust a random
+host or an arbitrary incoming response.
+
+**Non-invasive route-family classification**, always available:
+`precollection.apply_search_request_diagnostics.request_data_route_family`
+and `response_data_route_family`. Fixed values:
+`LEGACY_EXACT`, `SEARCH_PREFIX`,
+`OTHER_ROUTES_NAMESPACE`, `NOT_ROUTES_NAMESPACE`,
+`MALFORMED_SELECTOR`, `FILTER_QUERY_MISMATCH`,
+`UNOBSERVABLE`. No route ID, raw key/value, listing, credential
+or URL is persisted. This diagnosis alone does not read any
+changed response body.
+
+**V2 separate approval for bounded dynamic namespace:** V1 remains
+unchanged and its existing token DOES NOT authorize the V2 scope.
+The new `--passive-dynamic-loader-metadata` option requires a
+**third distinct token**
+`I_APPROVE_OCI_DYNAMIC_METADATA_ONLY_V2`.
+Mixing V1/V2 options or supplying a token for the wrong mode
+fails before any browser/network access.
+
+If separately approved, V2 passively observes **only the existing
+single native Apply-initiated request/response** meeting all of:
+- First-party HTTPS `www.daangn.com/kr/search/buy-sell/`,
+  GET fetch/xhr with exact four q/category_id/price/only_on_sale
+  values, `in` absent, exactly one additional `_data`.
+- Its decoded `_data` is an ASCII-bounded non-legacy
+  `routes/*` namespace selector (8–180 chars with a small safe
+  character set, no `..` or doubled slash); no unknown query
+  keys, duplicates, wrong origin, userinfo, fragment, or path.
+  These restrictions reflect source-reviewed dynamic Remix
+  route naming rather than the previous overly narrow literal
+  prefix. If `NOT_ROUTES_NAMESPACE` or malformed, **no body read**.
+- Same browser-issued request and response URL (redirects excluded),
+  HTTP 200, JSON/Remix content type, max 2MB body, exactly one
+  overall search request and response with no access block or
+  failure (otherwise any partially observed favorable metadata is
+  suppressed). 403/429 and redirects are hard stops.
+- The existing bounded `inspect_filtered_response` reduces
+  **only** `searchRegion.id` and `currentFilters` region/category,
+  maximum price and available-only scalar fields to fixed
+  EXPECTED/MISSING/OTHER/AMBIGUOUS verdicts. Product arrays are
+  never traversed/extracted/serialized; raw response is transient
+  RAM and discarded before the report.
+- Adds sanitized `dynamic_loader_metadata_mode/count/status/server_filters`.
+  Unknown schema or metadata remains MISSING/ONE_UNREADABLE, not an
+  inferred pass from HTTP 200 or URL/header.
+
+**Non-admitting by design:** V2, like V1, preserves
+`_unique_query`'s exact-region requirement, original first-party
+Route proof, post-Apply UI persistence gate, and standalone owner
+approval before any listing capture. Even if all V2 server fields
+are EXPECTED, overall state remains `STOP_FILTERS_NOT_VERIFIED`
+with `authorizes_listings=false`, `collection_started=false`,
+`database_written=false`; a separate safety review is necessary
+for future architecture changes. No new clicks, navigation,
+requests, query injection, retries, proxy or scheduled jobs.
+
+**V2 optional owner-run only after green offline CI and merge,
+and ONLY with explicit approval for this expanded routes/*
+metadata-body observation scope:**
+
+```bash
+cd "$HOME/code/auto-daangn-region-diagnostic"
+git pull --ff-only
+source .venv/bin/activate
+python -m unittest discover -s tests -p 'test_oci_dynamic_loader_metadata_v2.py' -v
+set -o pipefail
+xvfb-run -a python -m ops.oci.precollection --live --headed \
+  --passive-dynamic-loader-metadata \
+  --owner-approval I_APPROVE_OCI_DYNAMIC_METADATA_ONLY_V2 \
+  | tee "$HOME/daangn_oci_dynamic_loader_metadata_v2.json"
+```
+
+This is a *new consent*, not a continuation of the prior V1 consent.
+If the owner does not authorize it, do not execute. If the site
+denies access or another route category is observed, stop rather
+than broadening the selector or replaying requests. There is no
+collection authorization in any precollection mode.
+
 ### Outcome interpretation
 
 | Status | Operational interpretation |
