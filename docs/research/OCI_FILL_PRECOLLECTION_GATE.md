@@ -618,6 +618,80 @@ outputting private data. **Do not** continue to collect, inject `in`,
 guess the new loader ID, issue direct Route requests, bypass site
 controls or write to the production importer.
 
+### Region header clicked zero times — OCI precollection run after PR #66 (2026-11-13)
+
+The owner upgraded the isolated OCI checkout to main `5411e2c`,
+passed **9/9** `test_oci_apply_timeout_late_response.py`
+regressions, and ran one owner-approved FILL precollection diagnostic.
+
+**The failure occurred earlier than the new Apply observer:**
+- `status=STOP_REGION_NOT_VERIFIED`,
+  `region_status=REGION_HEADER_ACTION_EXCEPTION`,
+  `core_progress_stage=BEFORE_REGION_BUTTON_CLICK`
+- Playwright region header `locator.click(timeout=5000)` raised
+  `PLAYWRIGHT_TIMEOUT`. The pre-existing document event witness
+  saw **0 trusted and 0 total clicks**, with button candidates,
+  visible and enabled counts each 1.
+- `header_timeout_gate_reason=EVENTS_NOT_UNIQUE_TRUSTED`,
+  `header_click_verified_after_timeout=false`, no region dialog
+  input, no target keyword API request, no fresh region search Route.
+- The filter Apply function and the new PR #66 passive timeout
+  observer were **never entered**; `precollection=null`.
+  No listing reading, export, DB writes or production-state changes.
+
+**Diagnosis boundary:** a button being unique, visible and enabled
+does *not* prove that Playwright can send a pointer event. It may
+be covered by an overlay, outside the viewport, or fail actionability
+for another reason. Prior successful OCI region clicks do not prove
+the cause of this **zero-event** attempt.
+
+The next read-only experiment adds two **finite actionability
+snapshots** on the existing disposable public Chrome page:
+- Immediately before the **same single native** region-header click
+  using an optional `ui_select_region` callback (existing callers
+  unaffected).
+- Immediately after a Playwright header click timeout, before
+  evaluating the existing strict one-trusted-click reconciliation gate.
+
+Snapshots include only an allowlisted `document_visibility`,
+`document_ready`, known region button count, button
+visible/enabled state, coarse rectangle geometry
+(IN_VIEWPORT/PARTIAL_VIEWPORT/OUTSIDE_VIEWPORT/EMPTY), one
+`elementFromPoint` center-hit category
+(TARGET/OTHER_ELEMENT/NO_ELEMENT/OUTSIDE_VIEWPORT), and coarse
+pointer-events state (ENABLED/NONE/UNOBSERVABLE). **Never export**
+coordinates, hit element identity, button name/label, page HTML, raw
+DOM, overlays, locale, URLs, cookies, screenshots, request data or
+Playwright exception messages.
+
+The existing trusted event witness, `EVENTS_NOT_UNIQUE_TRUSTED`
+hard stop, region API/Route proof and all collection gates remain
+unchanged. No retries, force clicks, keyboard substitute, scrolling,
+synthetic browser events, stealth or proxy changes. In particular,
+one center-hit of TARGET is **only a diagnostic** and never sufficient
+to infer a dispatched click.
+
+After four green offline CI jobs and merge, **if robots/access
+conditions continue to allow a new owner-approved single run**:
+
+```bash
+cd "$HOME/code/auto-daangn-region-diagnostic"
+git pull --ff-only
+source .venv/bin/activate
+python -m unittest discover -s tests -p 'test_oci_region_header_actionability.py' -v
+set -o pipefail
+xvfb-run -a python -m ops.oci.precollection --live --headed --owner-approval I_APPROVE_OCI_PRECOLLECTION_FILL_V1 | tee "$HOME/daangn_oci_region_header_actionability.json"
+```
+
+Read `region_diagnostics.header_actionability_pre` and
+`header_actionability_timeout`; if `center_hit=OTHER_ELEMENT`,
+an obstruction is supported without leaking its identity. If
+`center_hit=TARGET` but trusted click remains zero, investigate
+Playwright actionability/wait behavior with this explicit limitation,
+not by retrying or force-clicking. An UNOBSERVABLE snapshot proves
+nothing. PR #66's Apply observer remains untested in OCI unless a
+later run again reaches that phase.
+
 ### Outcome interpretation
 
 | Status | Operational interpretation |
