@@ -209,6 +209,21 @@ class PassiveWatcherTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(watcher.observed,0)
 
 
+    async def test_multiple_requests_strip_favorable_metadata_from_summary(self):
+        watcher=PassiveFilteredRoute(passive_changed_loader=True)
+        requests=[]
+        for _ in range(2):
+            req=Request()
+            requests.append(req)
+            watcher.on_request(req)
+            watcher.on_response(Response(req))
+        await watcher.drain()
+        self.assertEqual(watcher.diagnostics["search_requests"],2)
+        # Even where an in-memory probe saw one matching data shape,
+        # the downstream operator must not turn that into locality proof.
+        self.assertEqual(watcher.observed,0)
+
+
 class FullOperatorTests(unittest.IsolatedAsyncioTestCase):
     async def test_even_all_server_filters_expected_still_strictly_blocked(self):
         page=Page()
