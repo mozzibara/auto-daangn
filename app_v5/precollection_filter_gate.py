@@ -81,6 +81,12 @@ def sanitize_apply_request_diagnostics(raw):
             src.get("method"), _REQUEST_METHOD_STATES, "UNOBSERVABLE"),
         "request_url": sanitize_filter_url_diagnostic(src.get("request_url")),
         "response_url": sanitize_filter_url_diagnostic(src.get("response_url")),
+        "request_route_selector": _kind(
+            src.get("request_route_selector"),
+            _REMIX_SELECTOR_STATES, "UNOBSERVABLE"),
+        "response_route_selector": _kind(
+            src.get("response_route_selector"),
+            _REMIX_SELECTOR_STATES, "UNOBSERVABLE"),
         "outcome": _kind(src.get("outcome"), _REQUEST_OUTCOME_STATES,
                          "NOT_OBSERVED"),
         # These compare classifications, NOT raw query values or exact URLs.
@@ -90,6 +96,45 @@ def sanitize_apply_request_diagnostics(raw):
         },
         "authorizes_listings": False,
     }
+
+
+_REMIX_SELECTOR_STATES = (
+    "EXPECTED_SEARCH_LOADER", "OTHER_EXTRA", "NONE",
+    "QUERY_MISMATCH", "UNOBSERVABLE",
+)
+
+
+def classify_remix_loader_selector(url):
+    """Only a known framework route selector; no unrecognized keys or values."""
+    if type(url) is not str or len(url) > 4096:
+        return "UNOBSERVABLE"
+    if not _same_public_search_path(url):
+        return "QUERY_MISMATCH"
+    try:
+        parsed = urlsplit(url)
+        qs = parse_qs(parsed.query, keep_blank_values=True)
+        fixed = {
+            "q": KEYWORD,
+            "category_id": str(CATEGORY_ID),
+            "price": "__" + str(MAX_PRICE),
+            "only_on_sale": "true",
+        }
+        if (qs.get("in") is not None or
+                any(qs.get(k) != [v] for k, v in fixed.items())):
+            return "QUERY_MISMATCH"
+        extras = set(qs).difference(fixed)
+        if not extras:
+            return "NONE"
+        if extras == {"_data"} and qs.get("_data") == [core.ROUTE_ID]:
+            return "EXPECTED_SEARCH_LOADER"
+        return "OTHER_EXTRA"
+    except (ValueError, TypeError, AttributeError):
+        return "UNOBSERVABLE"
+
+
+def _exact_known_remix_regionless_loader(url):
+    """Non-admitting passive probe of an already-browser-generated Route."""
+    return classify_remix_loader_selector(url) == "EXPECTED_SEARCH_LOADER"
 
 
 _REGIONLESS_ROUTE_STATUSES = (
@@ -252,6 +297,18 @@ def sanitize_precollection(value):
         # The regionless Route is deliberately NON-ADMITTING evidence.
         # Even four EXPECTED fields here cannot waive missing URL 'in'.
         "regionless_route_count": _bounded(src.get("regionless_route_count")),
+        "remix_regionless_route_count": _bounded(
+            src.get("remix_regionless_route_count")),
+        "remix_regionless_route_status": _kind(
+            src.get("remix_regionless_route_status"),
+            _REGIONLESS_ROUTE_STATUSES, "UNOBSERVABLE"),
+        "remix_regionless_server_filters": {
+            k: _kind(
+                (src.get("remix_regionless_server_filters")
+                 if type(src.get("remix_regionless_server_filters")) is dict
+                 else {}).get(k), _ITEM_STATUS, "MISSING")
+            for k in ("region", "category", "price_max", "available")
+        },
         "regionless_route_status": _kind(
             src.get("regionless_route_status"),
             _REGIONLESS_ROUTE_STATUSES, "UNOBSERVABLE"),
@@ -382,6 +439,9 @@ class PassiveFilteredRoute:
         self.regionless_starts = set()
         self.regionless_events = []
         self.regionless_observed = 0
+        self.remix_regionless_starts = set()
+        self.remix_regionless_observed = 0
+        self.remix_regionless_events = []
         self.diagnostics = {key: 0 for key in _TRANSPORT_COUNTS}
         # Bound at 3 browser-generated request objects, never raw URLs or
         # response data in output, and never inspect nonmatching response body.
@@ -403,7 +463,10 @@ class PassiveFilteredRoute:
                         ("fetch", "xhr") else "DOCUMENT"),
                     "method": "GET" if request.method == "GET" else "OTHER",
                     "request_url": classify_filter_url(request.url),
+                    "request_route_selector": classify_remix_loader_selector(
+                        request.url),
                     "response_url": None,
+                    "response_route_selector": "UNOBSERVABLE",
                     "outcome": "NOT_OBSERVED",
                 }
             if request.resource_type in ("fetch", "xhr"):
@@ -425,6 +488,11 @@ class PassiveFilteredRoute:
                         and _exact_except_missing_region(request.url)
                         and len(self.regionless_starts) < 4):
                     self.regionless_starts.add(request)
+                if (request.method == "GET"
+                        and request.resource_type in ("fetch", "xhr")
+                        and _exact_known_remix_regionless_loader(request.url)
+                        and len(self.remix_regionless_starts) < 4):
+                    self.remix_regionless_starts.add(request)
             if len(self.broad_starts) < 20:
                 self.broad_starts.add(request)
         except (AttributeError, TypeError, ValueError):
@@ -436,6 +504,7 @@ class PassiveFilteredRoute:
                 self.broad_starts.discard(request)
                 self.starts.discard(request)
                 self.regionless_starts.discard(request)
+                self.remix_regionless_starts.discard(request)
                 self._increase("search_request_failures")
                 if request in self.request_verdicts:
                     self.request_verdicts[request]["outcome"] = "REQUEST_FAILED"
@@ -452,6 +521,8 @@ class PassiveFilteredRoute:
             if req in self.request_verdicts:
                 entry = self.request_verdicts[req]
                 entry["response_url"] = classify_filter_url(response.url)
+                entry["response_route_selector"] = classify_remix_loader_selector(
+                    response.url)
                 entry["outcome"] = (
                     "ACCESS_RESTRICTED" if response.status in (401, 403, 429)
                     else "HTTP_200" if response.status == 200
@@ -463,6 +534,37 @@ class PassiveFilteredRoute:
                 self._increase("search_response_200")
             else:
                 self._increase("search_response_other")
+
+            # A known first-party Remix loader may carry the exact four
+            # filters plus _data=<known search route>. It cannot admit
+            # collection because the required region query 'in' is absent.
+            if req in self.remix_regionless_starts:
+                self.remix_regionless_starts.discard(req)
+                self.remix_regionless_observed = min(
+                    20, self.remix_regionless_observed + 1)
+                if (response.status == 200
+                        and _exact_known_remix_regionless_loader(response.url)
+                        and len(self.remix_regionless_events) +
+                            len(self.tasks) < 3):
+                    ctype = response.headers.get(
+                        "content-type", "").lower()
+                    length = response.headers.get("content-length", "")
+                    if (("json" in ctype or "remix" in ctype)
+                            and (not length.isdecimal()
+                                 or int(length) <= _MAX_BODY)):
+                        async def read_known_remix_metadata():
+                            try:
+                                body = await asyncio.wait_for(
+                                    response.body(), timeout=8)
+                                self.remix_regionless_events.append(
+                                    inspect_filtered_response(body))
+                            except Exception:
+                                self.remix_regionless_events.append(
+                                    _DEFAULT_FILTER_FIELDS.copy())
+                        task = asyncio.create_task(
+                            read_known_remix_metadata())
+                        self.tasks.add(task)
+                        task.add_done_callback(self.tasks.discard)
 
             # An exact 4-filter search with only 'in' absent is important
             # evidence, but NOT a valid locality/collection Route.
@@ -553,6 +655,8 @@ class PassiveFilteredRoute:
             "method": entry["method"],
             "request_url": url,
             "response_url": entry["response_url"],
+            "request_route_selector": entry["request_route_selector"],
+            "response_route_selector": entry["response_route_selector"],
             "outcome": entry["outcome"],
             "field_verdict_relationship": relationships,
         })
@@ -685,6 +789,14 @@ async def verify_filter_before_collection(page, region=REGION):
         if info.get("apply_request_listener_armed") is True:
             info["filtered_route_count"] = watcher.observed
             info["regionless_route_count"] = watcher.regionless_observed
+            info["remix_regionless_route_count"] = (
+                watcher.remix_regionless_observed)
+            (
+                info["remix_regionless_route_status"],
+                info["remix_regionless_server_filters"],
+            ) = regionless_route_summary(
+                watcher.remix_regionless_observed,
+                watcher.remix_regionless_events)
             (
                 info["regionless_route_status"],
                 info["regionless_server_filters"],

@@ -429,6 +429,84 @@ without inventing a query. If the request has extra keys, compare
 known Route metadata shape in an independent controlled fixture
 before ever revising acceptance. Continue to fail closed.
 
+### Confirmed extra request key; known Remix search-loader hypothesis (2026-11-13)
+
+After PR #63, the owner ran **12/12** `test_oci_apply_request_url_verdicts.py`
+tests and one approved isolated OCI FILL precollection experiment.
+
+- The region selection gate passed with one fresh Route, keyword API HTTP
+  200 and expected selected UI/server search/filter region IDs.
+- The Apply button returned after one trusted browser pointer/mouse/click
+  sequence. The search request was exactly one first-party GET fetch/xhr
+  and one HTTP 200 response.
+- The network **request and response URLs** each had exactly four
+  expected query fields (`q`, `category_id`, `price`,
+  `only_on_sale`), missing `in`, plus **exactly one additional
+  query parameter**. The post-Apply page URL had the same four expected
+  fields, missing `in`, but **no additional parameter**. This explains
+  why both existing strict-five and exact-four route observers returned 0.
+- The site's rendered header remained TARGET after Apply, but it is
+  not independent server-authoritative search-region proof.
+- The **identity of the extra key/value was not exposed** by PR #63.
+  `regionless_server_filters` and `server_filters` remain MISSING
+  because the prior strict matchers refused to inspect the single
+  browser-generated query variant. `STOP_FILTERS_NOT_VERIFIED`.
+
+**Source code cross-check:** the existing repository core
+`daangn_v4_1_core.py` already recognizes the public Remix search
+Route as `_data=routes/kr.search.buy-sell._index`
+(`core.ROUTE_ID`). Therefore the single extra key could be this
+well-known first-party Remix loader selector; the previous OCI
+evidence has **not yet confirmed** its identity.
+
+The new **read-only non-admitting** probe:
+- Accepts for *diagnostics only* an **already browser-generated**
+  first-party GET fetch/xhr request with the four exact target
+  filters, **missing** `in`, and the **one and only** extra query
+  key `_data` whose value matches `core.ROUTE_ID`. Unknown keys,
+  other route IDs, duplicates, wrong origins/paths and divergent
+  response URLs fail closed. Nothing is injected, clicked or fetched
+  by the probe itself.
+- Distinguishes `request_route_selector` and
+  `response_route_selector` into `EXPECTED_SEARCH_LOADER`,
+  `NONE`, `OTHER_EXTRA`, `QUERY_MISMATCH` or `UNOBSERVABLE`,
+  without printing raw URLs, keys/values or private session data.
+- If an exact, known first-party browser route returned HTTP 200
+  JSON (<=2 MB), reads it in memory and reduces only the server
+  `searchRegion.id`, `currentFilters.regionId`, category, max
+  price and availability scalar status. Explicitly skips the
+  `buySellArticles` array and never serializes its item contents.
+- Adds `remix_regionless_route_count`,
+  `remix_regionless_route_status`, and
+  `remix_regionless_server_filters` to the **diagnostic only**
+  output. For multiple/unparseable/denied responses it reports
+  ambiguity/unavailability, not verified server locality.
+- **Crucially, unchanged**: a regionless page URL still fails the
+  strict original `_unique_query` gate, and the existing accepted
+  Route, UI recheck, server price/category/availability/region proofs
+  are not bypassed. Even all `EXPECTED` in the new branch cannot
+  authorize listing capture/import.
+
+When four offline CI jobs have passed and the PR is merged, the
+operator may run one more **explicitly approved** isolated live
+diagnostic only if robots/site access continues to permit it:
+
+```bash
+cd "$HOME/code/auto-daangn-region-diagnostic"
+git pull --ff-only
+source .venv/bin/activate
+python -m unittest discover -s tests -p 'test_oci_remix_loader_filter_metadata.py' -v
+set -o pipefail
+xvfb-run -a python -m ops.oci.precollection --live --headed --owner-approval I_APPROVE_OCI_PRECOLLECTION_FILL_V1 | tee "$HOME/daangn_oci_remix_filter_metadata.json"
+```
+
+If the selector is EXPECTED and server region is OTHER, post-Apply
+locality is wrong despite the target header; halt. If selector and
+server region are EXPECTED, this is valuable independent supporting
+evidence, **not automatic collection permission**. Missing price or
+availability metadata similarly remains insufficient. Do not repeat,
+force, bypass, proxy or collect listing fields to fill evidence gaps.
+
 ### Outcome interpretation
 
 | Status | Operational interpretation |
