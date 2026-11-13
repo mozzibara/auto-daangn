@@ -216,7 +216,7 @@ class AdmissibilityTests(unittest.IsolatedAsyncioTestCase):
     async def test_known_route_with_all_expected_metadata_still_blocks(self):
         page=Page()
         button=Button(page)
-        async def select(*args):
+        async def select(*args, **kwargs):
             return button,{
                 "complete":True,"category":True,"available":True,
                 "maximum":50000,"minimum":0,
