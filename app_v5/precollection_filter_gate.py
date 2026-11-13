@@ -21,6 +21,7 @@ from app_v5.region_baseline_contrast import (
 from app_v5.filter_apply_activation import (
     FilterApplyActivationWitness, sanitize_apply_activation,
 )
+from app_v5.oci_evidence_ledger import summarize_precollection_evidence
 
 REGION = core.BY_KEY["cheonan"]
 CATEGORY_ID = 1
@@ -510,7 +511,7 @@ def sanitize_precollection(value):
     src = value if type(value) is dict else {}
     states = src.get("server_filters")
     states = states if type(states) is dict else {}
-    return {
+    safe = {
         "schema": "oci_fill_precollection_v1",
         "status": _kind(src.get("status"), _REPORT_STATUS, "BLOCKED_PRECONDITION"),
         "region_gate_confirmed": src.get("region_gate_confirmed") is True,
@@ -619,6 +620,10 @@ def sanitize_precollection(value):
         "database_written": False,
         "authorizes_listings": False,
     }
+    # Advisory evidence from already-sanitized fields only. This never
+    # changes the existing strict URL, Route, UI, owner or collection gate.
+    safe["evidence_ledger"] = summarize_precollection_evidence(safe)
+    return safe
 
 
 def _unique_query(url, expected_region=REGION):
