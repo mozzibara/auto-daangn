@@ -9,7 +9,7 @@ Only authenticated REVIEWABLE PRICE_DROPPED events selected by the existing app_
 ## Processing stages
 
 1. Existing owner-approved signed capture and strict OCI import succeed; this integration does **not** enable automated marketplace collection or relax REGION_MISMATCH.
-2. If and only if the operator has created the private telegram-export directory, the successful signed intake invokes the exporter after the SQLite commit. Any export failure is reported as alert_export=REVIEW_REQUIRED and does not roll back the authenticated import.
+2. If and only if the operator has created the standalone /var/spool/auto-daangn-telegram directory, the successful signed intake invokes the exporter after the SQLite commit. Any export failure is reported as alert_export=REVIEW_REQUIRED and does not roll back the authenticated import.
 3. The daangn-owned exporter writes 0600 JSON records containing only authenticated price events, canonical links and explicit uncertainty. No Bot Token, Chat ID, Telegram HTTP call or GitHub output. Local exports expire after 96 hours; the active event window is 72 hours.
 4. The private OCI self-hosted Runner reads only those files through specific POSIX ACLs and validates owner UID, strict filename, schema, event id, price and URL.
 5. The private delivery ledger baselines historical exports without sending. New events are deduplicated and sent through the **same Telegram bot and personal chat** used for OCI network incidents.
@@ -19,10 +19,16 @@ Only authenticated REVIEWABLE PRICE_DROPPED events selected by the existing app_
 Requires existing daangn/oci-runner Unix accounts, production source updated to this version, and the setfacl program. Execute on the OCI host as the operator:
 
 ~~~bash
-STATE=/var/lib/auto-daangn
-sudo install -d -o daangn -g daangn -m 0700 "$STATE/telegram-export"
-sudo setfacl -m u:oci-runner:--x "$STATE"
-sudo setfacl -m u:oci-runner:r-x "$STATE/telegram-export"
+# Production state stays private: /var/lib/auto-daangn must remain mode 0700.
+# Its runtime explicitly rejects group/other permission bits.
+sudo apt-get install -y --no-install-recommends acl
+SPOOL=/var/spool/auto-daangn-telegram
+sudo install -d -o daangn -g daangn -m 0700 "$SPOOL"
+sudo setfacl -m u:oci-runner:r-x "$SPOOL"
+sudo getfacl -cp "$SPOOL"
+
+# Check strict runtime state permissions have NOT been modified
+sudo stat -c '%a %U:%G %n' /var/lib/auto-daangn
 ~~~
 
 The exporter (running as daangn) grants u:oci-runner:r-- to **each export file only** using setfacl. The OCI Runner retains no read permission for the production DB, HMAC key, recipient private key or artifact inbox. No sudo is given to the Runner.

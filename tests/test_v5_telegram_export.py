@@ -108,6 +108,38 @@ class ExportBoundaryTests(unittest.TestCase):
                 x.export_verified_drops(
                     None, self.folder, now=T, share_with_runner=True)
 
+    def test_runtime_export_requires_explicit_separate_spool_opt_in(self):
+        from ops.oci import runtime
+        state = self.folder.parent / "state"
+        state.mkdir(mode=0o700)
+        with patch.object(x, "EXPORT_DIR", self.folder), \
+             patch.object(runtime, "_root", return_value=state), \
+             patch.object(runtime, "_keyring",
+                          return_value=(b"recipient", b"history", "pub")), \
+             patch.object(x, "HistoryStore") as store:
+            with self.assertRaisesRegex(ValueError, "EXPORT_SPOOL_NOT_OPTED_IN"):
+                x.export_from_state(state, now=T)
+            store.assert_not_called()
+
+    def test_operational_export_targets_external_spool_only(self):
+        from ops.oci import runtime
+        state = self.folder.parent / "state"
+        state.mkdir(mode=0o700)
+        self.folder.mkdir(mode=0o700)
+        with patch.object(x, "EXPORT_DIR", self.folder), \
+             patch.object(runtime, "_root", return_value=state), \
+             patch.object(runtime, "_keyring",
+                          return_value=(b"recipient", b"history", "pub")), \
+             patch.object(x, "HistoryStore") as store, \
+             patch.object(x, "export_verified_drops") as export:
+            x.export_from_state(state, now=T)
+        export.assert_called_once()
+        self.assertEqual(export.call_args.args[1], self.folder)
+        self.assertTrue(export.call_args.kwargs["share_with_runner"])
+        store.assert_called_once()
+        self.assertEqual(store.call_args.args[0], state / "db" / "history.sqlite3")
+        self.assertEqual(runtime._root(state, create=False), state.resolve())
+
     def test_directory_symlink_rejected(self):
         other = self.folder.parent / "other"
         other.mkdir()

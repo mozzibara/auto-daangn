@@ -27,6 +27,9 @@ SLUG = re.compile(r"^/kr/buy-sell/[A-Za-z0-9-]{4,128}/?$")
 MAX_FILE = 4096
 MAX_EVENTS = 100
 LOOKBACK = timedelta(hours=72)
+# Deliberately outside the 0700 production state root: a named Runner ACL
+# on /var/lib/auto-daangn would trip runtime._root private-mode enforcement.
+EXPORT_DIR = Path("/var/spool/auto-daangn-telegram")
 
 
 def _utc(value):
@@ -191,9 +194,13 @@ def export_from_state(state_dir, *, now=None):
     from ops.oci import runtime
     root = runtime._root(state_dir, create=False)
     _, history_key, _ = runtime._keyring(root)
+    # The operator must create this standalone spool with 0700 ownership.
+    # Never auto-enable exports from a simple CLI invocation.
+    if not EXPORT_DIR.is_dir() or EXPORT_DIR.is_symlink():
+        raise ValueError("EXPORT_SPOOL_NOT_OPTED_IN")
     store = HistoryStore(root / "db" / "history.sqlite3", history_key)
     return export_verified_drops(
-        store, root / "telegram-export",
+        store, EXPORT_DIR,
         now=now or datetime.now(timezone.utc), share_with_runner=True
     )
 
