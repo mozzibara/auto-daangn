@@ -14,6 +14,7 @@ import os
 from pathlib import Path
 import re
 import stat
+import subprocess
 import unicodedata
 from urllib.parse import urlsplit
 
@@ -96,8 +97,24 @@ def _directory(folder):
         raise ValueError("EXPORT_DIRECTORY_UNSAFE")
 
 
+def _grant_runner_read(path: Path):
+    # The production data owner grants read access ONLY to this one export
+    # file. No ACL for the SQLite database, secret keys or staging inbox.
+    # Requires acl/setfacl installed. Never spawn a shell.
+    try:
+        completed = subprocess.run(
+            ["setfacl", "-m", "u:oci-runner:r--", str(path)],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            check=False, timeout=5)
+    except (OSError, subprocess.TimeoutExpired):
+        raise ValueError("EXPORT_ACL_SHARE_UNAVAILABLE") from None
+    if completed.returncode:
+        raise ValueError("EXPORT_ACL_SHARE_FAILED")
+
+
 def export_verified_drops(store: HistoryStore, destination: Path, *,
-                          now: datetime, max_events: int = MAX_EVENTS):
+                          now: datetime, max_events: int = MAX_EVENTS,
+                          share_with_runner: bool = False):
     if now.tzinfo is None or not 1 <= max_events <= 500:
         raise ValueError("INVALID_EXPORT_SETTINGS")
     now = now.astimezone(timezone.utc)
@@ -130,10 +147,14 @@ def export_verified_drops(store: HistoryStore, destination: Path, *,
         except FileExistsError:
             if path.is_symlink() or not path.is_file() or path.read_bytes() != content:
                 raise ValueError("EXISTING_EXPORT_CONTENT_MISMATCH")
+            if share_with_runner:
+                _grant_runner_read(path)
             existing += 1
             continue
         with os.fdopen(fd, "wb") as stream:
             stream.write(content)
+        if share_with_runner:
+            _grant_runner_read(path)
         created += 1
     return {
         "schema": "daangn_export_v1", "status": "OK",
@@ -153,7 +174,7 @@ def export_from_state(state_dir, *, now=None):
     store = HistoryStore(root / "db" / "history.sqlite3", history_key)
     return export_verified_drops(
         store, root / "telegram-export",
-        now=now or datetime.now(timezone.utc)
+        now=now or datetime.now(timezone.utc), share_with_runner=True
     )
 
 
