@@ -23,6 +23,7 @@ from app_v5.telegram_outbox import (
     dispatch_mocked_once, enqueue_verified_drop, render_telegram_preview, signed_price_drops
 )
 from daangn_secure_links_v4_34 import seal_manifest
+from ops.oci.telegram_export import export_verified_drops
 
 TIME = datetime(2026, 11, 10, 0, 0, tzinfo=timezone.utc)
 URL = "https://www.daangn.com/kr/buy-sell/synthetic-alert-abcdefghijkl/"
@@ -274,6 +275,24 @@ class TelegramIntegrationTests(unittest.TestCase):
         self.assertIn("판매 상태·재고·SMART 원본은 별도 확인 필요", message)
         self.assertIn("8,750원/TB", message)
         return candidate, message
+
+    def test_actual_signed_capture_chain_exports_private_sender_envelope(self):
+        self.seeded()
+        folder = self.root / "telegram-export"
+        report = export_verified_drops(
+            self.store, folder,
+            now=datetime(2026, 11, 12, 2, tzinfo=timezone.utc))
+        self.assertEqual(report["created"], 1)
+        event = json.loads(next(folder.glob("drop-*.json")).read_text())
+        self.assertEqual(event["schema"], "daangn_verified_price_drop_v1")
+        self.assertEqual(event["source"], "SIGNED_PRICE_DROP_REVIEWABLE")
+        self.assertEqual(event["previous_price_krw"], 45000)
+        self.assertEqual(event["price_krw"], 35000)
+        self.assertFalse(event["seller_confirmed_available"])
+        self.assertFalse(event["transaction_status_verified"])
+        self.assertEqual(export_verified_drops(
+            self.store, folder,
+            now=datetime(2026, 11, 12, 2, tzinfo=timezone.utc))["unchanged"], 1)
 
     def test_authenticated_drop_becomes_preview_and_not_a_real_send(self):
         event, text = self.seeded()
