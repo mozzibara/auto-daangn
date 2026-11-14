@@ -316,7 +316,8 @@ def poll_once(state_dir: Path, client: GitHubSource,
                 try:
                     exported = export_verified_drops(
                         history, root / "telegram-export",
-                        now=now or datetime.now(timezone.utc))
+                        now=now or datetime.now(timezone.utc),
+                        share_with_runner=True)
                     alert_export = ("EXPORTED" if exported["created"]
                                     else "NO_NEW_VERIFIED_DROPS")
                 except (ValueError, OSError, sqlite3.Error):
