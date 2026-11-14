@@ -68,3 +68,10 @@ for the historical evidence, strict interpretation limits, restored v4
 synthetic tests, missing live-region proof and migration decisions. Historic
 raw run evidence, additional live workflow dispatchers and secrets were
 **not** imported. Backup services remain disabled by owner policy.
+
+
+## Shared Telegram notification bridge (opt-in)
+
+The authenticated v5 price-drop gate can now export narrow, local-only JSON notification records after signed OCI artifact import. A **private** OCI control repository delivers these through the same personal Telegram bot as Runner incidents. The public repository never stores the Bot Token or personal Chat ID, and this integration does not enable live market capture.
+
+See [shared Telegram exporter and ACL runbook](docs/research/SHARED_TELEGRAM_BRIDGE.md). Only signed REVIEWABLE PRICE_DROPPED events are supported until the separate new-listing evidence gate is implemented. OCI operator opt-in, deployment and filesystem ACLs are still required; source merge alone does not activate real messages.
