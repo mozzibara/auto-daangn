@@ -27,7 +27,7 @@ from zipfile import ZipFile, BadZipFile
 
 from app_v5.history import HistoryStore
 from ops.oci import runtime
-from ops.oci.telegram_export import export_verified_drops
+from ops.oci.telegram_export import EXPORT_DIR, export_verified_drops
 
 REPO = "mozzibara/auto-daangn"
 OWNER = "mozzibara"
@@ -308,14 +308,14 @@ def poll_once(state_dir: Path, client: GitHubSource,
             result = runtime.import_capture(
                 root, bundle, expected_commit_sha=source_sha,
                 run_id=run_id, run_attempt=attempt)
-            # Explicit opt-in only: the operator creates the private
-            # telegram-export directory. Never enable live collection here,
+            # Explicit opt-in: a separate spool is created by the operator.
+            # Never grant ACLs on the private runtime state root or its DB.
             # and never let an alert-export failure rollback signed import.
             alert_export = "NOT_ENABLED"
-            if (root / "telegram-export").is_dir():
+            if EXPORT_DIR.is_dir() and not EXPORT_DIR.is_symlink():
                 try:
                     exported = export_verified_drops(
-                        history, root / "telegram-export",
+                        history, EXPORT_DIR,
                         now=now or datetime.now(timezone.utc),
                         share_with_runner=True)
                     alert_export = ("EXPORTED" if exported["created"]
