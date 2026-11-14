@@ -112,6 +112,24 @@ def _grant_runner_read(path: Path):
         raise ValueError("EXPORT_ACL_SHARE_FAILED")
 
 
+def _prune_expired(folder: Path, *, now: datetime) -> int:
+    # Retention is independent of Telegram delivery: old events are not
+    # eligible for new alerts after 72h and do not become backups.
+    removed = 0
+    cutoff = now.timestamp() - 96*3600
+    for file in folder.iterdir():
+        if not NAME.fullmatch(file.name) or file.is_symlink():
+            continue
+        info = file.stat(follow_symlinks=False)
+        if (not stat.S_ISREG(info.st_mode)
+                or info.st_uid != os.getuid() or info.st_mode & 0o022):
+            raise ValueError("UNSAFE_EXPIRED_EXPORT")
+        if info.st_mtime < cutoff:
+            file.unlink()
+            removed += 1
+    return removed
+
+
 def export_verified_drops(store: HistoryStore, destination: Path, *,
                           now: datetime, max_events: int = MAX_EVENTS,
                           share_with_runner: bool = False):
@@ -130,6 +148,7 @@ def export_verified_drops(store: HistoryStore, destination: Path, *,
     if len(candidates) > max_events:
         raise ValueError("VERIFIED_ALERT_EXPORT_CAP_EXCEEDED")
     _directory(destination)
+    pruned = _prune_expired(destination, now=now)
     created = existing = 0
     for message in candidates:
         name = (f"drop-{message['event_id']}-"
@@ -159,7 +178,7 @@ def export_verified_drops(store: HistoryStore, destination: Path, *,
     return {
         "schema": "daangn_export_v1", "status": "OK",
         "verified_price_drops_in_window": len(candidates),
-        "created": created, "unchanged": existing,
+        "created": created, "unchanged": existing, "pruned_expired": pruned,
         "source_authenticated": True,
         "telegram_token_accessed": False, "network_accessed": False,
         "new_listing_alerts_active": False,
