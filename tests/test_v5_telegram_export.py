@@ -91,6 +91,23 @@ class ExportBoundaryTests(unittest.TestCase):
             self.export(events, max_events=3)
         self.assertFalse(self.folder.exists())
 
+    def test_explicit_opt_in_grants_acl_to_export_only(self):
+        with patch.object(x, "_grant_runner_read") as grant:
+            with patch.object(x, "signed_price_drops", return_value=[EVENT]):
+                report = x.export_verified_drops(
+                    None, self.folder, now=T, share_with_runner=True)
+            self.assertEqual(report["created"], 1)
+            grant.assert_called_once()
+            self.assertTrue(grant.call_args.args[0].name.startswith("drop-"))
+
+    def test_acl_failure_does_not_report_success(self):
+        with patch.object(x, "_grant_runner_read", side_effect=ValueError(
+                "EXPORT_ACL_SHARE_FAILED")), patch.object(
+                x, "signed_price_drops", return_value=[EVENT]):
+            with self.assertRaisesRegex(ValueError, "EXPORT_ACL_SHARE_FAILED"):
+                x.export_verified_drops(
+                    None, self.folder, now=T, share_with_runner=True)
+
     def test_directory_symlink_rejected(self):
         other = self.folder.parent / "other"
         other.mkdir()
