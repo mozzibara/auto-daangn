@@ -122,7 +122,8 @@ def _prune_expired(folder: Path, *, now: datetime) -> int:
             continue
         info = file.stat(follow_symlinks=False)
         if (not stat.S_ISREG(info.st_mode)
-                or info.st_uid != os.getuid() or info.st_mode & 0o022):
+                or (os.name == "posix"
+                    and (info.st_uid != os.getuid() or info.st_mode & 0o022))):
             raise ValueError("UNSAFE_EXPIRED_EXPORT")
         if info.st_mtime < cutoff:
             file.unlink()
