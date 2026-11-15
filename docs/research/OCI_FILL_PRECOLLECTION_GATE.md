@@ -1499,3 +1499,71 @@ owner-run experimental precollection Chrome checkout is an
 **explicitly separate research lane**. It is not installed as an
 OCI service or enabled by the production intake timer. A production
 role/architecture change would require a separate decision.
+
+
+## 2026-11-15 — Independent post-Apply Remix _data response evidence
+
+The existing, separately owner-approved V2 observer already reads precisely
+one **browser-initiated** first-party HTTPS search GET/fetch/xhr _data response,
+only if request/response URL are **identical**, HTTP 200 and bounded
+JSON/Remix content. It extracts ONLY known searchRegion/currentFilters scalar
+fields; no buySellArticles entry, listing URL, title or seller property is
+iterated, retained or serialized. Source selector is restricted to already
+observed, bounded routes/*; any competing request, access restriction,
+redirect, invalid schema or duplicate search model fails closed.
+
+A new pure, **non-admitting** contract
+app_v5/remix_independent_evidence.py consumes the existing sanitized V2
+projection and correlates the body with the unique browser request proof.
+The output is available as precollection.remix_independent_evidence:
+
+- source_provenance = SINGLE_BROWSER_REMIX_DATA_200 only if the targeted
+  UI Apply was observed, region was already authenticated, exactly one
+  first-party filtered GET/200 request/response was seen, there were no
+  failures/restrictions, the request and response had expected q/category/
+  price/available fields, a bounded Remix routes/* _data source, and exactly
+  one successful V2 parser result. Otherwise source_provenance = UNVERIFIED
+  and all four body field verdicts become UNVERIFIED. This preserves the
+  observer's exact-URL no-redirect condition.
+- response_region_ids = EXPECTED only when searchRegion.id AND
+  currentFilters.regionId matched the intended region in the same source.
+  Another value, absent ID or ambiguity stays OTHER/MISSING/AMBIGUOUS.
+- response_category and response_available_only each classify their own
+  server-declared currentFilters scalars; one cannot substitute for another.
+- response_max_price_declaration classifies only historical direct max
+  aliases or priceRange.max, not browser URL price=__50000 or the echoed
+  currentFilters.price field.
+- response_price_evidence explicitly separates matching but **unenforced**
+  declarations, mismatching/ambiguous declarations, conflicting echoed
+  max-only values, matched echo only and missing evidence. It never asserts
+  server-side enforcement from a response declaration or query echo alone.
+- price_cap_enforced, url_region_proven, post_apply_ui_proven,
+  authorizes_listings and releases_region_mismatch are ALWAYS false.
+  Returned labels are static enums; no source URL, title, selector, item,
+  raw price scalar, seller or cookie leaks.
+
+Even a synthetic _data response where region/category/available and
+direct max declaration are all EXPECTED remains blocked because behavioral
+backend price enforcement, URL region correspondence and persisted
+post-Apply UI are independently unproven. The existing
+BLOCKED_FILTER_URL and strict_filter_evidence mechanisms are NOT
+overridden; this report changes diagnosis precision, not admission.
+
+### Verification
+
+Run no-network regression:
+python -m unittest discover -s tests -p 'test_remix_independent_evidence.py' -v
+
+The existing owner-approved V2 one-shot metadata mode can produce this
+report from a real browser-generated response without additional requests
+or body scope, provided robots and consent gates permit. The original
+one-shot click NO_WAIT_AFTER mode is independent and currently cannot be
+combined with V2 approval. A combined experiment would need a separate,
+explicitly reviewed dual-approval path rather than silently relaxing the
+mutually exclusive safety checks.
+
+The last independently recorded OCI no-wait run confirmed region selection
+but ended STOP_FILTERS_NOT_VERIFIED because in was absent and the strict
+filtered Route had zero qualifying responses; it did NOT run this approved
+V2 body parser. Its retrospective independent _data result therefore must
+be UNVERIFIED, not guessed from earlier sessions.
