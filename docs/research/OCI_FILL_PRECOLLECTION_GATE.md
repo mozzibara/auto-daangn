@@ -1643,3 +1643,52 @@ after green CI and robots approval. Never repeat a captured session unchanged.
 
 No production DB, Telegram ledger, signing/import, credentials, raw article
 fields or listing event writes are part of this experiment.
+
+
+## Three-arm A/A and remote locality control (owner-only)
+
+The earlier two-region owner pilot observed 266 Buldang and 266 Baebang
+items, including **256 shared** response identities. This difference
+cannot be attributed to locality alone because independent retrievals
+may differ in time, ranking or inventory.
+
+New `ops.oci.region_aa_far` conducts exactly three bounded, normal
+Playwright Chrome searches in fresh contexts:
+
+1. Cheonan Buldang (`a1`), server-selected region ID corroborated.
+2. Seoul Dongjak-gu Sadang3 (`far`), pinned source region ID
+   from `daangn_v4_1_core.BY_KEY["sadang"]`.
+3. Cheonan Buldang again (`a2`).
+
+Only the one browser-initiated, post-trusted-click, HTTP 200 JSON Route
+used by the region witness is eligible for bounded item-count comparison.
+The existing regional UI interaction, robots-first rules, isolated OCI
+unprivileged user and request chronology remain unchanged. No direct
+second HTTP fetch, seller detail visit, force-click or retry is added.
+If a challenge or access restriction is observed, the experiment stops.
+If the FAR header click fails without an access restriction, the final
+Buldang arm may still execute independently to preserve the A/A evidence.
+
+Item identifiers are used only for in-RAM HMACs with one fresh 32-byte
+random secret shared across the three samples, then discarded. Output
+contains **only** the number of shared and arm-specific items, union,
+symmetric difference, Jaccard similarity and finite item-locality
+classification counts. No identifiers, HMAC tokens, names, titles, URLs,
+seller data, DOM, cookies, or original response bodies are persisted.
+All 3 arms must show the expected region + filter IDs and one fresh Route
+with complete item identity coverage for the full contrast to be observed.
+A valid A/A pair may be reported even if the distant arm fails, but the
+contrast then remains `INDETERMINATE`.
+
+`FAR_EXCEEDS_OBSERVED_AA_DRIFT` means that each Buldang-vs-Sadang
+symmetric set difference exceeds the **single observed** Buldang A/A
+symmetric difference. It does **not** prove causality, statistical
+significance, whole-market recall, exact seller geography, price cap
+enforcement or current listing availability. Search result caps,
+ranking volatility and temporal differences remain potential causes.
+The experiment **never** authorizes the collector or modifies existing
+region, price, category or sale-status admission gates.
+
+The public script requires `--live --headed --owner-approval
+I_APPROVE_OCI_REGION_AA_FAR_V1`; the exact separate private
+owner-only Issue #1 command is `/oci region-pilot-aa-far`.

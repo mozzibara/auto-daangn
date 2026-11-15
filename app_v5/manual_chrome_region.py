@@ -213,9 +213,11 @@ def extract_route_summary(body: bytes, region: dict) -> dict | None:
 class ManualSearchResponses:
     """Watch only existing browser requests; no route or fetch injection."""
 
-    def __init__(self, region, *, region_sample_secret=None):
+    def __init__(self, region, *, region_sample_secret=None,
+                 region_sample_distant=False):
         self.region = region
         self.region_sample_secret = region_sample_secret
+        self.region_sample_distant = region_sample_distant is True
         self.starts = {}
         self.events = []
         self.tasks = set()
@@ -282,7 +284,8 @@ class ManualSearchResponses:
                 if self.region_sample_secret is not None and model is not None:
                     from app_v5.region_ab_sample import sample_region_articles
                     sample = sample_region_articles(
-                        body, self.region, self.region_sample_secret)
+                        body, self.region, self.region_sample_secret,
+                        distant_control=self.region_sample_distant)
                 self.events.append({
                     "started_ms": started, "state": state,
                     "request_region": req_region,
