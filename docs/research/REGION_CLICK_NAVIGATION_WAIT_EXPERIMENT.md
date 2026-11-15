@@ -43,3 +43,33 @@ The command outputs sanitized finite enums only, never listings, URLs, titles, s
 - ROBOTS_NOT_ALLOWED or ACCESS_RESTRICTED: stop without retry/proxy/login/stealth measures.
 
 The flag is a diagnostic candidate, not a claimed REGION_MISMATCH fix or proof that a live Telegram event exists. Once the new approved capture verifies the hypothesis, the next PR can wire a separately approved v4.34 full capture arm without relaxing its encrypted signer/import gates.
+
+
+## Separately approved encrypted v4.34 pilot (strict capture arm)
+
+The no-wait click mode also propagates through the *existing* encrypted
+v4.34 worker under a SECOND literal one-shot approval. The default owner
+workflow and existing issue-comment variants stay unchanged.
+
+In the v4.34 GitHub Actions owner-only workflow, choose:
+- first normal approval: I_APPROVE_V434_ENCRYPTED_PUBLIC_LINKS
+- region_click_navigation_wait: NO_WAIT_AFTER
+- second approval: I_APPROVE_V434_REGION_CLICK_NO_WAIT_V1
+- execution_mode: CAPTURE_ENCRYPTED_ONLY (with OCI X25519 PUBLIC
+  recipient key), or EPHEMERAL_REVIEWABLE_TEST (temporary keys, discarded)
+
+This pilot's additional approval differs from the OCI headed precollection
+approval. DEFAULT leaves the collector's original pointer clicking untouched.
+Both workflow and Python entrypoint deny an unauthorized NO_WAIT_AFTER
+before the robots/network stage.
+
+The v4.34 collector still requires an independently verified correct region,
+fresh first-party Route, exact item title/price identity, strict filter
+proof, item state and area checks, authenticated encryption and Ed25519
+source signature. No unverifiable source row can be imported by OCI or
+promoted into a Telegram price-drop event. No schedule, login, proxy,
+force-click or fallback region injection is enabled.
+
+This optional arm is NOT evidence of an actually successful region commit,
+live event or uninterrupted automated feed. A separately approved one-shot
+live run must demonstrate all gates before production activation.

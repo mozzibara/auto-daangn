@@ -188,7 +188,16 @@ def report(e):
     return '\n'.join(lines)
 
 
+_REGION_NAV_APPROVAL = "I_APPROVE_V434_REGION_CLICK_NO_WAIT_V1"
+
+
 async def run(options):
+    nav_wait = getattr(options, "region_click_navigation_wait", "DEFAULT")
+    if nav_wait not in ("DEFAULT", "NO_WAIT_AFTER"):
+        raise ValueError("UNKNOWN_REGION_CLICK_MODE")
+    if (nav_wait == "NO_WAIT_AFTER"
+            and getattr(options, "region_click_approval", "") != _REGION_NAV_APPROVAL):
+        raise ValueError("EXACT_OWNER_REGION_CLICK_APPROVAL_REQUIRED")
     options.status_signals_v429=True
     options.for_sale_diagnosis_v428=True
     # Public GitHub Actions must never write live listing URLs into artifacts.
@@ -295,6 +304,12 @@ def main():
     p.add_argument('--timeout',type=int,default=25)
     p.add_argument('--settle-ms',type=int,default=1600)
     p.add_argument('--headed',action='store_true')
+    p.add_argument('--region-click-navigation-wait',
+                   choices=('DEFAULT','NO_WAIT_AFTER'), default='DEFAULT',
+                   help='Opt-in native click navigation-wait experiment')
+    p.add_argument('--region-click-approval', default='',
+                   help='Additional exact one-shot owner approval for opt-in')
+
     p.add_argument('--private-links-output',type=Path,default=None,
                    help='LOCAL ONLY: explicit private listing links outside public artifacts')
     p.add_argument('--sealed-public-key',default=None,

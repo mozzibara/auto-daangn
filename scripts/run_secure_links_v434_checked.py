@@ -25,7 +25,11 @@ def _save(path,obj):
                     encoding='utf-8')
 
 
-def run(output_dir,recipient_key,*,checker=check_robots,runner=None):
+_REGION_NAV_APPROVAL = "I_APPROVE_V434_REGION_CLICK_NO_WAIT_V1"
+
+
+def run(output_dir,recipient_key,*,checker=check_robots,runner=None,
+        region_click_navigation_wait="DEFAULT",region_click_approval=""):
     output_dir=Path(output_dir).resolve()
     output_dir.mkdir(parents=True,exist_ok=True)
     state={'version':'4.34','attempted_live':False,
@@ -37,6 +41,17 @@ def run(output_dir,recipient_key,*,checker=check_robots,runner=None):
            'strict_listing_approved_count':0,
            'started_utc':datetime.now(timezone.utc).isoformat(timespec='seconds')}
     try:
+        if region_click_navigation_wait not in ("DEFAULT","NO_WAIT_AFTER"):
+            state["status"]="STOP_UNSUPPORTED_REGION_CLICK_MODE"
+            return 2
+        if (region_click_navigation_wait=="NO_WAIT_AFTER"
+                and region_click_approval!=_REGION_NAV_APPROVAL):
+            state["status"]="STOP_OWNER_REGION_CLICK_APPROVAL_REQUIRED"
+            return 2
+        if (region_click_navigation_wait=="DEFAULT"
+                and region_click_approval):
+            state["status"]="STOP_EXTRANEOUS_REGION_CLICK_APPROVAL"
+            return 2
         validate_public_key(recipient_key)
         robots=checker(PROFILE)
         _save(output_dir/'v434_robots_decision.json',robots)
@@ -46,6 +61,9 @@ def run(output_dir,recipient_key,*,checker=check_robots,runner=None):
         cmd=[sys.executable,str(ROOT/'daangn_status_study_v4_29.py'),
              '--output-dir',str(output_dir),'--timeout','25',
              '--settle-ms','1600','--sealed-public-key',recipient_key]
+        if region_click_navigation_wait=="NO_WAIT_AFTER":
+            cmd.extend(('--region-click-navigation-wait','NO_WAIT_AFTER',
+                        '--region-click-approval',_REGION_NAV_APPROVAL))
         state['attempted_live']=True
         proc=(runner or subprocess.run)(cmd,cwd=str(ROOT),
                                         check=False,timeout=1350)
@@ -88,8 +106,13 @@ def main():
     parser=argparse.ArgumentParser()
     parser.add_argument('--output-dir',type=Path,required=True)
     parser.add_argument('--public-key',required=True)
+    parser.add_argument('--region-click-navigation-wait',
+                        choices=('DEFAULT','NO_WAIT_AFTER'),default='DEFAULT')
+    parser.add_argument('--region-click-approval',default='')
     args=parser.parse_args()
-    return run(args.output_dir,args.public_key)
+    return run(args.output_dir,args.public_key,
+               region_click_navigation_wait=args.region_click_navigation_wait,
+               region_click_approval=args.region_click_approval)
 
 
 if __name__=='__main__':

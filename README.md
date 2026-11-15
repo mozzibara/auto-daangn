@@ -86,3 +86,7 @@ created by the experiment. See
 [owner-gated research procedure](docs/research/REGION_CLICK_NAVIGATION_WAIT_EXPERIMENT.md).
 The production v4.34 collector remains unchanged until live independent
 evidence establishes that the variant actually commits the correct region.
+
+## Owner-approved v4.34 native region click pilot
+
+The v4.34 one-shot encrypted/signed capture workflow supports optional `region_click_navigation_wait=NO_WAIT_AFTER` only if the repository owner also selects its second literal approval `I_APPROVE_V434_REGION_CLICK_NO_WAIT_V1` alongside the existing capture approval. The default collection mode and region/Route/filter evidence predicates remain unchanged. This pilot never relaxes `REGION_MISMATCH`, seller-status or price verification. See [research and exact controls](docs/research/REGION_CLICK_NAVIGATION_WAIT_EXPERIMENT.md). A live signed event is **not** established by CI; it requires an explicitly approved successful capture and a separate strict OCI import.

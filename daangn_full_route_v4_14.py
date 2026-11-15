@@ -325,6 +325,11 @@ def classify_baseline_region_urls(requested_url, response_url, rendered_url, exp
 
 
 async def capture(browser,name,region,options,salt):
+    # Fail before ANY browser/context/network operation if the owner-only
+    # experiment flag is malformed. No hidden session/login changes.
+    navigation_wait=getattr(options,"region_click_navigation_wait","DEFAULT")
+    if navigation_wait not in ("DEFAULT","NO_WAIT_AFTER"):
+        raise ValueError("UNKNOWN_REGION_CLICK_NAVIGATION_MODE")
     # Fail before any public navigation if the locality profile is malformed.
     approved_item_areas=load_allowlist()
     context=await browser.new_context(locale='ko-KR',viewport={'width':1280,'height':850})
@@ -350,6 +355,7 @@ async def capture(browser,name,region,options,salt):
         result['baseline_region_url_evidence']=classify_baseline_region_urls(
             baseline_requested,baseline_response_url,page.url,expected_region_id)
         result['region_picker']={
+            'click_navigation_wait': navigation_wait,
             'attempted':False,'robots_permission':'NOT_NEEDED',
             'button_clicked':False,'suggestion_selected':False,
             'unique_region_option':False,
@@ -453,7 +459,8 @@ async def capture(browser,name,region,options,salt):
                     on_option_witness=arm_option_witnesses,
                     on_after_search_fill=lambda: readiness.await_ready(page),
                     first_activation_mode=first_mode,
-                    search_input_mode=input_mode)
+                    search_input_mode=input_mode,
+                    click_navigation_wait=navigation_wait)
                 await lifecycle.checkpoint(page,'AFTER_CORE_SETTLE')
                 await page.wait_for_timeout(options.settle_ms)
                 await lifecycle.checkpoint(page,'AFTER_SETTLE')
