@@ -50,7 +50,7 @@ _PRICE_ECHO_STATES = (
     "NON_STRING_VALUE", "ABSENT", "NO_SEARCH_MODEL", "UNOBSERVABLE",
 )
 _PRICE_SAMPLE_VERDICTS = (
-    "UNOBSERVABLE", "AMBIGUOUS_MODEL", "EMPTY_SAMPLE", "TOO_MANY_ROWS",
+    "UNVERIFIED", "UNOBSERVABLE", "AMBIGUOUS_MODEL", "EMPTY_SAMPLE", "TOO_MANY_ROWS",
     "INCOMPLETE_PRICE_COVERAGE", "ABOVE_CAP_OBSERVED", "SAMPLE_WITHIN_CAP",
 )
 _AVAILABLE = ("onlyOnSale", "only_on_sale", "onlyAvailable", "availableOnly")
@@ -570,7 +570,7 @@ def sanitize_precollection(value):
         "dynamic_price_sample_mode": src.get("dynamic_price_sample_mode") is True,
         "dynamic_price_sample_verdict": _kind(
             src.get("dynamic_price_sample_verdict"),
-            _PRICE_SAMPLE_VERDICTS, "UNOBSERVABLE"),
+            _PRICE_SAMPLE_VERDICTS, "UNVERIFIED"),
         "dynamic_loader_metadata_mode": src.get(
             "dynamic_loader_metadata_mode") is True,
         "dynamic_loader_metadata_count": _bounded(
