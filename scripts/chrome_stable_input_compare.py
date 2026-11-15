@@ -224,8 +224,14 @@ async def delegated_manual_fixture(browser):
 
 async def one_public_region(browser, mode, *, timezone_id=None,
                             on_region_confirmed=None,
-                            click_navigation_wait="DEFAULT"):
-    region = core.BY_KEY["cheonan"]
+                            click_navigation_wait="DEFAULT",
+                            region_key="cheonan", region_ab_session=None):
+    # Reuse the verified FILL click path, no URL injection or arbitrary region.
+    if region_key not in ("cheonan", "asan"):
+        raise ValueError("UNAPPROVED_DIAGNOSTIC_REGION")
+    if region_ab_session is not None and on_region_confirmed is not None:
+        raise ValueError("AB_AND_FILTER_DIAGNOSTIC_MUTUALLY_EXCLUSIVE")
+    region = core.BY_KEY[region_key]
     if click_navigation_wait not in ("DEFAULT", "NO_WAIT_AFTER"):
         raise ValueError("UNKNOWN_CLICK_NAVIGATION_WAIT_MODE")
     if timezone_id not in (None, "Asia/Seoul"):
@@ -241,7 +247,9 @@ async def one_public_region(browser, mode, *, timezone_id=None,
     option_probe = RegionOptionEventWitness(region)
     resolver = RegionSuggestionObserver(region)
     readiness = RegionReadinessWitness(region, resolver)
-    network = ManualSearchResponses(region)
+    network = ManualSearchResponses(
+        region, region_sample_secret=(
+            region_ab_session.secret if region_ab_session is not None else None))
     lifecycle = RegionLifecycleWitness(region)
     picker_phase = RegionPickerPhaseWitness(region)
     url_provenance = RegionURLProvenance(region)
@@ -487,6 +495,13 @@ async def one_public_region(browser, mode, *, timezone_id=None,
                 option_click_exception_kind=steps.get(
                     "option_click_exception_kind")),
         }
+        # Use exactly the same uniquely correlated, post-click search Route.
+        # No new page requests, no product links and no persistent item IDs.
+        if region_ab_session is not None:
+            region_ab_session.accept(
+                region_key,
+                post[0].get("region_sample") if route_status == "ONE_FRESH" else None,
+                verified=(status == "TARGET_REGION_CONFIRMED_DIAGNOSTIC"))
         # Only a fully authenticated one-fresh-Route region success can enter
         # an optional, separately approved precollection filter gate. Never
         # interpret picker/URL/UI alone as authorization to inspect listings.

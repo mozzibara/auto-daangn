@@ -213,8 +213,9 @@ def extract_route_summary(body: bytes, region: dict) -> dict | None:
 class ManualSearchResponses:
     """Watch only existing browser requests; no route or fetch injection."""
 
-    def __init__(self, region):
+    def __init__(self, region, *, region_sample_secret=None):
         self.region = region
+        self.region_sample_secret = region_sample_secret
         self.starts = {}
         self.events = []
         self.tasks = set()
@@ -275,10 +276,17 @@ class ManualSearchResponses:
                         state = "OBSERVED"
                 except Exception:
                     pass
+                # Optional per-item locality counts and short-lived HMACs.
+                # The same already-observed browser response is reused.
+                sample = None
+                if self.region_sample_secret is not None and model is not None:
+                    from app_v5.region_ab_sample import sample_region_articles
+                    sample = sample_region_articles(
+                        body, self.region, self.region_sample_secret)
                 self.events.append({
                     "started_ms": started, "state": state,
                     "request_region": req_region,
-                    "model": model,
+                    "model": model, "region_sample": sample,
                 })
 
             task = asyncio.create_task(receive())
