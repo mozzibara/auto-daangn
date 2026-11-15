@@ -28,7 +28,8 @@ def payload(key, labels, *, mismatch=False):
 
 def sample(key, items, *, mismatch=False):
     return sample_region_articles(payload(key,items,mismatch=mismatch),
-                                  BY_KEY[key], SECRET)
+                                  BY_KEY[key], SECRET,
+                                  distant_control=(key=="sadang"))
 
 
 class AAAndDistantTests(unittest.TestCase):
