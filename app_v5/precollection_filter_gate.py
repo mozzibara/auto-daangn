@@ -23,6 +23,10 @@ from app_v5.filter_apply_activation import (
 )
 from app_v5.oci_evidence_ledger import summarize_precollection_evidence
 from app_v5.remix_independent_evidence import independent_remix_evidence
+from app_v5.price_sample_evidence import (
+    inspect_bounded_price_sample, attest_bounded_price_sample,
+)
+from app_v5.region_apply_correspondence import classify_apply_region_correspondence
 
 REGION = core.BY_KEY["cheonan"]
 CATEGORY_ID = 1
@@ -44,6 +48,10 @@ _PRICE_METADATA_SHAPES = (
 _PRICE_ECHO_STATES = (
     "ENCODED_MAX_MATCH", "ENCODED_MAX_OTHER", "UNRECOGNIZED_STRING",
     "NON_STRING_VALUE", "ABSENT", "NO_SEARCH_MODEL", "UNOBSERVABLE",
+)
+_PRICE_SAMPLE_VERDICTS = (
+    "UNVERIFIED", "UNOBSERVABLE", "AMBIGUOUS_MODEL", "EMPTY_SAMPLE", "TOO_MANY_ROWS",
+    "INCOMPLETE_PRICE_COVERAGE", "ABOVE_CAP_OBSERVED", "SAMPLE_WITHIN_CAP",
 )
 _AVAILABLE = ("onlyOnSale", "only_on_sale", "onlyAvailable", "availableOnly")
 _ITEM_STATUS = ("EXPECTED", "MISSING", "OTHER", "AMBIGUOUS")
@@ -559,6 +567,10 @@ def sanitize_precollection(value):
         "dynamic_loader_price_echo": _kind(
             src.get("dynamic_loader_price_echo"),
             _PRICE_ECHO_STATES, "UNOBSERVABLE"),
+        "dynamic_price_sample_mode": src.get("dynamic_price_sample_mode") is True,
+        "dynamic_price_sample_verdict": _kind(
+            src.get("dynamic_price_sample_verdict"),
+            _PRICE_SAMPLE_VERDICTS, "UNVERIFIED"),
         "dynamic_loader_metadata_mode": src.get(
             "dynamic_loader_metadata_mode") is True,
         "dynamic_loader_metadata_count": _bounded(
@@ -627,6 +639,8 @@ def sanitize_precollection(value):
     # Independent scalar attestation of the already observed dynamic _data.
     # Diagnostic only; never changes strict_filter_evidence or status.
     safe["remix_independent_evidence"] = independent_remix_evidence(safe)
+    safe["bounded_price_sample_evidence"] = attest_bounded_price_sample(safe)
+    safe["apply_region_correspondence"] = classify_apply_region_correspondence(safe)
     return safe
 
 
@@ -804,11 +818,15 @@ def inspect_dynamic_filtered_response(blob):
 class PassiveFilteredRoute:
     """Only browser-generated first-party filtered Route responses, no fetch."""
     def __init__(self, *, passive_changed_loader=False,
-                 passive_dynamic_loader=False):
+                 passive_dynamic_loader=False, passive_price_sample=False):
         # Caller must hold the SEPARATE owner approval token. An ordinary
         # FILL precollection attempt does not read unknown Remix bodies.
         self.passive_changed_loader = passive_changed_loader is True
         self.passive_dynamic_loader = passive_dynamic_loader is True
+        # Sampling is opt-in and only on top of the approved V2 metadata source.
+        self.passive_price_sample = (
+            passive_price_sample is True and self.passive_dynamic_loader)
+        self.dynamic_price_samples = []
         self.dynamic_starts = set()
         self.dynamic_observed = 0
         self.dynamic_events = []
@@ -976,6 +994,9 @@ class PassiveFilteredRoute:
                                 self.dynamic_events.append(verdicts)
                                 self.dynamic_price_shapes.append(shape)
                                 self.dynamic_price_echoes.append(echo)
+                                if self.passive_price_sample:
+                                    self.dynamic_price_samples.append(
+                                        inspect_bounded_price_sample(blob))
                             except Exception:
                                 self.dynamic_events.append(
                                     _DEFAULT_FILTER_FIELDS.copy())
@@ -983,6 +1004,9 @@ class PassiveFilteredRoute:
                                     "UNOBSERVABLE")
                                 self.dynamic_price_echoes.append(
                                     "UNOBSERVABLE")
+                                if self.passive_price_sample:
+                                    self.dynamic_price_samples.append(
+                                        "UNOBSERVABLE")
                         task = asyncio.create_task(
                             read_dynamic_metadata_only())
                         self.tasks.add(task)
@@ -1169,7 +1193,7 @@ class PassiveFilteredRoute:
 
 async def verify_filter_before_collection(
         page, region=REGION, *, passive_changed_loader=False,
-        passive_dynamic_loader=False):
+        passive_dynamic_loader=False, passive_price_sample=False):
     """Fail-closed FILL-only public filter Apply, ending before listing collection.
 
     After *any* exception, preserve already observed click/URL/request categories.
@@ -1185,6 +1209,8 @@ async def verify_filter_before_collection(
         "posttimeout_passive_observation": "NOT_APPLICABLE",
         "changed_loader_metadata_mode": passive_changed_loader is True,
         "dynamic_loader_metadata_mode": passive_dynamic_loader is True,
+        "dynamic_price_sample_mode": (
+            passive_price_sample is True and passive_dynamic_loader is True),
     }
     if (region is not REGION and region != REGION) or not page.url.startswith(
             "https://www.daangn.com/kr/search/buy-sell/"):
@@ -1195,7 +1221,8 @@ async def verify_filter_before_collection(
         available_only=True, max_price=MAX_PRICE, min_price=0)
     watcher = PassiveFilteredRoute(
         passive_changed_loader=passive_changed_loader,
-        passive_dynamic_loader=passive_dynamic_loader)
+        passive_dynamic_loader=passive_dynamic_loader,
+        passive_price_sample=passive_price_sample)
     witness = FilterApplyActivationWitness()
     url_stage_states = {}
 
@@ -1332,6 +1359,7 @@ async def verify_filter_before_collection(
                     _DEFAULT_FILTER_FIELDS.copy())
                 info["dynamic_loader_price_shape"] = "UNOBSERVABLE"
                 info["dynamic_loader_price_echo"] = "UNOBSERVABLE"
+                info["dynamic_price_sample_verdict"] = "UNOBSERVABLE"
             else:
                 (
                     info["dynamic_loader_metadata_status"],
@@ -1345,6 +1373,9 @@ async def verify_filter_before_collection(
                     if len(watcher.dynamic_price_echoes) == 1:
                         info["dynamic_loader_price_echo"] = (
                             watcher.dynamic_price_echoes[0])
+                    if len(watcher.dynamic_price_samples) == 1:
+                        info["dynamic_price_sample_verdict"] = (
+                            watcher.dynamic_price_samples[0])
             info["changed_loader_metadata_count"] = (
                 watcher.changed_observed)
             # Ambiguous, failed, or restricted overall request windows
