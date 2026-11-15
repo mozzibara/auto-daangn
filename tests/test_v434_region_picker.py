@@ -39,6 +39,31 @@ class RegionPickerRobotsTests(unittest.TestCase):
         result = check_region_picker_robots("불당동", getter=get)
         self.assertEqual(result, {"allowed": False, "reason": "DISALLOWED"})
 
+    def test_pinned_sadang_passes_known_preset_but_still_checks_robots(self):
+        seen = []
+        def get(req, timeout):
+            seen.append(req.full_url)
+            self.assertEqual(timeout, 20)
+            return FakeResponse(b"User-agent: *\\nAllow: /\\n")
+        observed = check_region_picker_robots("사당제3동", getter=get)
+        self.assertEqual(observed, {"allowed": True, "reason": "ALLOWED"})
+        self.assertEqual(seen, ["https://www.daangn.com/robots.txt"])
+
+    def test_pinned_sadang_still_obeys_explicit_disallow(self):
+        def get(req, timeout):
+            return FakeResponse(
+                b"User-agent: *\\nDisallow: /kr/api/v1/regions/keyword\\n")
+        self.assertEqual(check_region_picker_robots(
+            "사당제3동", getter=get),
+            {"allowed": False, "reason": "DISALLOWED"})
+
+    def test_pinned_sadang_robots_failure_still_denied(self):
+        def unavailable(*a, **kw):
+            raise OSError("no-robots-proof")
+        self.assertEqual(check_region_picker_robots(
+            "사당제3동", getter=unavailable),
+            {"allowed": False, "reason": "ROBOTS_UNAVAILABLE"})
+
     def test_unknown_region_does_not_call_network(self):
         def unexpected(*args, **kwargs):
             raise AssertionError("must not reach network")
