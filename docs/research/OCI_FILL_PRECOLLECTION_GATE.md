@@ -1578,3 +1578,25 @@ This mode performs one native Playwright region click, one UI Apply and passive 
 Operator-only isolated command: xvfb-run -a python -m ops.oci.precollection --live --headed --no-wait-region-click --passive-dynamic-loader-metadata --owner-approval I_APPROVE_OCI_NO_WAIT_REMIX_METADATA_V1
 
 The private OCI control workflow uses its own fixed owner-only command, not arbitrary command inputs.
+
+
+## 2026-11-15 — OCI LIVE combined no-wait click + single Remix _data scalar attestation
+
+Directly executed through the private owner-only self-hosted OCI control Issue #1 command /oci region-pilot-remix-no-wait and public source commit 7d01253300d9095fc8da46698248bb5265fee646. Evidence: https://github.com/mozzibara/oci-control-private/issues/1#issuecomment-6892137384 . Private Actions workflow: https://github.com/mozzibara/oci-control-private/actions/runs/43697692774 (success means diagnostic completion, NOT listing collection).
+
+The separate default-click V2 probe had previously stopped at STOP_REGION_NOT_VERIFIED / UNEXPECTED_EXCEPTION before any filter Apply; the earlier NO_WAIT_AFTER-only probe confirmed the region but could not inspect the V2 scalar metadata. The new combined exact-approval single session resolves that **diagnostic interoperability** gap, not the production listing admission gate:
+
+- Chrome Stable headed, independent nonroot OCI diagnostic checkout, robots-first, one ordinary native header/option click and single Apply; region status TARGET_REGION_CONFIRMED_DIAGNOSTIC, fresh region Route ONE_FRESH, server search/filter IDs and selected UI EXPECTED.
+- Apply returned; one browser-initiated first-party GET/200 dynamic Remix response was independently attested: source_provenance=SINGLE_BROWSER_REMIX_DATA_200.
+- Same response metadata: both region IDs EXPECTED, category EXPECTED, onlyOnSale EXPECTED.
+- Price: response_max_price_declaration=MISSING and response_price_evidence=ENCODED_ECHO_ONLY_MATCH (the observed currentFilters.price reflects the requested encoded max-only expression, not a separately declared max). No actual returned item-price sample was inspected; price_cap_enforced=false.
+- Post-Apply browser search URL in=MISSING and strict filtered_route_count=0, so status=BLOCKED_FILTER_URL, outcome=STOP_FILTERS_NOT_VERIFIED, filtered_url_matches=false. No post-Apply UI enforcement proof. The old strict gate correctly remains in place.
+- No listing array traversal, seller details, data export, signing/import, production DB modification, Telegram traffic, credentials or user identifiers. Each corresponding safe report flag is false.
+
+### Evidence-based next steps
+
+1. Region proof is now established at the **response scalar level** in this single OCI run even with a missing in URL. Do not infer general server locality or drop URL requirements globally. A separately reviewed, exact-response admission model would require proving its persistence for the actual collection requests, cross-checking individual listing areas and retaining independent current UI evidence.
+2. Server max-price enforcement remains NOT_PROVEN. A currentFilters.price echo (even when paired with region/category/availability matching response fields) cannot replace a behavioral comparison of returned prices under explicit, controlled caps with independent listing-price coverage. Reuse the historical v4.18/v4.19 methodology only with separate owner authorization, strict robots/access limits and privacy controls.
+3. Existing data model supports only independently signed price-drop events; validated first-seen listing notification needs a separate evidence-backed event schema and duplicate-safe queue. No fake Telegram event should be generated merely to declare pipeline success.
+
+No retry, extra live capture, production collector change or admission waiver is performed by the research note.
