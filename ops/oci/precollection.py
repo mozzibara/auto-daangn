@@ -33,6 +33,8 @@ _DYNAMIC_METADATA_APPROVAL = "I_APPROVE_OCI_DYNAMIC_METADATA_ONLY_V2"
 _NAV_WAIT_APPROVAL = "I_APPROVE_OCI_REGION_CLICK_NO_WAIT_V1"
 # One-shot combined witness, never implicitly granted by either old token.
 _COMBINED_METADATA_APPROVAL = "I_APPROVE_OCI_NO_WAIT_REMIX_METADATA_V1"
+# Price-field inspection has a distinct consent boundary. No listing export.
+_PRICE_SAMPLE_APPROVAL = "I_APPROVE_OCI_REMIX_PRICE_SAMPLE_V1"
 
 
 def isolated_execution_directory(path=None, *, home=None):
@@ -180,13 +182,18 @@ def blocked(reason):
 async def run(*, approve, live, headed, robots=None, picker_robots=None,
               directory_check=None, diagnostic=None,
               passive_changed_loader=False, passive_dynamic_loader=False,
-              no_wait_region_click=False):
+              no_wait_region_click=False, passive_price_sample=False):
+    if (passive_price_sample is True and not (
+            passive_dynamic_loader is True and no_wait_region_click is True)):
+        return blocked("OWNER_APPROVAL_REQUIRED")
     if (passive_changed_loader is True
             and (passive_dynamic_loader is True
                  or no_wait_region_click is True)):
         return blocked("OWNER_APPROVAL_REQUIRED")
     accepted = (
-        _COMBINED_METADATA_APPROVAL
+        _PRICE_SAMPLE_APPROVAL
+        if passive_price_sample is True
+        else _COMBINED_METADATA_APPROVAL
         if no_wait_region_click is True and passive_dynamic_loader is True
         else _NAV_WAIT_APPROVAL if no_wait_region_click is True
         else _DYNAMIC_METADATA_APPROVAL if passive_dynamic_loader is True
@@ -220,7 +227,8 @@ async def run(*, approve, live, headed, robots=None, picker_robots=None,
                         on_region_confirmed=partial(
                             verify_filter_before_collection,
                             passive_changed_loader=passive_changed_loader,
-                            passive_dynamic_loader=passive_dynamic_loader))
+                            passive_dynamic_loader=passive_dynamic_loader,
+                            passive_price_sample=passive_price_sample))
                 finally:
                     await browser.close()
         result = final_report(region_result)
@@ -242,14 +250,24 @@ def main(argv=None):
     parser.add_argument("--passive-dynamic-loader-metadata", action="store_true",
         help="V2: opt-in to bounded dynamic routes/* Remix metadata read;"
              " requires a distinct explicit owner approval")
+    parser.add_argument("--passive-bounded-price-sample", action="store_true",
+        help="Price scalar only, in memory; distinct one-shot approval, never collection")
     parser.add_argument("--no-wait-region-click", action="store_true",
         help="One-shot native-click navigation wait A/B diagnostic; separate approval")
     options = parser.parse_args(argv)
     exclusive = (
-        not options.passive_new_loader_metadata or
+        (not options.passive_bounded_price_sample
+         or (options.passive_dynamic_loader_metadata
+             and options.no_wait_region_click
+             and not options.passive_new_loader_metadata))
+        and
+        (not options.passive_new_loader_metadata or
         (not options.passive_dynamic_loader_metadata
-         and not options.no_wait_region_click))
+         and not options.no_wait_region_click)))
     expected_approval = (
+        _PRICE_SAMPLE_APPROVAL
+        if options.passive_bounded_price_sample
+        else
         _COMBINED_METADATA_APPROVAL
         if (options.no_wait_region_click
             and options.passive_dynamic_loader_metadata)
@@ -268,7 +286,8 @@ def main(argv=None):
             headed=options.headed,
             passive_changed_loader=options.passive_new_loader_metadata,
             passive_dynamic_loader=options.passive_dynamic_loader_metadata,
-            no_wait_region_click=options.no_wait_region_click))
+            no_wait_region_click=options.no_wait_region_click,
+            passive_price_sample=options.passive_bounded_price_sample))
     print(json.dumps(report, ensure_ascii=False, sort_keys=True, indent=2))
     return 0 if report["status"] == "PRECOLLECTION_EVIDENCE_COMPLETE" else 2
 
