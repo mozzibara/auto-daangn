@@ -37,9 +37,12 @@ _ROUTE_STATUS = frozenset((
 ))
 
 
-def _target(region):
-    return (type(region) is dict
-            and any(region == core.BY_KEY[key] for key in _KEYS))
+def _target(region, *, distant_control=False):
+    # The long-distance control is a distinct opt-in diagnostic only.
+    if type(distant_control) is not bool or type(region) is not dict:
+        return False
+    keys = ("sadang",) if distant_control else _KEYS
+    return any(region == core.BY_KEY[key] for key in keys)
 
 
 def _blank(status):
@@ -75,14 +78,15 @@ def _safe_summary(value):
     }
 
 
-def sample_region_articles(body, region, secret):
+def sample_region_articles(body, region, secret, *, distant_control=False):
     """Project ONE browser-observed search Route into aggregate locality bins.
 
     Returns ephemeral HMAC tokens to the in-process caller only; the public
     diagnostic calls `_safe_summary` before any JSON output.
     """
     if (type(body) not in (bytes, bytearray)
-            or not 0 < len(body) <= _MAX_BODY or not _target(region)
+            or not 0 < len(body) <= _MAX_BODY
+            or not _target(region, distant_control=distant_control)
             or type(secret) is not bytes or len(secret) != 32):
         return {"summary": _blank("UNOBSERVABLE"), "tokens": frozenset()}
     try:
