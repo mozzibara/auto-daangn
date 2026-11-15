@@ -31,6 +31,8 @@ _PASSIVE_METADATA_APPROVAL = "I_APPROVE_OCI_FILTER_METADATA_ONLY_V1"
 _DYNAMIC_METADATA_APPROVAL = "I_APPROVE_OCI_DYNAMIC_METADATA_ONLY_V2"
 # Distinct explicit owner approval for one native-click navigation-wait A/B arm.
 _NAV_WAIT_APPROVAL = "I_APPROVE_OCI_REGION_CLICK_NO_WAIT_V1"
+# One-shot combined witness, never implicitly granted by either old token.
+_COMBINED_METADATA_APPROVAL = "I_APPROVE_OCI_NO_WAIT_REMIX_METADATA_V1"
 
 
 def isolated_execution_directory(path=None, *, home=None):
@@ -179,12 +181,14 @@ async def run(*, approve, live, headed, robots=None, picker_robots=None,
               directory_check=None, diagnostic=None,
               passive_changed_loader=False, passive_dynamic_loader=False,
               no_wait_region_click=False):
-    if ((passive_changed_loader is True and passive_dynamic_loader is True)
-            or (no_wait_region_click is True and
-                (passive_changed_loader is True or passive_dynamic_loader is True))):
+    if (passive_changed_loader is True
+            and (passive_dynamic_loader is True
+                 or no_wait_region_click is True)):
         return blocked("OWNER_APPROVAL_REQUIRED")
     accepted = (
-        _NAV_WAIT_APPROVAL if no_wait_region_click is True
+        _COMBINED_METADATA_APPROVAL
+        if no_wait_region_click is True and passive_dynamic_loader is True
+        else _NAV_WAIT_APPROVAL if no_wait_region_click is True
         else _DYNAMIC_METADATA_APPROVAL if passive_dynamic_loader is True
         else _PASSIVE_METADATA_APPROVAL if passive_changed_loader is True
         else _APPROVAL)
@@ -241,12 +245,15 @@ def main(argv=None):
     parser.add_argument("--no-wait-region-click", action="store_true",
         help="One-shot native-click navigation wait A/B diagnostic; separate approval")
     options = parser.parse_args(argv)
-    exclusive = (sum(bool(x) for x in (
-        options.passive_new_loader_metadata,
-        options.passive_dynamic_loader_metadata,
-        options.no_wait_region_click)) <= 1)
+    exclusive = (
+        not options.passive_new_loader_metadata or
+        (not options.passive_dynamic_loader_metadata
+         and not options.no_wait_region_click))
     expected_approval = (
-        _NAV_WAIT_APPROVAL if options.no_wait_region_click
+        _COMBINED_METADATA_APPROVAL
+        if (options.no_wait_region_click
+            and options.passive_dynamic_loader_metadata)
+        else _NAV_WAIT_APPROVAL if options.no_wait_region_click
         else _DYNAMIC_METADATA_APPROVAL if options.passive_dynamic_loader_metadata
         else _PASSIVE_METADATA_APPROVAL if options.passive_new_loader_metadata
         else _APPROVAL)

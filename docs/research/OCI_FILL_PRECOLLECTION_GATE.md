@@ -1567,3 +1567,14 @@ but ended STOP_FILTERS_NOT_VERIFIED because in was absent and the strict
 filtered Route had zero qualifying responses; it did NOT run this approved
 V2 body parser. Its retrospective independent _data result therefore must
 be UNVERIFIED, not guessed from earlier sessions.
+
+
+## 2026-11-15 independent combined native click and Remix metadata approval
+
+The actual OCI DEFAULT-click V2 observation stopped with STOP_REGION_NOT_VERIFIED / UNEXPECTED_EXCEPTION before filter Apply. The earlier NO_WAIT_AFTER-only observation verified the region but did not read the dynamic Remix response. The missing joint observation now has a distinct, exact approval: I_APPROVE_OCI_NO_WAIT_REMIX_METADATA_V1. Neither original token nor V1 selector permission enables it.
+
+This mode performs one native Playwright region click, one UI Apply and passive bounded scalar analysis of the browser-initiated first-party Remix _data response. Existing robots-first, nonroot isolated checkout, no-retry, no-listing read, no production DB, no Telegram, strict URL/price/backend gating remain unchanged. This is a diagnostic only; a verified response cannot release REGION_MISMATCH or authorize signed captures.
+
+Operator-only isolated command: xvfb-run -a python -m ops.oci.precollection --live --headed --no-wait-region-click --passive-dynamic-loader-metadata --owner-approval I_APPROVE_OCI_NO_WAIT_REMIX_METADATA_V1
+
+The private OCI control workflow uses its own fixed owner-only command, not arbitrary command inputs.
