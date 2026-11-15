@@ -56,7 +56,7 @@ class RegionSampleTests(unittest.TestCase):
         valid=item("one",{"id":2292})
         duplicate=sample_region_articles(payload(2292,[valid,valid]),
                                          self.cheonan,self.salt)
-        self.assertEqual(duplicate["summary"]["identity_coverage"],"INCOMPLETE")
+        self.assertEqual(duplicate["summary"]["identity_coverage"],"PARTIAL")
         self.assertEqual(sample_region_articles(
             payload(2292,[valid],duplicate=True),self.cheonan,self.salt)[
                 "summary"]["status"],"AMBIGUOUS_MODEL")
