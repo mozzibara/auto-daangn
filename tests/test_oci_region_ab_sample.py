@@ -63,7 +63,7 @@ class RegionSampleTests(unittest.TestCase):
         self.assertEqual(sample_region_articles(
             payload(2292,[{"href":"https://private.invalid/SECRET","region":{"id":2292}}]),
             self.cheonan,self.salt)["summary"]["identity_coverage"],
-            "INCOMPLETE")
+            "NONE")
         self.assertEqual(sample_region_articles(b"SECRET",self.cheonan,self.salt)[
             "summary"]["status"],"UNOBSERVABLE")
 
