@@ -29,6 +29,8 @@ _PASSIVE_METADATA_APPROVAL = "I_APPROVE_OCI_FILTER_METADATA_ONLY_V1"
 # V2 extends the permitted selector class to source-verified dynamic
 # routes/* names. It requires a THIRD token, never old/V1 approval.
 _DYNAMIC_METADATA_APPROVAL = "I_APPROVE_OCI_DYNAMIC_METADATA_ONLY_V2"
+# Distinct explicit owner approval for one native-click navigation-wait A/B arm.
+_NAV_WAIT_APPROVAL = "I_APPROVE_OCI_REGION_CLICK_NO_WAIT_V1"
 
 
 def isolated_execution_directory(path=None, *, home=None):
@@ -175,11 +177,15 @@ def blocked(reason):
 
 async def run(*, approve, live, headed, robots=None, picker_robots=None,
               directory_check=None, diagnostic=None,
-              passive_changed_loader=False, passive_dynamic_loader=False):
-    if passive_changed_loader is True and passive_dynamic_loader is True:
+              passive_changed_loader=False, passive_dynamic_loader=False,
+              no_wait_region_click=False):
+    if ((passive_changed_loader is True and passive_dynamic_loader is True)
+            or (no_wait_region_click is True and
+                (passive_changed_loader is True or passive_dynamic_loader is True))):
         return blocked("OWNER_APPROVAL_REQUIRED")
     accepted = (
-        _DYNAMIC_METADATA_APPROVAL if passive_dynamic_loader is True
+        _NAV_WAIT_APPROVAL if no_wait_region_click is True
+        else _DYNAMIC_METADATA_APPROVAL if passive_dynamic_loader is True
         else _PASSIVE_METADATA_APPROVAL if passive_changed_loader is True
         else _APPROVAL)
     if not (live is True and approve == accepted and headed is True):
@@ -205,13 +211,18 @@ async def run(*, approve, live, headed, robots=None, picker_robots=None,
                     # Exactly one FILL attempt, no SEQUENTIAL_KEYS, no repeat.
                     region_result = await one_public_region(
                         browser, "FILL",
+                        click_navigation_wait=(
+                            "NO_WAIT_AFTER" if no_wait_region_click else "DEFAULT"),
                         on_region_confirmed=partial(
                             verify_filter_before_collection,
                             passive_changed_loader=passive_changed_loader,
                             passive_dynamic_loader=passive_dynamic_loader))
                 finally:
                     await browser.close()
-        return final_report(region_result)
+        result = final_report(region_result)
+        result["region_click_navigation_wait"] = (
+            "NO_WAIT_AFTER" if no_wait_region_click else "DEFAULT")
+        return result
     except Exception:
         return blocked("CHROME_OR_BROWSER_FAILURE")
 
@@ -227,11 +238,16 @@ def main(argv=None):
     parser.add_argument("--passive-dynamic-loader-metadata", action="store_true",
         help="V2: opt-in to bounded dynamic routes/* Remix metadata read;"
              " requires a distinct explicit owner approval")
+    parser.add_argument("--no-wait-region-click", action="store_true",
+        help="One-shot native-click navigation wait A/B diagnostic; separate approval")
     options = parser.parse_args(argv)
-    exclusive = not (options.passive_new_loader_metadata
-                     and options.passive_dynamic_loader_metadata)
+    exclusive = (sum(bool(x) for x in (
+        options.passive_new_loader_metadata,
+        options.passive_dynamic_loader_metadata,
+        options.no_wait_region_click)) <= 1)
     expected_approval = (
-        _DYNAMIC_METADATA_APPROVAL if options.passive_dynamic_loader_metadata
+        _NAV_WAIT_APPROVAL if options.no_wait_region_click
+        else _DYNAMIC_METADATA_APPROVAL if options.passive_dynamic_loader_metadata
         else _PASSIVE_METADATA_APPROVAL if options.passive_new_loader_metadata
         else _APPROVAL)
     if not (exclusive and options.live and options.headed
@@ -244,7 +260,8 @@ def main(argv=None):
             approve=options.owner_approval, live=options.live,
             headed=options.headed,
             passive_changed_loader=options.passive_new_loader_metadata,
-            passive_dynamic_loader=options.passive_dynamic_loader_metadata))
+            passive_dynamic_loader=options.passive_dynamic_loader_metadata,
+            no_wait_region_click=options.no_wait_region_click))
     print(json.dumps(report, ensure_ascii=False, sort_keys=True, indent=2))
     return 0 if report["status"] == "PRECOLLECTION_EVIDENCE_COMPLETE" else 2
 

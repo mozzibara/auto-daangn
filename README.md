@@ -75,3 +75,14 @@ raw run evidence, additional live workflow dispatchers and secrets were
 The authenticated v5 price-drop gate can now export narrow, local-only JSON notification records after signed OCI artifact import. A **private** OCI control repository delivers these through the same personal Telegram bot as Runner incidents. The public repository never stores the Bot Token or personal Chat ID, and this integration does not enable live market capture.
 
 See [shared Telegram exporter and ACL runbook](docs/research/SHARED_TELEGRAM_BRIDGE.md). Only signed REVIEWABLE PRICE_DROPPED events are supported until the separate new-listing evidence gate is implemented. OCI operator opt-in, deployment and filesystem ACLs are still required; source merge alone does not activate real messages.
+
+## REGION_MISMATCH: one-shot click navigation-wait experiment
+
+A separately approved, **non-collecting** OCI Chrome experiment now compares
+Playwright's default locator.click navigation wait with the existing single
+native-region-click path using no_wait_after=True. The original UI / fresh
+Route / filter gate remains authoritative, and no public listing events are
+created by the experiment. See
+[owner-gated research procedure](docs/research/REGION_CLICK_NAVIGATION_WAIT_EXPERIMENT.md).
+The production v4.34 collector remains unchanged until live independent
+evidence establishes that the variant actually commits the correct region.

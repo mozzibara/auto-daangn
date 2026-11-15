@@ -465,7 +465,8 @@ async def ui_select_region(page, region: dict, *, on_before_select=None,
                            on_option_click_timeout=None,
                            on_option_witness=None, on_after_search_fill=None,
                            first_activation_mode="POINTER_CLICK",
-                           search_input_mode="FILL") -> dict:
+                           search_input_mode="FILL",
+                           click_navigation_wait="DEFAULT") -> dict:
     steps = {"target": region["term"], "clicked_region_button": False,
              "selected_suggestion": False, "unique_region_option": False,
              "error": None, "start_url": sanitized_url(page.url),
@@ -481,12 +482,24 @@ async def ui_select_region(page, region: dict, *, on_before_select=None,
              "search_input_mode": (
                  search_input_mode if search_input_mode in
                  ("FILL", "SEQUENTIAL_KEYS") else "UNOBSERVABLE"),
+             "click_navigation_wait": (
+                 click_navigation_wait if click_navigation_wait in
+                 ("DEFAULT", "NO_WAIT_AFTER") else "UNOBSERVABLE"),
              "progress_stage": "CORE_ENTERED",
              "header_click_verified_after_timeout": False,
              "header_click_exception_kind": "NONE",
              "option_click_returned": False,
              "option_click_verified_after_timeout": False,
              "option_click_exception_kind": "NONE"}
+    # This optional owner-only experiment changes Playwright's navigation
+    # waiting, NOT its trusted pointer events, actionability, click count or
+    # server/UI region proof. The default production behavior is unchanged.
+    if click_navigation_wait not in ("DEFAULT", "NO_WAIT_AFTER"):
+        steps["error"] = "unsupported_click_navigation_wait"
+        return steps
+    click_opts = ({"timeout": 5000, "no_wait_after": True}
+                  if click_navigation_wait == "NO_WAIT_AFTER"
+                  else {"timeout": 5000})
     try:
         selector = page.get_by_role("button", name=re.compile(r"지역 선택"))
         steps["progress_stage"] = "BEFORE_REGION_BUTTON_CLICK"
@@ -497,7 +510,7 @@ async def ui_select_region(page, region: dict, *, on_before_select=None,
             if inspect.isawaitable(preflight):
                 await preflight
         try:
-            await selector.first.click(timeout=5000)
+            await selector.first.click(**click_opts)
             steps["clicked_region_button"] = True
         except Exception as click_error:
             # Only an actual Playwright click timeout may be reconciled,
@@ -642,7 +655,7 @@ async def ui_select_region(page, region: dict, *, on_before_select=None,
                     return steps
                 await matching.first.press("Enter", timeout=5000)
             elif first_activation_mode == "POINTER_CLICK":
-                await matching.first.click(timeout=5000)
+                await matching.first.click(**click_opts)
             else:
                 steps["error"] = "unsupported_first_activation_mode"
                 return steps
