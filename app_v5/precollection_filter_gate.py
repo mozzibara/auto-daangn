@@ -22,6 +22,7 @@ from app_v5.filter_apply_activation import (
     FilterApplyActivationWitness, sanitize_apply_activation,
 )
 from app_v5.oci_evidence_ledger import summarize_precollection_evidence
+from app_v5.remix_independent_evidence import independent_remix_evidence
 
 REGION = core.BY_KEY["cheonan"]
 CATEGORY_ID = 1
@@ -623,6 +624,9 @@ def sanitize_precollection(value):
     # Advisory evidence from already-sanitized fields only. This never
     # changes the existing strict URL, Route, UI, owner or collection gate.
     safe["evidence_ledger"] = summarize_precollection_evidence(safe)
+    # Independent scalar attestation of the already observed dynamic _data.
+    # Diagnostic only; never changes strict_filter_evidence or status.
+    safe["remix_independent_evidence"] = independent_remix_evidence(safe)
     return safe
 
 
