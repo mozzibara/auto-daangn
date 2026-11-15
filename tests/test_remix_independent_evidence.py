@@ -121,6 +121,14 @@ class IndependentRemixContractTests(unittest.TestCase):
         self.assertIn("PRICE_MAX_DECLARATION_NOT_UNCONTRADICTED",
                       v["missing_independent_evidence"])
 
+    def test_malformed_echo_invalidates_uncontested_declaration(self):
+        row = sanitize_precollection(proof(model(
+            {"maxPrice": 50000, "price": "PRIVATE_MALFORMED_SECRET"})))
+        v = row["remix_independent_evidence"]
+        self.assertEqual(v["response_price_evidence"],
+                         "DECLARED_CONFLICTING_ECHO")
+        self.assertNotIn("PRIVATE_MALFORMED_SECRET", json.dumps(v))
+
     def test_direct_max_wrong_and_same_echo_stays_wrong(self):
         row = sanitize_precollection(proof(model(
             {"maxPrice": 60000, "price": "__50000"})))
@@ -145,8 +153,10 @@ class IndependentRemixContractTests(unittest.TestCase):
 
     def test_multiple_search_models_are_not_promoted(self):
         row = sanitize_precollection(proof(model(extra_model=True)))
+        self.assertEqual(row["remix_independent_evidence"]["source_provenance"],
+                         "UNVERIFIED")
         self.assertEqual(row["remix_independent_evidence"]["response_region_ids"],
-                         "MISSING")
+                         "UNVERIFIED")
         self.assertFalse(row["remix_independent_evidence"]["authorizes_listings"])
 
     def test_network_ambiguity_denies_all_favorable_body_fields(self):
