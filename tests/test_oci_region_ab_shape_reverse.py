@@ -47,7 +47,7 @@ class ReverseOrderTests(unittest.IsolatedAsyncioTestCase):
                         robots=lambda:True,picker_robots=lambda _:{"allowed":True})
         self.assertEqual(value["status"],"OWNER_APPROVAL_REQUIRED")
 
-    async def test_as an_first_uses_same_existing_browser_action(self):
+    async def test_asan_first_uses_same_existing_browser_action(self):
         # Fake only the browser transport, not the owner/robots gates.
         from types import SimpleNamespace
         order=[]
