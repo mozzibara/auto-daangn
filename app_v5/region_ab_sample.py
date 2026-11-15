@@ -39,7 +39,7 @@ _ROUTE_STATUS = frozenset((
 
 def _target(region):
     return (type(region) is dict
-            and any(region == core.BY_KEY[key] for key in _KEY))
+            and any(region == core.BY_KEY[key] for key in _KEYS))
 
 
 def _blank(status):
@@ -175,7 +175,7 @@ class RegionABSession:
         self._samples = {}
 
     def accept(self, key, sample, *, verified):
-        if key not in _KEY or key in self._samples:
+        if key not in _KEYS or key in self._samples:
             raise ValueError("UNEXPECTED_OR_DUPLICATE_AB_ARM")
         entry = sample if type(sample) is dict else {}
         summary = _safe_summary(entry.get("summary"))
