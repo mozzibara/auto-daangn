@@ -94,7 +94,7 @@ def check_region_picker_robots(region_term: str, *, getter=None) -> dict:
     arbitrary terms or a different user-controlled endpoint.
     """
     from urllib.parse import quote
-    known = {core.BY_KEY[k]["term"] for k in ("cheonan", "asan")}
+    known = {core.BY_KEY[k]["term"] for k in ("cheonan", "asan", "sadang")}
     if region_term not in known:
         return {"allowed": False, "reason": "INVALID_REGION"}
     getter = getter or urllib.request.urlopen
