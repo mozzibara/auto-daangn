@@ -57,6 +57,8 @@ def _unique_browser_response(row):
         and row.get("dynamic_loader_metadata_mode") is True
         and row.get("dynamic_loader_metadata_count") == 1
         and row.get("dynamic_loader_metadata_status") == "ONE_PARSED"
+        and row.get("dynamic_loader_price_shape") not in (
+            "NO_SEARCH_MODEL", "UNOBSERVABLE", None)
     )
 
 
@@ -82,7 +84,8 @@ def independent_remix_evidence(precollection):
         elif shape in _SHAPES:
             if declared == "EXPECTED":
                 price = ("DECLARED_CONFLICTING_ECHO"
-                         if echo == "ENCODED_MAX_OTHER"
+                         if echo in ("ENCODED_MAX_OTHER", "UNRECOGNIZED_STRING",
+                                     "NON_STRING_VALUE")
                          else "DECLARED_MAX_MATCH_UNENFORCED")
             elif declared == "OTHER":
                 price = "DECLARED_MAX_MISMATCH"
