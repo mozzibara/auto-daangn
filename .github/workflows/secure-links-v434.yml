@@ -20,6 +20,22 @@ on:
         options:
           - CAPTURE_ENCRYPTED_ONLY
           - EPHEMERAL_REVIEWABLE_TEST
+      region_click_navigation_wait:
+        description: 'DEFAULT or opt-in native click with no navigation wait (separate approval)'
+        type: choice
+        required: true
+        default: DEFAULT
+        options:
+          - DEFAULT
+          - NO_WAIT_AFTER
+      region_click_approval:
+        description: 'Second exact owner approval required for NO_WAIT_AFTER'
+        type: choice
+        required: true
+        default: NOT_APPROVED
+        options:
+          - NOT_APPROVED
+          - I_APPROVE_V434_REGION_CLICK_NO_WAIT_V1
       recipient_public_key:
         description: 'X25519 PUBLIC key for CAPTURE_ENCRYPTED_ONLY; leave blank in EPHEMERAL_REVIEWABLE_TEST'
         type: string
@@ -33,7 +49,7 @@ permissions:
 jobs:
   owner-approved-encrypted-links:
     if: >-
-      (github.event_name == 'workflow_dispatch' && github.actor == github.repository_owner && inputs.approval == 'I_APPROVE_V434_ENCRYPTED_PUBLIC_LINKS') ||
+      (github.event_name == 'workflow_dispatch' && github.actor == github.repository_owner && inputs.approval == 'I_APPROVE_V434_ENCRYPTED_PUBLIC_LINKS' && (inputs.region_click_navigation_wait != 'NO_WAIT_AFTER' || inputs.region_click_approval == 'I_APPROVE_V434_REGION_CLICK_NO_WAIT_V1')) ||
       (github.event_name == 'issue_comment' && github.actor == github.repository_owner && github.event.issue.number == 1 && github.event.issue.pull_request == null && (startsWith(github.event.comment.body, '/run-daangn-secure-v434 ') || github.event.comment.body == '/run-daangn-pre-oci-e2e-v434'))
     concurrency:
       group: auto-daangn-live-diagnostic
@@ -138,12 +154,22 @@ jobs:
       - name: Run one robots-first read-only capture and seal links in memory
         id: secure
         shell: bash
+        env:
+          REGION_CLICK_NAV_WAIT: ${{ github.event_name == 'workflow_dispatch' && inputs.region_click_navigation_wait || 'DEFAULT' }}
+          REGION_CLICK_APPROVAL: ${{ github.event_name == 'workflow_dispatch' && inputs.region_click_approval || 'NOT_APPROVED' }}
         run: |
           mkdir -p v434_live_output
+          args=(--output-dir v434_live_output --public-key "$RECIPIENT_PUBLIC_KEY")
+          if [[ "$REGION_CLICK_NAV_WAIT" == "NO_WAIT_AFTER" &&
+                "$REGION_CLICK_APPROVAL" == "I_APPROVE_V434_REGION_CLICK_NO_WAIT_V1" ]]; then
+            args+=(--region-click-navigation-wait NO_WAIT_AFTER
+                   --region-click-approval I_APPROVE_V434_REGION_CLICK_NO_WAIT_V1)
+          elif [[ "$REGION_CLICK_NAV_WAIT" != "DEFAULT" ]]; then
+            echo "REGION_CLICK_MODE_APPROVAL_REQUIRED" >&2
+            exit 2
+          fi
           set +e
-          python scripts/run_secure_links_v434_checked.py \
-            --output-dir v434_live_output \
-            --public-key "$RECIPIENT_PUBLIC_KEY" > v434_private_runner.log 2>&1
+          python scripts/run_secure_links_v434_checked.py "${args[@]}"             > v434_private_runner.log 2>&1
           code=$?
           echo "exit_code=$code" >> "$GITHUB_OUTPUT"
           echo "Sealed public capture completed with code $code"
