@@ -46,15 +46,22 @@ def _blank(status):
     return {"status": status, "rows": 0,
             "local_exact": 0, "same_city": 0, "outside_city": 0,
             "unverified": 0, "location_coverage": "UNOBSERVABLE",
-            "identity_coverage": "UNOBSERVABLE"}
+            "identity_coverage": "UNOBSERVABLE",
+            "region_object_rows": 0, "region_name_only_rows": 0,
+            "region_name_only_target_rows": 0,
+            "region_name_only_other_rows": 0,
+            "region_id_rows": 0, "region_city_rows": 0}
 
 
 def _safe_summary(value):
     v = value if type(value) is dict else {}
     out = {k: (v[k] if type(v.get(k)) is int
                and 0 <= v[k] <= _MAX_ROWS else -1)
-           for k in ("rows", "local_exact", "same_city",
-                     "outside_city", "unverified")}
+           for k in ("rows", "local_exact", "same_city", "outside_city",
+                     "unverified", "region_object_rows",
+                     "region_name_only_rows", "region_name_only_target_rows",
+                     "region_name_only_other_rows", "region_id_rows",
+                     "region_city_rows")}
     return {
         "status": v.get("status") if type(v.get("status")) is str
                   and v["status"] in _STATES else "UNOBSERVABLE",
@@ -128,13 +135,45 @@ def sample_region_articles(body, region, secret):
               OUTSIDE_CITY: 0, UNVERIFIED: 0}
     tokens = set()
     invalid_identity = 0
+    region_object_rows = region_name_only_rows = 0
+    region_name_only_target_rows = region_name_only_other_rows = 0
+    region_id_rows = region_city_rows = 0
     for row in rows:
         if type(row) is not dict:
             counts[UNVERIFIED] += 1
             invalid_identity += 1
             continue
         # Article-own 'region', NOT outer searchRegion/currentFilters.
-        counts[classify_item_region(row.get("region"), region)] += 1
+        article_region = row.get("region")
+        counts[classify_item_region(article_region, region)] += 1
+        if type(article_region) is dict:
+            region_object_rows += 1
+            raw_id = article_region.get("id")
+            has_id = (
+                (type(raw_id) is int and 0 <= raw_id <= 999999)
+                or (type(raw_id) is str and raw_id.isascii()
+                    and raw_id.isdecimal() and 1 <= len(raw_id) <= 6))
+            if has_id:
+                region_id_rows += 1
+            cities = [article_region.get(key) for key in (
+                "city", "municipality", "cityName")]
+            has_city = any(
+                type(v) is str and 0 < len(v) <= 60
+                or (type(v) is dict and type(v.get("name")) is str
+                    and 0 < len(v["name"]) <= 60)
+                for v in cities)
+            if has_city:
+                region_city_rows += 1
+            name = article_region.get("name")
+            # A name-only label is observational evidence, NEVER
+            # proof of the municipality or exact neighborhood identity.
+            if (not has_id and not has_city and type(name) is str
+                    and 1 <= len(name) <= 60 and name.strip()):
+                region_name_only_rows += 1
+                if name.strip() == region["term"]:
+                    region_name_only_target_rows += 1
+                else:
+                    region_name_only_other_rows += 1
         # No identifiers survive this loop: only a secret-keyed digest
         # of an explicitly normalized first-party listing href.
         href = row.get("href")
@@ -154,6 +193,12 @@ def sample_region_articles(body, region, secret):
             "same_city": counts[LOCAL_CITY],
             "outside_city": counts[OUTSIDE_CITY],
             "unverified": counts[UNVERIFIED],
+            "region_object_rows": region_object_rows,
+            "region_name_only_rows": region_name_only_rows,
+            "region_name_only_target_rows": region_name_only_target_rows,
+            "region_name_only_other_rows": region_name_only_other_rows,
+            "region_id_rows": region_id_rows,
+            "region_city_rows": region_city_rows,
             "location_coverage": (
                 "COMPLETE" if verified_count == len(rows) else
                 "NONE" if verified_count == 0 else "PARTIAL"),

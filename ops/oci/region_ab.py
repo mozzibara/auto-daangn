@@ -19,6 +19,7 @@ from scripts.chrome_stable_input_compare import (
 from scripts.run_live_checked import check_region_picker_robots
 
 _APPROVAL = "I_APPROVE_OCI_REGION_AB_SAMPLE_V1"
+_BA_APPROVAL = "I_APPROVE_OCI_REGION_BA_SHAPE_V1"
 
 
 def blocked(status):
@@ -33,8 +34,11 @@ def blocked(status):
 
 
 async def run(*, live=False, headed=False, approval="", directory_check=None,
-              robots=None, picker_robots=None, experiment=None):
-    if live is not True or headed is not True or approval != _APPROVAL:
+              robots=None, picker_robots=None, experiment=None,
+              reverse_order=False):
+    if (type(reverse_order) is not bool or live is not True
+            or headed is not True
+            or approval != (_BA_APPROVAL if reverse_order else _APPROVAL)):
         return blocked("OWNER_APPROVAL_REQUIRED")
     check = directory_check or isolated_execution_directory
     if check() is not True:
@@ -63,19 +67,25 @@ async def run(*, live=False, headed=False, approval="", directory_check=None,
         async with async_playwright() as pw:
             browser = await pw.chromium.launch(channel="chrome", headless=False)
             try:
-                left = await one_public_region(
-                    browser, "FILL", region_key="cheonan",
-                    click_navigation_wait="NO_WAIT_AFTER",
-                    region_ab_session=session)
-                # A challenge or missing authoritative locality stops the
-                # experiment; do not run the control arm on an unready site.
-                if left.get("status") != "TARGET_REGION_CONFIRMED_DIAGNOSTIC":
-                    return session.summarize(left, {})
-                right = await one_public_region(
-                    browser, "FILL", region_key="asan",
-                    click_navigation_wait="NO_WAIT_AFTER",
-                    region_ab_session=session)
-                return session.summarize(left, right)
+                # Same FILL click logic for both arms. Reverse order is an
+                # independently owner-approved control for order effects;
+                # never retry a failed click or bypass a challenge.
+                order = ("asan", "cheonan") if reverse_order else (
+                    "cheonan", "asan")
+                observations = {}
+                for key in order:
+                    result = await one_public_region(
+                        browser, "FILL", region_key=key,
+                        click_navigation_wait="NO_WAIT_AFTER",
+                        region_ab_session=session)
+                    observations[key] = result
+                    if result.get("status") != "TARGET_REGION_CONFIRMED_DIAGNOSTIC":
+                        break
+                report = session.summarize(
+                    observations.get("cheonan"), observations.get("asan"))
+                report["execution_order"] = (
+                    "ASAN_FIRST" if reverse_order else "CHEONAN_FIRST")
+                return report
             finally:
                 await browser.close()
     except Exception:
@@ -87,9 +97,11 @@ def main(argv=None):
     parser.add_argument("--live", action="store_true")
     parser.add_argument("--headed", action="store_true")
     parser.add_argument("--owner-approval", default="")
+    parser.add_argument("--reverse-order", action="store_true")
     args = parser.parse_args(argv)
     result = asyncio.run(run(
-        live=args.live, headed=args.headed, approval=args.owner_approval))
+        live=args.live, headed=args.headed, approval=args.owner_approval,
+        reverse_order=args.reverse_order))
     print(json.dumps(result, ensure_ascii=False, sort_keys=True))
     return 0 if result.get("status") == "OBSERVED" else 2
 
