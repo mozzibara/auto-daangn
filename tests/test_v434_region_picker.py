@@ -44,7 +44,7 @@ class RegionPickerRobotsTests(unittest.TestCase):
         def get(req, timeout):
             seen.append(req.full_url)
             self.assertEqual(timeout, 20)
-            return FakeResponse(b"User-agent: *\\nAllow: /\\n")
+            return FakeResponse(b"User-agent: *\nAllow: /\n")
         observed = check_region_picker_robots("사당제3동", getter=get)
         self.assertEqual(observed, {"allowed": True, "reason": "ALLOWED"})
         self.assertEqual(seen, ["https://www.daangn.com/robots.txt"])
@@ -52,7 +52,7 @@ class RegionPickerRobotsTests(unittest.TestCase):
     def test_pinned_sadang_still_obeys_explicit_disallow(self):
         def get(req, timeout):
             return FakeResponse(
-                b"User-agent: *\\nDisallow: /kr/api/v1/regions/keyword\\n")
+                b"User-agent: *\nDisallow: /kr/api/v1/regions/keyword\n")
         self.assertEqual(check_region_picker_robots(
             "사당제3동", getter=get),
             {"allowed": False, "reason": "DISALLOWED"})
