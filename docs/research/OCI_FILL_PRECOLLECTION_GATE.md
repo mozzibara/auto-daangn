@@ -1600,3 +1600,46 @@ The separate default-click V2 probe had previously stopped at STOP_REGION_NOT_VE
 3. Existing data model supports only independently signed price-drop events; validated first-seen listing notification needs a separate evidence-backed event schema and duplicate-safe queue. No fake Telegram event should be generated merely to declare pipeline success.
 
 No retry, extra live capture, production collector change or admission waiver is performed by the research note.
+
+
+## 2026-11-15 — independent, opt-in price-field-only sample (PR #83)
+
+The new `app_v5.price_sample_evidence` reads only the `price` scalar
+of at most 650 entries from an already-browser-initiated, uniquely attested
+first-party Remix `_data` response. The response body remains volatile RAM
+and only a finite classification survives: `SAMPLE_WITHIN_CAP`,
+`ABOVE_CAP_OBSERVED`, `INCOMPLETE_PRICE_COVERAGE`, `EMPTY_SAMPLE`,
+`TOO_MANY_ROWS`, `AMBIGUOUS_MODEL`, `UNOBSERVABLE`, or `UNVERIFIED`.
+
+This reads price fields only under a **new explicit owner token**:
+`I_APPROVE_OCI_REMIX_PRICE_SAMPLE_V1`, together with
+`--no-wait-region-click --passive-dynamic-loader-metadata
+--passive-bounded-price-sample`. It is not enabled in V2, V1, default
+precollection, production capture, or any scheduled workflow. It does not
+visit details, print URLs, retain listing titles/IDs/sellers or write a DB.
+
+`SAMPLE_WITHIN_CAP` means only that all parseable prices in this *one*
+bounded response are within 50,000 KRW; it **does not** prove the backend
+enforces the cap or any unseen page/region uses it. A separate, explicitly
+authorized control cap and exact request-response/UI correlation are required
+for behavioral evidence. `ABOVE_CAP_OBSERVED` is an independently observed
+counterexample, so the price filter must remain blocked. Unknown prices,
+zero results and ambiguous/competing sources remain inconclusive.
+
+`app_v5.region_apply_correspondence` separately reconciles the
+post-Apply page URL `in`, observed request/response URL categories and
+the two server region IDs *from that same response*. A matching server
+region with missing `in` is specifically classified as
+`SERVER_MATCH_BUT_URL_REGION_MISSING`, **not** a resolved filter gate.
+Neither price sample nor region correspondence changes the strict
+`_unique_query`, native post-Apply UI requirement, Route SHA linkage,
+signed v4.34 capture, collection authority or real-event admission.
+
+Offline regression:
+`python -m unittest discover -s tests -p 'test_oci_price_sample*.py' -v`
+and the full `test_*.py` suite. The owner-only private OCI command must
+be independently pinned to an audited public main SHA, and run once only
+after green CI and robots approval. Never repeat a captured session unchanged.
+
+No production DB, Telegram ledger, signing/import, credentials, raw article
+fields or listing event writes are part of this experiment.
