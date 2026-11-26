@@ -22,7 +22,7 @@ from app_v5.attestation import job_id_for_attestation, verify_attestation
 from daangn_secure_links_v4_34 import clean_title, unseal_manifest
 from daangn_v4_1_core import normalized_listing
 from daangn_v4_4_gate import stable_article_id
-from app_v5.item_area_policy import configured_label
+from app_v5.item_area_policy import configured_label, private_policy_binding
 
 MAX_ENVELOPE_BYTES = 512 * 1024
 MAX_CANDIDATES = 9
@@ -77,8 +77,9 @@ def read_encrypted(path: str | Path, recipient_private_key: bytes) -> dict:
     return manifest
 
 
-def validate_manifest(manifest: dict) -> tuple[list[Observation], list[SourceEvidence]]:
+def validate_manifest(manifest: dict, *, area_policy=None) -> tuple[list[Observation], list[SourceEvidence]]:
     """Validate the exact v4.34 builder's *display* contract, not source authenticity."""
+    rows, binding = private_policy_binding(area_policy)
     if not isinstance(manifest, dict):
         _fail("INVALID_MANIFEST")
     keys = {
@@ -88,6 +89,10 @@ def validate_manifest(manifest: dict) -> tuple[list[Observation], list[SourceEvi
         "manual_current_price_and_status_recheck_required",
         "full_recommendations_approved"
     }
+    if binding is not None:
+        keys.add("item_area_policy_sha256")
+        if manifest.get("item_area_policy_sha256") != binding:
+            _fail("PRIVATE_AREA_POLICY_BINDING_MISMATCH")
     if (set(manifest) != keys or manifest.get("version") != "4.34"
             or manifest.get("capture_scoped_only") is not True
             or manifest.get("manual_current_price_and_status_recheck_required") is not True
@@ -142,10 +147,13 @@ def validate_manifest(manifest: dict) -> tuple[list[Observation], list[SourceEvi
                           expected_item_fields | {"item_area_key", "item_area_display"})
         if not isinstance(x, dict) or set(x) not in allowed_fields:
             _fail("INVALID_SOURCE_ITEM_FIELDS")
+        if binding is not None and "item_area_key" not in x:
+            _fail("BOUND_ITEM_AREA_WITNESS_REQUIRED")
         if "item_area_key" in x:
             key = x["item_area_key"]
-            if (type(key) is not str or
-                    configured_label(key) != x["item_area_display"]):
+            label = configured_label(key, rows)
+            if (type(key) is not str or label is None or
+                    label != x["item_area_display"]):
                 _fail("UNTRUSTED_ITEM_AREA_DISPLAY")
         url = x["url"]
         if not isinstance(url, str) or normalized_listing(url) != url:
@@ -202,9 +210,9 @@ def validate_manifest(manifest: dict) -> tuple[list[Observation], list[SourceEvi
 
 
 def import_manifest(store: HistoryStore, manifest: dict, *,
-                    profile_id: str, job_id: str) -> dict:
+                    profile_id: str, job_id: str, area_policy=None) -> dict:
     """Validate all rows before any DB mutation, then commit the batch atomically."""
-    observations, sources = validate_manifest(manifest)
+    observations, sources = validate_manifest(manifest, area_policy=area_policy)
     store.create_profile(profile_id, name="v4.34 captured HDD candidates",
                          keyword="HDD", region_id="2292", max_price_krw=50000)
     store.create_job(job_id, profile_id)
@@ -245,7 +253,7 @@ def import_signed_capture(store: HistoryStore, *,
                           unique_json: str | Path,
                           profile_id: str, job_id: str,
                           expected_commit_sha: str,
-                          dry_run: bool = False) -> dict:
+                          dry_run: bool = False, area_policy=None) -> dict:
     """Authenticate signature + exact file hashes before any SQLite mutation.
 
     Only the matched v4.34 title/URL/Route-price claim is promoted to
@@ -271,7 +279,7 @@ def import_signed_capture(store: HistoryStore, *,
     if job_id != job_id_for_attestation(producer):
         _fail("SIGNED_JOB_ID_MUST_MATCH_GITHUB_RUN")
     manifest = read_encrypted(encrypted_json, recipient_private_key)
-    observations, sources = validate_manifest(manifest)
+    observations, sources = validate_manifest(manifest, area_policy=area_policy)
     summary = json.loads(summary_bytes.decode("utf-8"))
     if (manifest["clickable_unique_count"] != summary["linked_unique_candidates"]
             or manifest["source_run_unique_candidates"] != summary["unique_candidates"]

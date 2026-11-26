@@ -166,7 +166,7 @@ def status(state_dir: str | Path) -> dict:
 
 def import_capture(state_dir: str | Path, bundle_dir: str | Path, *,
                    expected_commit_sha: str, run_id: int,
-                   run_attempt: int = 1, dry_run: bool = False) -> dict:
+                   run_attempt: int = 1, dry_run: bool = False, area_policy=None) -> dict:
     """Fail closed on exact independent source SHA/run identity and evidence.
 
     No GitHub API integration yet: obtain commit SHA and run ID from trusted
@@ -201,6 +201,7 @@ def import_capture(state_dir: str | Path, bundle_dir: str | Path, *,
         profile_id="oci-v434-hdd",
         job_id=f"v434-gh-{run_id}-a{run_attempt}",
         expected_commit_sha=expected_commit_sha,
+        area_policy=area_policy,
     )
     check = import_signed_capture(None, **params, dry_run=True)
     if not check["source_authentication_verified"]:
