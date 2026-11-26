@@ -18,7 +18,8 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[1]
 SHA = re.compile(r'[0-9a-f]{40}\Z')
 CONTROL_TESTS = ('test_oci_release_control.py', 'test_oci_release_stage.py',
-                 'test_oci_local_gateway.py', 'test_oci_issue_gateway.py')
+                 'test_oci_local_gateway.py', 'test_oci_issue_gateway.py',
+                 'test_oci_install_issue_gateway.py')
 MAX_OUTPUT = 4 * 1024 * 1024
 
 
