@@ -14,12 +14,15 @@ from pathlib import Path
 import re
 
 SCHEMA = "daangn_item_area_allowlist_v1"
+SCHEMA_V2 = "daangn_item_area_allowlist_v2"
 CONFIG = Path(__file__).resolve().parents[1] / "config" / "item_area_allowlist.json"
 ALLOWED = "ITEM_DISTRICT_ALLOWED"
 OUTSIDE = "ITEM_DISTRICT_OUTSIDE_ALLOWLIST"
 UNKNOWN = "ITEM_DISTRICT_UNVERIFIED"
 STATUSES = frozenset((ALLOWED, OUTSIDE, UNKNOWN))
 _CITY = frozenset(("천안시", "아산시"))
+_CITY_V2 = _CITY | {"서울특별시"}
+_BOROUGH = re.compile(r"^[가-힣0-9]{1,18}구$")
 _KEY = re.compile(r"^[a-z][a-z0-9_]{2,47}$")
 _DISTRICT = re.compile(r"^[가-힣0-9]{2,18}(?:동|읍|면)$")
 
@@ -57,31 +60,43 @@ def load_allowlist(path=None):
     except (OSError, UnicodeError, ValueError) as exc:
         raise ValueError("ITEM_AREA_CONFIG_UNREADABLE") from exc
     if type(doc) is not dict or set(doc) != {"schema", "allowed_areas"} or (
-            doc["schema"] != SCHEMA or type(doc["allowed_areas"]) is not list or
+            doc["schema"] not in (SCHEMA, SCHEMA_V2) or type(doc["allowed_areas"]) is not list or
             not 1 <= len(doc["allowed_areas"]) <= 100):
         raise ValueError("ITEM_AREA_CONFIG_SCHEMA_INVALID")
+    hierarchical = doc["schema"] == SCHEMA_V2
     seen_keys, seen_pairs, seen_ids = set(), set(), set()
     areas = []
+    fields = {"key", "city", "district", "region_id"}
+    if hierarchical:
+        fields.add("borough")
     for entry in doc["allowed_areas"]:
-        if type(entry) is not dict or set(entry) != (
-                {"key", "city", "district", "region_id"}):
+        if type(entry) is not dict or set(entry) != fields:
             raise ValueError("ITEM_AREA_CONFIG_ENTRY_INVALID")
         key, city, district, raw_id = (
             entry["key"], entry["city"], entry["district"], entry["region_id"])
         rid = None if raw_id is None else _id(raw_id)
+        borough = entry.get("borough")
+        pair = (city, borough, district) if hierarchical else (city, district)
+        if hierarchical and (rid is None or
+                (borough is not None and (type(borough) is not str or
+                                         not _BOROUGH.fullmatch(borough))) or
+                (city == "서울특별시" and borough is None)):
+            raise ValueError("ITEM_AREA_CONFIG_CONFLICT")
         if (type(key) is not str or not _KEY.fullmatch(key) or
-                type(city) is not str or city not in _CITY or
+                type(city) is not str or city not in (_CITY_V2 if hierarchical else _CITY) or
                 type(district) is not str or not _DISTRICT.fullmatch(district) or
                 (raw_id is not None and rid is None) or
-                key in seen_keys or (city, district) in seen_pairs or
+                key in seen_keys or pair in seen_pairs or
                 (rid is not None and rid in seen_ids)):
             raise ValueError("ITEM_AREA_CONFIG_CONFLICT")
         seen_keys.add(key)
-        seen_pairs.add((city, district))
+        seen_pairs.add(pair)
         if rid is not None:
             seen_ids.add(rid)
-        areas.append({"key": key, "city": city,
-                      "district": district, "region_id": rid})
+        row = {"key": key, "city": city, "district": district, "region_id": rid}
+        if hierarchical:
+            row["borough"] = borough
+        areas.append(row)
     # No glob, city-wide wildcard, unknown city, or implicit radius is allowed.
     return tuple(areas)
 
@@ -92,8 +107,10 @@ def configured_label(key, policy=None):
         return None
     matches = [a for a in (policy if policy is not None else load_allowlist())
                if a["key"] == key]
-    return (matches[0]["city"] + " " + matches[0]["district"]
-            if len(matches) == 1 else None)
+    if len(matches) != 1:
+        return None
+    row = matches[0]
+    return " ".join(v for v in (row["city"], row.get("borough"), row["district"]) if v)
 
 
 def classify_area(article_region, policy):
@@ -140,6 +157,36 @@ def classify_area(article_region, policy):
         return result(UNKNOWN)
     if leaf is not None and not _DISTRICT.fullmatch(leaf):
         return result(UNKNOWN)
+    if any("borough" in a for a in policy):
+        # V2 policies require complete item-scoped hierarchy AND a pinned ID.
+        # They never inherit the v1 name-only or ID-only positive path.
+        if not all("borough" in a for a in policy):
+            return result(UNKNOWN)
+        values = [_name(article_region[k]) for k in
+                  ("borough", "boroughName", "gu", "guName") if k in article_region]
+        if (any(v is None or not _BOROUGH.fullmatch(v) for v in values) or
+                len(set(values)) > 1):
+            return result(UNKNOWN)
+        borough = _one(values)
+        if rid is None or city is None or leaf is None:
+            return result(UNKNOWN)
+        if city == "서울특별시" and borough is None:
+            return result(UNKNOWN)
+        by_id = [a for a in policy if a.get("region_id") == rid]
+        by_path = [a for a in policy if (a["city"], a["borough"], a["district"]) ==
+                   (city, borough, leaf)]
+        if len(by_id) == len(by_path) == 1 and by_id[0] == by_path[0]:
+            return result(ALLOWED, by_id[0]["key"])
+        if by_id or by_path:
+            return result(UNKNOWN)
+        # A missing borough in a municipality with borough-scoped rows may
+        # indicate incomplete evidence, not an outside listing.
+        if borough is None and any(a["city"] == city and a["borough"] is not None
+                                   for a in policy):
+            return result(UNKNOWN)
+        if city not in _CITY_V2:
+            return result(UNKNOWN)
+        return result(OUTSIDE)
     id_match = [a for a in policy if a.get("region_id") == rid] if rid else []
     if len(id_match) > 1:
         return result(UNKNOWN)
