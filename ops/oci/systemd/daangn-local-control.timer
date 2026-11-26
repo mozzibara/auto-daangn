@@ -1,0 +1,11 @@
+[Unit]
+Description=Poll private read-only control Issue every two minutes
+
+[Timer]
+OnBootSec=2min
+OnUnitInactiveSec=2min
+AccuracySec=10s
+Unit=daangn-local-control.service
+
+[Install]
+WantedBy=timers.target

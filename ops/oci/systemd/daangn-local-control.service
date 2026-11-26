@@ -1,0 +1,31 @@
+[Unit]
+Description=Auto Daangn private Issue read-only control (no Actions)
+Wants=network-online.target
+After=network-online.target
+ConditionPathExists=/etc/auto-daangn-control/config.json
+ConditionPathExists=/var/lib/auto-daangn-control/token
+ConditionPathExists=/var/lib/auto-daangn-control/cursor.json
+
+[Service]
+Type=oneshot
+User=daangn-control
+Group=daangn-control
+ExecStart=/usr/bin/python3 -I -B -c "import sys,runpy;sys.path.insert(0,'/usr/local/libexec/auto-daangn-control');runpy.run_module('ops.oci.issue_gateway',run_name='__main__')" tick
+UMask=0077
+NoNewPrivileges=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+ReadWritePaths=/var/lib/auto-daangn-control
+InaccessiblePaths=-/var/lib/auto-daangn -/var/spool/auto-daangn-telegram -/opt/auto-daangn -/opt/auto-daangn-public-stage -/opt/auto-daangn-managed
+MemoryMax=96M
+TasksMax=12
+TimeoutStartSec=75

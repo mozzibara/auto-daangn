@@ -6,6 +6,7 @@ No listener, sudo, production DB access, live collection or arbitrary commands.
 from __future__ import annotations
 
 import argparse
+import hashlib
 from datetime import datetime, timedelta, timezone
 import json
 import os
@@ -49,15 +50,22 @@ def config(value):
     return dict(value)
 
 
-def initial(now):
+def _config_digest(cfg):
+    return hashlib.sha256(json.dumps(config(cfg), sort_keys=True,
+        separators=(',', ':')).encode('utf-8')).hexdigest()
+
+
+def initial(now, cfg):
     floor = _stamp(now)
     return {'schema': 'oci_issue_gateway_v1', 'floor': floor,
-            'cursor_id': 0, 'cursor_time': floor, 'pending': None}
+            'cursor_id': 0, 'cursor_time': floor, 'pending': None,
+            'config_sha256': _config_digest(cfg)}
 
 
 def validate_state(value):
-    if (type(value) is not dict or set(value) != {'schema', 'floor', 'cursor_id', 'cursor_time', 'pending'} or
-            value['schema'] != 'oci_issue_gateway_v1' or type(value['cursor_id']) is not int or
+    if (type(value) is not dict or set(value) != {'schema', 'floor', 'cursor_id', 'cursor_time', 'pending', 'config_sha256'} or
+            value['schema'] != 'oci_issue_gateway_v1' or type(value['config_sha256']) is not str or
+            not re.fullmatch(r'[0-9a-f]{64}', value['config_sha256']) or type(value['cursor_id']) is not int or
             not 0 <= value['cursor_id'] < 10**20 or _utc(value['cursor_time']) < _utc(value['floor'])):
         raise ValueError('INVALID_CONTROL_STATE')
     p = value['pending']
@@ -88,6 +96,8 @@ def _advance(state, comment_id, created):
 def tick(client, store, cfg, execute=local_gateway.execute):
     cfg = config(cfg)
     state = validate_state(store.load())
+    if state['config_sha256'] != _config_digest(cfg):
+        raise ValueError('CONTROL_CONFIG_CHANGED')
     if not client.private_repository():
         raise ValueError('PRIVATE_REPOSITORY_REQUIRED')
     since = _stamp(_utc(state['cursor_time']) - timedelta(seconds=1))
@@ -260,11 +270,11 @@ def main(argv=None):
         if not stat.S_ISREG(info.st_mode) or info.st_uid != uid or info.st_nlink != 1 or stat.S_IMODE(info.st_mode) != 0o600:
             raise ValueError('UNTRUSTED_LOCK')
         fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        cfg = config(json.loads(_private_file(CONFIG, 0, 4096, exact_mode=False).decode('utf-8')))
         if args.operation == 'init':
-            store.save(initial(datetime.now(timezone.utc)), create=True)
+            store.save(initial(datetime.now(timezone.utc), cfg), create=True)
             result = {'status': 'INITIALIZED', 'command_executed': False}
         else:
-            cfg = config(json.loads(_private_file(CONFIG, 0, 4096, exact_mode=False).decode('utf-8')))
             token = _private_file(STATE / 'token', uid, 512).decode('ascii').strip()
             result = tick(GitHubIssueClient(cfg, token), store, cfg)
         print(json.dumps(result, sort_keys=True))

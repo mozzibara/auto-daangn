@@ -21,7 +21,7 @@ def comment(cid, body, *, uid=123, created=NEW, updated=None, association='OWNER
 
 class Memory:
     def __init__(self):
-        self.value = g.initial(datetime(2026, 1, 1, tzinfo=timezone.utc))
+        self.value = g.initial(datetime(2026, 1, 1, tzinfo=timezone.utc), CFG)
     def load(self):
         return deepcopy(self.value)
     def save(self, value):
@@ -93,6 +93,13 @@ class ProtocolTests(unittest.TestCase):
             g.tick(client, store, CFG, execute=execute)
         self.assertEqual(client.sent, [])
         self.assertEqual(store.value['cursor_id'], 0)
+
+    def test_changed_configuration_cannot_reuse_cursor(self):
+        store = Memory()
+        client = Client([comment(10, '/local health')])
+        with self.assertRaisesRegex(ValueError, 'CONTROL_CONFIG_CHANGED'):
+            g.tick(client, store, dict(CFG, issue=2), execute=execute)
+        self.assertEqual(client.sent, [])
 
     def test_pending_retry_without_remote_reply(self):
         store = Memory()
