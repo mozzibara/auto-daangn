@@ -34,7 +34,7 @@ TOOLS = (
     "/usr/sbin/runuser",
 )
 REQUIRED_CHECKS = (
-    "accounts_present", "trusted_ancestors", "private_state_metadata",
+    "accounts_present", "runner_identity_probe", "trusted_ancestors", "private_state_metadata",
     "runner_state_denied", "runner_database_denied", "runner_keys_denied",
     "telegram_spool_metadata", "telegram_spool_read_only",
     "status_service_expected", "status_timer_enabled",
@@ -163,6 +163,9 @@ def collect() -> dict:
     paths = [STATE / "keys" / name for name in KEYS]
     evidence = {
         "accounts_present": accounts,
+        # Positive control: failure to become the runner must never be
+        # mistaken for successful denial of every private path.
+        "runner_identity_probe": _runner_access(Path("/"), "-x") is True,
         "trusted_ancestors": _trusted_ancestors(STATE) and _trusted_ancestors(SPOOL),
         "private_state_metadata": all(
             _meta(p, uid, gid, 0o700, directory=True)

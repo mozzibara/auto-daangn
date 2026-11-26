@@ -2,7 +2,7 @@
 
 This operator-local tool records only finite booleans and status codes for
 the existing OCI host. It checks account separation, private state metadata,
-ancestor ownership, Runner access denial, Telegram spool read-only ACL,
+ancestor ownership, Runner identity positive control and access denial, Telegram spool read-only ACL,
 status timer, inactive backup and absent/disabled intake. It reads neither
 database contents nor key/token values. It neither installs nor enables any
 service. It does not verify sudoers/Polkit or full source integrity.

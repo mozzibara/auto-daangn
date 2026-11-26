@@ -2,6 +2,8 @@
 """Synthetic tests for the administrator's non-mutating deployment preflight."""
 import json
 import unittest
+from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from ops.oci import deployment_preflight as preflight
@@ -47,6 +49,34 @@ class DeploymentPreflightTests(unittest.TestCase):
         report = preflight.evaluate(evidence, intake="raw-test-secret")
         self.assertNotIn("raw-test-secret", json.dumps(report))
         self.assertEqual(set(report["checks"]), set(preflight.REQUIRED_CHECKS))
+
+    def test_unit_state_requires_both_components_and_explicit_state(self):
+        absent = {"LoadState": "not-found", "ActiveState": "inactive", "UnitFileState": ""}
+        disabled = {"LoadState": "loaded", "ActiveState": "inactive", "UnitFileState": "disabled"}
+        active = dict(disabled, ActiveState="active")
+        self.assertEqual(preflight._intake_state(absent, absent), "NOT_INSTALLED")
+        self.assertEqual(preflight._intake_state(disabled, disabled), "DISABLED")
+        self.assertEqual(preflight._intake_state(disabled, active), "ACTIVE")
+        self.assertEqual(preflight._intake_state(absent, disabled), "UNKNOWN")
+        self.assertEqual(preflight._intake_state({}, {}), "UNKNOWN")
+
+    def test_runner_positive_control_is_required(self):
+        fake_pwd = SimpleNamespace(getpwnam=lambda name: SimpleNamespace(
+            pw_uid=1001 if name == "daangn" else 1002, pw_gid=1001))
+        with patch.dict("sys.modules", {"pwd": fake_pwd}), \
+                patch.object(preflight, "_runner_access", return_value=False), \
+                patch.object(preflight, "_meta", return_value=True), \
+                patch.object(preflight, "_trusted_ancestors", return_value=True), \
+                patch.object(preflight, "_unit", return_value={}):
+            report = preflight.collect()
+        self.assertIn("runner_identity_probe", report["blockers"])
+        self.assertEqual(report["status"], "BLOCKED")
+
+    def test_invalid_command_tokens_do_not_execute_subprocess(self):
+        with patch.object(preflight.subprocess, "run",
+                          side_effect=AssertionError("must not execute")):
+            self.assertEqual(preflight._unit("unknown.service"), {})
+            self.assertIsNone(preflight._runner_access(Path("/"), "-c"))
 
     def test_non_root_cli_does_not_collect(self):
         with patch.object(preflight.os, "geteuid", return_value=1000, create=True), \

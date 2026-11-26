@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import base64
-from contextlib import redirect_stdout
+from contextlib import closing, redirect_stdout
 from datetime import datetime, timedelta, timezone
 import io
 import json
@@ -220,6 +220,32 @@ class OciPhase1RuntimeTests(unittest.TestCase):
             with self.assertRaises(SystemExit):
                 runtime.main(["init", "--state-dir", str(self.base / "new-state")])
         self.assertFalse((self.base / "new-state").exists())
+
+    def test_status_does_not_construct_writable_history_store(self):
+        with patch("ops.oci.runtime.HistoryStore", side_effect=AssertionError(
+                "health must not open writable HistoryStore")):
+            result = runtime.status(self.state)
+        self.assertEqual(result["schema_version"], 3)
+        self.assertEqual(result["counts"]["listings"], 0)
+
+    def test_status_rejects_legacy_schema_without_migration(self):
+        db = self.state / "db" / "history.sqlite3"
+        with closing(sqlite3.connect(str(db))) as conn, conn:
+            conn.execute("PRAGMA user_version=2")
+        with self.assertRaisesRegex(ValueError, "HISTORY_DATABASE_MIGRATION_REQUIRED"):
+            runtime.status(self.state)
+        with closing(sqlite3.connect(str(db))) as conn, conn:
+            self.assertEqual(conn.execute("PRAGMA user_version").fetchone()[0], 2)
+
+    def test_status_does_not_rebind_missing_key_metadata(self):
+        db = self.state / "db" / "history.sqlite3"
+        with closing(sqlite3.connect(str(db))) as conn, conn:
+            conn.execute("DELETE FROM history_store_meta WHERE name='hmac_check'")
+        with self.assertRaisesRegex(ValueError, "HISTORY_DATABASE_HMAC_CHECK_MISSING"):
+            runtime.status(self.state)
+        with closing(sqlite3.connect(str(db))) as conn, conn:
+            self.assertIsNone(conn.execute(
+                "SELECT value FROM history_store_meta WHERE name='hmac_check'").fetchone())
 
     def test_status_and_public_key_never_print_raw_secret(self):
         buffer = io.StringIO()
