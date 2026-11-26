@@ -9,6 +9,7 @@ and cross-context consistency checks.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 import re
@@ -59,6 +60,10 @@ def load_allowlist(path=None):
         doc = json.loads(source.read_text(encoding="utf-8"))
     except (OSError, UnicodeError, ValueError) as exc:
         raise ValueError("ITEM_AREA_CONFIG_UNREADABLE") from exc
+    return _validate_document(doc)
+
+
+def _validate_document(doc):
     if type(doc) is not dict or set(doc) != {"schema", "allowed_areas"} or (
             doc["schema"] not in (SCHEMA, SCHEMA_V2) or type(doc["allowed_areas"]) is not list or
             not 1 <= len(doc["allowed_areas"]) <= 100):
@@ -99,6 +104,24 @@ def load_allowlist(path=None):
         areas.append(row)
     # No glob, city-wide wildcard, unknown city, or implicit radius is allowed.
     return tuple(areas)
+
+
+def private_policy_binding(policy):
+    """Revalidate explicit v2 policy and bind its canonical form privately.
+
+    None retains the legacy v1 default. The digest may appear only inside
+    owner-local or encrypted data, not public summaries/artifacts.
+    """
+    if policy is None:
+        return None, None
+    if type(policy) not in (tuple, list):
+        raise ValueError("EXPLICIT_HIERARCHICAL_POLICY_REQUIRED")
+    rows = _validate_document({"schema": SCHEMA_V2, "allowed_areas": list(policy)})
+    canonical = json.dumps(
+        {"schema": SCHEMA_V2, "allowed_areas": sorted(rows, key=lambda r: r["key"])},
+        ensure_ascii=False, sort_keys=True, separators=(",", ":")
+    ).encode("utf-8")
+    return rows, hashlib.sha256(canonical).hexdigest()
 
 
 def configured_label(key, policy=None):

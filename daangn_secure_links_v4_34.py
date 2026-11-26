@@ -30,7 +30,7 @@ from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from daangn_v4_1_core import normalized_listing
 from daangn_v4_4_gate import stable_article_id
 from app_v5.item_area_policy import (
-    ALLOWED as ITEM_AREA_ALLOWED, configured_label,
+    ALLOWED as ITEM_AREA_ALLOWED, configured_label, private_policy_binding,
 )
 
 VERSION='4.34'
@@ -124,12 +124,13 @@ def _source_key(x):
     return (context,rank)
 
 
-def make_private_shortlist(evaluation,sink):
+def make_private_shortlist(evaluation,sink,*,area_policy=None):
     """One title/URL per v4.33 unique HMAC, never by price or search rank.
 
     A malformed source aborts. Missing or conflicting title for an otherwise
     valid candidate quarantines that group rather than fabricating a title.
     """
+    rows,binding=private_policy_binding(area_policy)
     if not isinstance(evaluation,dict) or evaluation.get('dedup_complete') is not True:
         raise ValueError('V433_UNIQUE_EVIDENCE_NOT_COMPLETE')
     uniques=evaluation.get('unique_candidates')
@@ -159,6 +160,8 @@ def make_private_shortlist(evaluation,sink):
             or len(group)!=item.get('observation_count') or not group):
             raise ValueError('INVALID_UNIQUE_GROUP')
         area_token=item.get('item_area_token')
+        if binding is not None and area_token is None:
+            raise ValueError('BOUND_ITEM_AREA_WITNESS_REQUIRED')
         if area_token is not None and (
                 type(area_token) is not str or
                 HMAC_PATTERN.fullmatch(area_token) is None):
@@ -180,7 +183,7 @@ def make_private_shortlist(evaluation,sink):
             if area_token is not None:
                 if (x.get('item_area_token')!=area_token or
                         x.get('item_area_status')!=ITEM_AREA_ALLOWED or
-                        configured_label(x.get('item_area_key')) is None):
+                        configured_label(x.get('item_area_key'), rows) is None):
                     raise ValueError('PRIVATE_ITEM_AREA_IDENTITY_CONFLICT')
                 area_keys.add(x['item_area_key'])
             elif (x.get('item_area_key') is not None or
@@ -200,7 +203,7 @@ def make_private_shortlist(evaluation,sink):
         if area_token is not None and len(area_keys)!=1:
             reason_codes.add('CONFLICTING_ITEM_AREA_ACROSS_REPEATS')
         area_key=next(iter(area_keys)) if len(area_keys)==1 else None
-        area_label=configured_label(area_key) if area_key is not None else None
+        area_label=configured_label(area_key, rows) if area_key is not None else None
         article_id=next(iter(ids))
         if article_id in seen_ids:
             raise ValueError('SAME_CANONICAL_ITEM_SPLIT_ACROSS_HMAC_GROUPS')
@@ -227,7 +230,7 @@ def make_private_shortlist(evaluation,sink):
     if len(approved)+len(quarantined)!=len(uniques):
         raise ValueError('MISSING_UNIQUE_CANDIDATE_GROUP')
     approved.sort(key=lambda x:(x['price_krw'],x['url']))
-    return {
+    manifest={
         'version':VERSION,'capture_scoped_only':True,
         'created_utc':datetime.now(timezone.utc).isoformat(timespec='seconds'),
         'clickable_unique_count':len(approved),
@@ -236,6 +239,9 @@ def make_private_shortlist(evaluation,sink):
         'items':approved,'unlinked_groups':quarantined,
         'manual_current_price_and_status_recheck_required':True,
         'full_recommendations_approved':0}
+    if binding is not None:
+        manifest['item_area_policy_sha256']=binding
+    return manifest
 
 
 def seal_manifest(manifest,recipient_key_base64):
@@ -280,9 +286,9 @@ def unseal_manifest(envelope,recipient_private_raw):
         raise ValueError('INVALID_OR_UNAUTHENTICATED_SEALED_MANIFEST') from e
 
 
-def write_sealed(evaluation,sink,recipient_key_base64,outdir):
+def write_sealed(evaluation,sink,recipient_key_base64,outdir,*,area_policy=None):
     """Write ONLY authenticated ciphertext and non-identifying counts to disk."""
-    manifest=make_private_shortlist(evaluation,sink)
+    manifest=make_private_shortlist(evaluation,sink,area_policy=area_policy)
     envelope=seal_manifest(manifest,recipient_key_base64)
     outdir=Path(outdir).resolve()
     outdir.mkdir(parents=True,exist_ok=True)
@@ -304,7 +310,7 @@ def write_sealed(evaluation,sink,recipient_key_base64,outdir):
     return summary
 
 
-def write_local_clickable(evaluation,sink,target,public_dir):
+def write_local_clickable(evaluation,sink,target,public_dir,*,area_policy=None):
     """Explicit local opt-in: private JSON + Markdown outside shared outputs.
 
     This is NEVER available within GitHub Actions or CI.
@@ -319,8 +325,8 @@ def write_local_clickable(evaluation,sink,target,public_dir):
         raise ValueError('PRIVATE_OUTPUT_MUST_BE_OUTSIDE_PUBLIC_ARTIFACTS')
     if target.exists() or report.exists():
         raise FileExistsError('LOCAL_PRIVATE_OUTPUT_ALREADY_EXISTS')
-    manifest=make_private_shortlist(evaluation,sink)
-    report_data=markdown_manifest(manifest)
+    manifest=make_private_shortlist(evaluation,sink,area_policy=area_policy)
+    report_data=markdown_manifest(manifest,area_policy=area_policy)
     target.parent.mkdir(parents=True,exist_ok=True)
     for path,body in ((target,json.dumps(manifest,ensure_ascii=False,indent=2)+'\n'),
                       (report,report_data)):
@@ -330,8 +336,12 @@ def write_local_clickable(evaluation,sink,target,public_dir):
     return manifest['clickable_unique_count']
 
 
-def markdown_manifest(manifest):
+def markdown_manifest(manifest,*,area_policy=None):
     """Offline rendering only; NEVER write this within a GitHub Actions run."""
+    policy_rows,binding=private_policy_binding(area_policy)
+    if (manifest.get("item_area_policy_sha256") != binding or
+            ("item_area_policy_sha256" in manifest) != (binding is not None)):
+        raise ValueError("PRIVATE_AREA_POLICY_BINDING_MISMATCH")
     def esc(s):
         s=s.replace('\\','\\\\')
         for ch in ('[',']','|','*','_','`','<','>','!'):
@@ -350,8 +360,13 @@ def markdown_manifest(manifest):
         if normalized_listing(url)!=url:
             raise ValueError('UNSAFE_URL_IN_DECRYPTED_MANIFEST')
         area_label=item.get('item_area_display','지역 미확인')
-        if item.get('item_area_key') is not None and (
-                configured_label(item['item_area_key']) != area_label):
+        if binding is not None and item.get('item_area_key') is None:
+            raise ValueError('BOUND_ITEM_AREA_WITNESS_REQUIRED')
+        if 'item_area_key' in item or 'item_area_display' in item:
+            label=configured_label(item.get('item_area_key'), policy_rows)
+            if label is None or label != area_label:
+                raise ValueError('ITEM_AREA_DISPLAY_CONFLICT')
+        if not isinstance(area_label,str):
             raise ValueError('ITEM_AREA_DISPLAY_CONFLICT')
         rows.append(f"| {i} | [{esc(item['title'])}]({url}) | "
             f"{item['price_krw']:,}원 | {esc(area_label)} | {item['observation_count']}회 | "
