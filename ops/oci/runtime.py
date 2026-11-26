@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import argparse
 import base64
-from contextlib import closing
 import hashlib
 import hmac
 import os
@@ -21,7 +20,7 @@ import sys
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey
 
-from app_v5.history import HistoryStore
+from app_v5.history import HistoryStore, read_only_health
 from app_v5.sealed_import import _private_bytes, import_signed_capture
 
 PINNED_SIGNER_SHA256 = (
@@ -156,21 +155,11 @@ def status(state_dir: str | Path) -> dict:
     db = _dir(root, "db", create=False) / "history.sqlite3"
     if db.is_symlink() or not db.is_file():
         raise ValueError("HISTORY_DATABASE_NOT_INITIALIZED")
-    HistoryStore(db, history)  # validates persisted HMAC key continuity
-    with closing(sqlite3.connect(str(db))) as conn:
-        counts = {}
-        for name in ("search_profiles", "collection_jobs", "listings",
-                     "listing_observations", "listing_events",
-                     "capture_attestations"):
-            counts[name] = conn.execute(
-                "SELECT count(*) FROM " + name
-            ).fetchone()[0]
-        schema = conn.execute("PRAGMA user_version").fetchone()[0]
+    snapshot = read_only_health(db, history)
     return {
         "state": "OCI_PHASE1_HEALTHY",
-        "schema_version": schema,
+        **snapshot,
         "signer_fingerprint": PINNED_SIGNER_SHA256[:24],
-        "counts": counts,
         "private_data_exported": False,
     }
 
