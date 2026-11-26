@@ -7,7 +7,7 @@ site requests, or write raw listing data to GitHub artifacts.
 """
 from __future__ import annotations
 
-from contextlib import contextmanager
+from contextlib import closing, contextmanager
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 import hashlib
@@ -170,6 +170,46 @@ def _prepare(item: Observation) -> tuple[str, str, dict]:
     return article_id, seen, data
 
 
+def _history_key_check(key: bytes) -> str:
+    return hmac.new(key, b"auto-daangn:v5:database-key-check",
+                    hashlib.sha256).hexdigest()
+
+
+def read_only_health(db_path: str | Path, hmac_key: bytes) -> dict:
+    """Read a consistent snapshot without initializing, migrating or rebinding.
+
+    SQLite may maintain WAL shared-memory sidecars in the private directory.
+    Immutable mode is deliberately avoided because it can ignore WAL data.
+    """
+    if not isinstance(hmac_key, bytes) or len(hmac_key) < 32:
+        raise ValueError("PRIVATE_HMAC_KEY_MIN_32_BYTES")
+    db = Path(db_path)
+    if db.is_symlink() or not db.is_file():
+        raise ValueError("HISTORY_DATABASE_NOT_INITIALIZED")
+    uri = db.absolute().as_uri() + "?mode=ro"
+    with closing(sqlite3.connect(uri, uri=True, timeout=5)) as conn:
+        conn.execute("PRAGMA query_only=ON")
+        conn.execute("BEGIN")
+        version = conn.execute("PRAGMA user_version").fetchone()[0]
+        if version in (0, 1, 2):
+            raise ValueError("HISTORY_DATABASE_MIGRATION_REQUIRED")
+        if version != _SCHEMA_VERSION:
+            raise RuntimeError("UNSUPPORTED_SCHEMA_VERSION")
+        saved = conn.execute(
+            "SELECT value FROM history_store_meta WHERE name='hmac_check'"
+        ).fetchone()
+        if saved is None:
+            raise ValueError("HISTORY_DATABASE_HMAC_CHECK_MISSING")
+        if (type(saved[0]) is not str or not re.fullmatch(r"[a-f0-9]{64}", saved[0])
+                or not hmac.compare_digest(saved[0], _history_key_check(hmac_key))):
+            raise ValueError("HISTORY_DATABASE_HMAC_KEY_MISMATCH")
+        counts = {}
+        for table in ("search_profiles", "collection_jobs", "listings",
+                      "listing_observations", "listing_events", "capture_attestations"):
+            counts[table] = conn.execute("SELECT count(*) FROM " + table).fetchone()[0]
+    return {"schema_version": version, "counts": counts}
+
+
 class HistoryStore:
     """Single-writer transactional store, suitable for a small OCI instance."""
 
@@ -188,10 +228,7 @@ class HistoryStore:
                     Path(__file__).with_name("schema.sql").read_text(encoding="utf-8")
                 )
                 conn.execute("PRAGMA user_version = 3")
-            expected_key_check = hmac.new(
-                self._key, b"auto-daangn:v5:database-key-check",
-                hashlib.sha256
-            ).hexdigest()
+            expected_key_check = _history_key_check(self._key)
             saved = conn.execute(
                 "SELECT value FROM history_store_meta WHERE name='hmac_check'"
             ).fetchone()
