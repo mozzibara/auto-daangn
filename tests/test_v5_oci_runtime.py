@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import base64
-from contextlib import redirect_stdout
+from contextlib import closing, redirect_stdout
 from datetime import datetime, timedelta, timezone
 import io
 import json
@@ -230,20 +230,20 @@ class OciPhase1RuntimeTests(unittest.TestCase):
 
     def test_status_rejects_legacy_schema_without_migration(self):
         db = self.state / "db" / "history.sqlite3"
-        with sqlite3.connect(str(db)) as conn:
+        with closing(sqlite3.connect(str(db))) as conn, conn:
             conn.execute("PRAGMA user_version=2")
         with self.assertRaisesRegex(ValueError, "HISTORY_DATABASE_MIGRATION_REQUIRED"):
             runtime.status(self.state)
-        with sqlite3.connect(str(db)) as conn:
+        with closing(sqlite3.connect(str(db))) as conn, conn:
             self.assertEqual(conn.execute("PRAGMA user_version").fetchone()[0], 2)
 
     def test_status_does_not_rebind_missing_key_metadata(self):
         db = self.state / "db" / "history.sqlite3"
-        with sqlite3.connect(str(db)) as conn:
+        with closing(sqlite3.connect(str(db))) as conn, conn:
             conn.execute("DELETE FROM history_store_meta WHERE name='hmac_check'")
         with self.assertRaisesRegex(ValueError, "HISTORY_DATABASE_HMAC_CHECK_MISSING"):
             runtime.status(self.state)
-        with sqlite3.connect(str(db)) as conn:
+        with closing(sqlite3.connect(str(db))) as conn, conn:
             self.assertIsNone(conn.execute(
                 "SELECT value FROM history_store_meta WHERE name='hmac_check'").fetchone())
 
