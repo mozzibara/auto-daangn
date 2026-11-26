@@ -19,6 +19,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from app_v5.attestation import sign_capture, signing_public_key
 from app_v5.history import HistoryStore
+from app_v5.item_area_policy import private_policy_binding
 from daangn_secure_links_v4_34 import seal_manifest
 from ops.oci import runtime
 
@@ -49,7 +50,7 @@ class OciPhase1RuntimeTests(unittest.TestCase):
             self.addCleanup(p.stop)
         self.created = runtime.initialize(self.state)
 
-    def _signed_bundle(self, run_id: int, when: str, price: int) -> Path:
+    def _signed_bundle(self, run_id: int, when: str, price: int, *, area_policy=None) -> Path:
         name = f"run-{run_id}"
         stage = self.base / name
         stage.mkdir()
@@ -69,6 +70,13 @@ class OciPhase1RuntimeTests(unittest.TestCase):
             "manual_current_price_and_status_recheck_required": True,
             "full_recommendations_approved": 0
         }
+        if area_policy is not None:
+            rows, digest = private_policy_binding(area_policy)
+            manifest["item_area_policy_sha256"] = digest
+            row = rows[0]
+            item["item_area_key"] = row["key"]
+            item["item_area_display"] = " ".join(v for v in (
+                row["city"], row["borough"], row["district"]) if v)
         _, _, recipient = runtime._keyring(self.state)
         dt = datetime.fromisoformat(when)
         evidence = {
@@ -161,6 +169,23 @@ class OciPhase1RuntimeTests(unittest.TestCase):
                          ("45000", "35000"))
         self.assertEqual(store.get_observations(store.stable_key(URL))[-1][
             "transaction_status"], "NOT_VERIFIED")
+
+    def test_signed_bound_policy_requires_matching_receiver_configuration(self):
+        policy = (dict(key="test_area", city="서울특별시", borough="동작구",
+                       district="가상동", region_id="900001"),)
+        bundle = self._signed_bundle(8199, "2026-11-10T00:00:00+00:00",
+                                     45000, area_policy=policy)
+        changed = (dict(policy[0], region_id="900002"),)
+        for selected in (None, changed):
+            with self.subTest(selected=selected), self.assertRaises(ValueError):
+                runtime.import_capture(self.state, bundle, expected_commit_sha=SHA,
+                                       run_id=8199, area_policy=selected)
+            self.assertEqual(runtime.status(self.state)["counts"]["listings"], 0)
+        result = runtime.import_capture(self.state, bundle,
+                                        expected_commit_sha=SHA, run_id=8199,
+                                        area_policy=policy)
+        self.assertEqual(result["imported"], 1)
+        self.assertTrue(result["source_authentication_verified"])
 
     def test_tamper_and_independently_expected_source_run_fail_closed(self):
         bundle = self._signed_bundle(8201, "2026-11-10T01:00:00+00:00", 43000)
