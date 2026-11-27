@@ -171,6 +171,11 @@ class SlotLedger:
             if result.rowcount != 1:
                 raise ValueError('ATTEMPT_BINDING_OR_STATE_MISMATCH')
 
+    def has_unresolved(self):
+        """Read-only, including after an approval has been removed."""
+        with closing(self._connect(read_only=True)) as conn:
+            return conn.execute("SELECT 1 FROM slot_attempts WHERE status='RUNNING' LIMIT 1").fetchone() is not None
+
     def snapshot(self, lease, now):
         now = _utc(now)
         rows = audit_slots(lease, now, {})

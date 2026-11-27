@@ -68,3 +68,10 @@ Live compatibility, resource headroom on the ~1 GiB OCI host, executable
 dependency provenance, effective systemd settings, local approval creation,
 old scheduler conflict check and actual site diagnostic are pending. Stop
 and investigate on any failure rather than reducing isolation.
+
+A fixed 512 MiB MemAvailable precheck defers launch before a slot claim if
+host headroom is insufficient; this is not a resource reservation or a proof
+that the browser fits. No backfill. Read-only status reports unresolved
+attempts even when the approval has been removed. Offline CI uses real
+synthetic subprocesses to exercise timeout/output limits, never Chrome/live
+site access in the scheduler tests.

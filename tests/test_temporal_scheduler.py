@@ -1,9 +1,14 @@
 import json
+import os
+import shutil
+import subprocess
+import sys
+import time
 import tempfile
 import unittest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 from app_v5.temporal_slot_ledger import Lease, SlotLedger, expected_slots
 from ops.oci import temporal_scheduler as s
@@ -165,6 +170,73 @@ class SchedulerTests(unittest.TestCase):
         self.assertEqual(s.project_report(encode(fixture()), 2)['status'], 'NOT_VERIFIED')
         with self.assertRaises(ValueError):
             s.project_report(b'x'*(s.MAX_OUTPUT+1), 0)
+
+    def test_memory_gate_before_claim(self):
+        self.assertTrue(s.memory_available('MemAvailable: 524288 kB'))
+        self.assertFalse(s.memory_available('MemAvailable: 524287 kB'))
+        self.assertFalse(s.memory_available('MemFree: 900000 kB'))
+        self.assertEqual(s.tick(self.state, self.read, self.runner,
+                                lambda: self.now, self.persist, ready=lambda: False),
+                         'RESOURCE_DEFERRED')
+        self.runner.assert_not_called()
+        self.assertFalse(self.ledger.has_unresolved())
+
+    def test_unresolved_readable_without_lease(self):
+        self.assertFalse(self.ledger.has_unresolved())
+        self.ledger.claim(LEASE, SLOT, SLOT)
+        self.assertTrue(self.ledger.has_unresolved())
+        self.ledger.finish(LEASE, SLOT, SLOT, 'INTERRUPTED')
+        self.assertFalse(self.ledger.has_unresolved())
+
+    @unittest.skipUnless(os.name == 'posix', 'POSIX atomic publication')
+    def test_atomic_publication_no_overwrite(self):
+        p = self.state/'record.json'
+        s.write_once(p, {'status': 'OBSERVED'})
+        with self.assertRaises(FileExistsError):
+            s.write_once(p, {'status': 'OTHER'})
+        self.assertEqual(json.loads(p.read_text()), {'status': 'OBSERVED'})
+        self.assertEqual(list(self.state.glob('.record-*')), [])
+
+    @unittest.skipUnless(os.name == 'posix', 'POSIX child supervision')
+    def test_real_synthetic_child(self):
+        real = subprocess.Popen
+        launches = []
+        def launch(argv, **kwargs):
+            launches.append(argv)
+            # Execute local fixture only; never run xvfb or Chrome in CI.
+            kwargs['cwd'] = self.state
+            return real([sys.executable, '-c', 'import sys; sys.stdout.buffer.write('+repr(encode(fixture()))+')'], **kwargs)
+        with patch.object(s.subprocess, 'Popen', side_effect=launch):
+            self.assertEqual(s.execute(lambda: True, 5)['status'], 'OBSERVED')
+        self.assertEqual(len(launches), 1)
+        self.assertEqual(launches[0][0], '/usr/bin/xvfb-run')
+        self.assertIn('ops.oci.region_aa_far', launches[0])
+
+    @unittest.skipUnless(os.name == 'posix', 'POSIX child supervision')
+    def test_real_synthetic_timeout_and_output_bound(self):
+        real = subprocess.Popen
+        for script, seconds, expected in (
+                ('import time; time.sleep(20)', 0.15, 'INTERRUPTED'),
+                ('import sys; sys.stdout.buffer.write(b"x"*100000)', 5, 'NOT_VERIFIED')):
+            processes = []
+            def launch(argv, **kwargs):
+                kwargs['cwd'] = self.state
+                child = real([sys.executable, '-c', script], **kwargs)
+                processes.append(child)
+                return child
+            with patch.object(s.subprocess, 'Popen', side_effect=launch):
+                self.assertEqual(s.execute(lambda: True, seconds)['status'], expected)
+            self.assertIsNotNone(processes[0].returncode)
+
+    @unittest.skipUnless(os.name == 'posix' and shutil.which('bash'), 'bash syntax')
+    def test_installer_shell_syntax(self):
+        path = Path(__file__).resolve().parents[1]/'ops/oci/prepare_temporal.sh'
+        subprocess.run(['bash', '-n', str(path)], check=True)
+
+    @unittest.skipUnless(os.name == 'posix' and shutil.which('systemd-analyze'), 'systemd calendar')
+    def test_systemd_calendar_syntax(self):
+        subprocess.run(['systemd-analyze', 'calendar', '*-*-* 00,12:17:00 UTC'],
+                       check=True, stdout=subprocess.DEVNULL)
 
     def test_timer_and_service_contract(self):
         base = Path(__file__).resolve().parents[1]/'ops/oci/systemd'

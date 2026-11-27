@@ -3,6 +3,7 @@
 # Never starts services, writes an approval, installs packages or touches live DB.
 set -Eeuo pipefail
 umask 077
+export GIT_OPTIONAL_LOCKS=0
 [[ "$EUID" -eq 0 ]] || { echo ROOT_REQUIRED; exit 2; }
 [[ $# -eq 2 || $# -eq 3 ]] || { echo 'usage: prepare_temporal.sh ROOT_CHECKOUT EXACT_SHA [--apply]'; exit 2; }
 ROOT="$(realpath -e "$1")"

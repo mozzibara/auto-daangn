@@ -28,6 +28,7 @@ SCHEMA = 'daangn_local_temporal_approval_v1'
 PURPOSE = 'AA_FAR_DIAGNOSTIC_ONLY'
 MAX_OUTPUT = 65536
 MAX_SECONDS = 690
+MIN_AVAILABLE_KIB = 512 * 1024
 FLAGS = ('authorizes_listings', 'collection_started', 'database_written', 'telegram_used')
 ARMS = ('a1', 'far', 'a2')
 PAIRS = {'aa': ('a1', 'a2'), 'a1_far': ('a1', 'far'), 'a2_far': ('a2', 'far')}
@@ -212,7 +213,22 @@ def write_once(path, doc):
         os.unlink(name)
 
 
-def tick(state, read, runner, clock=utc_now, persist=write_once):
+def memory_available(raw):
+    for line in raw.splitlines():
+        parts = line.split()
+        if len(parts) == 3 and parts[0] == 'MemAvailable:' and parts[2] == 'kB':
+            return int(parts[1]) >= MIN_AVAILABLE_KIB
+    return False
+
+
+def resource_ready():
+    try:
+        return memory_available(Path('/proc/meminfo').read_text(encoding='ascii'))
+    except (OSError, ValueError):
+        return False
+
+
+def tick(state, read, runner, clock=utc_now, persist=write_once, ready=lambda: True):
     state = Path(state)
     hold = state / 'review-hold.json'
     if hold.exists() or hold.is_symlink():
@@ -222,6 +238,8 @@ def tick(state, read, runner, clock=utc_now, persist=write_once):
     if slot is None:
         return 'NO_APPROVED_SLOT'
     ledger = SlotLedger(state / 'slots.sqlite3')
+    if not ready():
+        return 'RESOURCE_DEFERRED'
     if read() != lease:
         return 'APPROVAL_CHANGED'
     now = clock()
@@ -284,13 +302,14 @@ def main(argv=None):
             status = 'INITIALIZED_NO_APPROVAL'
         elif args.command == 'status':
             lease = read_approval()
-            rows = SlotLedger(STATE/'slots.sqlite3').snapshot(lease, utc_now()) if lease else []
+            ledger = SlotLedger(STATE/'slots.sqlite3')
+            rows = ledger.snapshot(lease, utc_now()) if lease else []
             print(json.dumps({'status': 'READ_ONLY', 'slots': rows,
-                              'review_required': (STATE/'review-hold.json').exists(),
+                              'review_required': (STATE/'review-hold.json').exists() or ledger.has_unresolved(),
                               'authorizes_listings': False}, sort_keys=True))
             return 0
         else:
-            status = tick(STATE, read_approval, execute)
+            status = tick(STATE, read_approval, execute, ready=resource_ready)
         print(json.dumps({'status': status, 'authorizes_listings': False}, sort_keys=True))
         return 2 if status in ('INTERRUPTED', 'NOT_VERIFIED', 'REVIEW_REQUIRED', 'CLOCK_REGRESSION') else 0
     except Exception:
