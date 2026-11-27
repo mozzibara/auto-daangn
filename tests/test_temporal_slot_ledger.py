@@ -3,6 +3,7 @@ import tempfile
 import unittest
 from datetime import datetime, timedelta, timezone
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import closing
 from pathlib import Path
 
 from app_v5.temporal_slot_ledger import Lease, SlotLedger, expected_slots, audit_slots
@@ -64,7 +65,7 @@ class TemporalSlotTests(unittest.TestCase):
         with self.assertRaises(FileExistsError):
             SlotLedger.initialize(self.path)
         foreign = self.path.with_name('foreign.db')
-        with sqlite3.connect(foreign) as conn:
+        with closing(sqlite3.connect(foreign)) as conn, conn:
             conn.execute('CREATE TABLE keep_me (x INTEGER)')
         before = foreign.read_bytes()
         with self.assertRaises(ValueError):

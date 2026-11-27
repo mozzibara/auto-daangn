@@ -26,3 +26,19 @@ clock regression. Local Linux Python 3.13 only at this checkpoint. Full repo
 OCI regression and protected GitHub CI are separate gates. Next integrate an
 authenticated fresh owner lease/stop adapter, an explicitly approved bounded
 diagnostic executor and local timer; retain existing robots and capture gates.
+
+## Historical audit: expired seven-day cohort
+
+Read-only review of the original private scheduling evidence (2026-11-27):
+14 expected slots; 14 scheduled workflow runs during the original lease;
+zero run creation timestamps within their 75-minute eligibility windows.
+All 14 job-step records show authorization success and Chrome experiment /
+publication skipped. All 14 decoded gate logs explicitly contain
+NOT_APPROVED_SCHEDULE_SLOT. Zero eligible scheduled observations were posted.
+This establishes a scheduling failure, not a region-effect result. Do not
+extend, backfill or reactivate the expired approval. Raw private logs and
+approval IDs remain private. S1-08 historical audit is complete for this cohort.
+
+Initial Windows CI found an unclosed SQLite connection in the foreign-DB
+fixture (temporary directory cleanup, WinError 32). Explicit closing fixes
+the test; no runtime behavior change. Focused local tests: 13/13 again.

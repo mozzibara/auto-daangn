@@ -188,3 +188,10 @@ T01 검색, T02 가격, T03 용량, T04 추천, T05 SMART 이미지, T06 목표�
 4. STEP 2/3 독립 개발 병행 가능하되 실제 서비스 완료는 종단간 증거 필요.
 
 관련: [기존 아키텍처](../ARCHITECTURE.md), [보안 정책](../SECURITY.md), [과거 연구](research/LEGACY_PRIVATE_HANDOFF.md), [소재지 정책 결합](research/PRIVATE_AREA_POLICY_BINDING.md).
+
+## S1 resume checkpoint (2026-11-27)
+
+- S1-07: restored roadmap and README entry proposed in PR #92; official adoption requires protected-main merge.
+- S1-08: original seven-day cohort audited in full: 14 scheduled runs, all gate logs NOT_APPROVED_SCHEDULE_SLOT; no eligible observations. Historical diagnosis established, no renewed approval.
+- S1-10/11/12/22: [offline temporal slot ledger](research/TEMPORAL_SLOT_LEDGER.md) and 13 focused tests; actual scheduler, authenticated fresh lease integration and process supervision remain incomplete. No new live permission.
+- Baseline statuses above are retained as an audit snapshot, not a claim that later checkpoints are absent.
