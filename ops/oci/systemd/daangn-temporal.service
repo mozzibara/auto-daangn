@@ -1,0 +1,34 @@
+[Unit]
+Description=Daangn bounded owner-local temporal A/A/FAR diagnostic (no listing admission)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=daangn-temporal
+Group=daangn-temporal
+WorkingDirectory=/var/lib/daangn-temporal-home/code/auto-daangn-region-diagnostic
+Environment=HOME=/var/lib/daangn-temporal-home
+Environment=PYTHONNOUSERSITE=1
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/opt/daangn-temporal-venv/bin/python -s -B -m ops.oci.temporal_scheduler tick
+UMask=0077
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+ReadWritePaths=/var/lib/daangn-temporal-state
+InaccessiblePaths=-/var/lib/auto-daangn -/var/lib/oci-ci-alt -/var/spool/auto-daangn-telegram -/etc/oci-ci-alt -/opt/auto-daangn -/opt/auto-daangn-public-stage -/opt/auto-daangn-managed
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+KillMode=control-group
+TimeoutStartSec=720
+TimeoutStopSec=10
+MemoryHigh=450M
+MemoryMax=650M
+TasksMax=128
+CPUQuota=100%

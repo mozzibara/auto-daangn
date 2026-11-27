@@ -195,3 +195,5 @@ T01 검색, T02 가격, T03 용량, T04 추천, T05 SMART 이미지, T06 목표�
 - S1-08: original seven-day cohort audited in full: 14 scheduled runs, all gate logs NOT_APPROVED_SCHEDULE_SLOT; no eligible observations. Historical diagnosis established, no renewed approval.
 - S1-10/11/12/22: [offline temporal slot ledger](research/TEMPORAL_SLOT_LEDGER.md) and 13 focused tests; actual scheduler, authenticated fresh lease integration and process supervision remain incomplete. No new live permission.
 - Baseline statuses above are retained as an audit snapshot, not a claim that later checkpoints are absent.
+
+- S1-09/10/11/12/14/22: [owner-local temporal scheduler](research/LOCAL_TEMPORAL_SCHEDULER.md) integrates the slot ledger, fixed diagnostic child, local approval and disabled-by-default systemd preparation. Installation, on-host smoke, new approval, actual diagnostic and S1-13 GitHub adapter are pending. No listing admission or infrastructure changes.
