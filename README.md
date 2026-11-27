@@ -4,6 +4,10 @@ Public source snapshot of the owner-approved, read-only Daangn listing research 
 
 This repository contains source code, synthetic tests, and opt-in GitHub Actions. It does **not** contain an operational database, live listing data, private keys, GitHub tokens, OCI credentials, or Telegram credentials.
 
+## v5.0 roadmap
+
+[Restored 96-item development roadmap](docs/ROADMAP_V5.md): the marketplace pipeline, not the independent CI infrastructure, defines project completion.
+
 ## Architecture
 
 - [ARCHITECTURE.md](ARCHITECTURE.md): GitHub Actions / OCI SECOND-INSTANCE / ChatGPT / Telegram responsibility boundaries, reliability gates and rollout priorities.
